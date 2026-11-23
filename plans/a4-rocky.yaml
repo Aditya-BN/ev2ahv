@@ -1,0 +1,50 @@
+name: a4-rocky
+writer:
+  vm: ev2ahv-writer
+  host: 10.12.136.211
+  user: nutanix
+source:
+  type: direct
+  host: 10.12.136.211
+  user: nutanix
+  sudo: true
+  max_mbps: 0
+  power:
+    status: /usr/local/sbin/ev2ahv-fake-src status
+    stop: /usr/local/sbin/ev2ahv-fake-src stop
+    start: /usr/local/sbin/ev2ahv-fake-src start
+disks:
+- name: boot
+  path: /dev/loop0
+nics:
+- subnet: VLAN136
+  mac: 50:6b:8d:ee:a4:01
+  keep_mac: true
+target:
+  vm_name: ev2ahv-test-rocky
+  cluster: NTNX-DC
+  container: VM_Container
+  sockets: 1
+  cores: 2
+  threads: 1
+  memory_mib: 2048
+  firmware: bios
+  disk_bus: scsi
+  cloud_init_file: /home/adit@ntnx.hin/.local/share/ev2ahv/a4/user-data.yaml
+sync:
+  chunk_mib: 4
+  algo: auto
+  batch: 32
+verify:
+  ip: 10.12.136.212
+  port: 22
+  timeout: 420
+  ssh_user: nutanix
+  sudo: true
+  commands:
+  - cd /var/ev2ahv-data && sha256sum -c --quiet MANIFEST.sha256 && echo MANIFEST_OK
+    $(wc -l < MANIFEST.sha256) files
+  - sha256sum /var/ev2ahv-data/MANIFEST.sha256 | cut -d' ' -f1
+  - hostname
+  - findmnt -no SOURCE,FSTYPE /
+  - ip -br addr show scope global
