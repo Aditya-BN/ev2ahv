@@ -9,7 +9,7 @@ read, stopped and started. Rollback is powering it back on.
 | Area | State |
 |---|---|
 | Hot-add, clone from attached disk, hot-remove on AHV | Verified on NTNX-DC |
-| Sync engine, resume, zero-skip, corruption repair | Verified, 15 unit tests |
+| Sync engine, resume, zero-skip, corruption repair | Verified, 17 unit tests |
 | LocalReader, DirectBlockReader (ssh + loop device), ExportReader (qcow2) | Verified |
 | End-to-end: live seed, resync, cutover, boot, checksums, rollback | Verified with a fake source |
 | Web console | Verified in Chrome |
@@ -18,7 +18,7 @@ read, stopped and started. Rollback is powering it back on.
 | Linux prep script | Run on Rocky 9 |
 | Windows prep script | Not run or parsed. No PowerShell was available |
 | Real everRun source (Stage B) | Not started, waiting for the lab handoff |
-| Raw file to AHV image upload fallback | Not built |
+| Raw file to AHV image upload fallback (`target.transfer: image`) | Verified end-to-end, including rollback and a second cutover |
 
 ## Quick start
 

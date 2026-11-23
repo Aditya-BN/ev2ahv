@@ -143,6 +143,21 @@ class Safety(unittest.TestCase):
                            "disks": [{"path": "/tmp/a"}], "nics": [{"subnet": "s", "mac": "50:6B:8D:00:00:01"}]})
         self.assertEqual(p["nics"][0]["mac"], "50:6b:8d:00:00:01")
 
+    def test_image_guard_blocks_foreign_image(self):
+        p = Prism(Credentials("h", api_key="k"))
+        p._call = lambda *a, **k: ({"data": {"name": "Rocky-Disk-9.8"}}, {"ETag": "e"})
+        with self.assertRaises(NotOwned):
+            p.delete_image("x")
+        with self.assertRaises(NotOwned):
+            p.upload_image("Rocky-Disk-9.8", None, 1, "c")
+
+    def test_transfer_mode_is_validated(self):
+        base = {"name": "x", "writer": {"vm": "w", "host": "h"}, "source": {"type": "local"},
+                "target": {"vm_name": "ev2ahv-x", "cluster": "c", "container": "k", "transfer": "ftp"},
+                "disks": [{"path": "/tmp/a"}]}
+        with self.assertRaises(plan.PlanError):
+            plan.validate(base)
+
     def test_alignment_rounds_up(self):
         self.assertEqual(builder.align(1), 1024 ** 2)
         self.assertEqual(builder.align(1024 ** 2), 1024 ** 2)

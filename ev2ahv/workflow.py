@@ -1,6 +1,6 @@
 """The migration workflow. Every step is idempotent and records progress in SQLite.
 The source is only ever read, stopped and started. It is never modified or deleted."""
-import base64, fcntl, logging, os, re, socket, time
+import base64, fcntl, logging, os, re, shlex, socket, subprocess, time
 
 from . import builder, engine, target as tgt
 from .readers import make_reader
@@ -81,6 +81,15 @@ class Migration:
         all_staging = self.staging()
         size = builder.align(size)
         entry = all_staging.get(disk["name"])
+        if self.image_mode:
+            if entry:
+                return self.device_for(entry)
+            path = self.staging_file(disk)
+            q = shlex.quote(path)
+            self.writer.run(f"mkdir -p {shlex.quote(os.path.dirname(path))}; rm -f {q}; truncate -s {size} {q}")
+            all_staging[disk["name"]] = {"file": path, "path": path, "size": size}
+            self.state.set("staging", all_staging)
+            return path
         vm = self.writer_vm()
         if entry and any(d["extId"] == entry["disk_id"] for d in self.prism.vm(vm).get("disks") or []):
             return self.device_for(entry)
@@ -95,8 +104,53 @@ class Migration:
         self.state.set("staging", all_staging)
         return path
 
+    @property
+    def image_mode(self):
+        return self.p["target"]["transfer"] == "image"
+
+    def staging_file(self, disk):
+        return os.path.join(self.p["target"]["staging_dir"], f"{self.p['name']}-{disk['name']}.raw")
+
+    def image_name(self, disk):
+        return f"ev2ahv-img-{self.p['name']}-{disk['name']}"
+
+    def upload_images(self):
+        """Fallback path: raw staging file -> qcow2 on the writer -> streamed to Prism via the bastion.
+        The API key stays on the bastion. Any image from an earlier attempt is replaced."""
+        cluster = self.prism.cluster_id(self.p["target"]["cluster"])
+        images = self.state.get("images", {})
+        for disk in self.p["disks"]:
+            name = self.image_name(disk)
+            old = self.prism.image_by_name(name)
+            if old:
+                self.prism.delete_image(old["extId"])
+            images.pop(disk["name"], None)
+            self.state.set("images", images)
+            raw = self.staging()[disk["name"]]["file"]
+            qcow = raw[:-4] + ".qcow2"
+            q_raw, q_qcow = shlex.quote(raw), shlex.quote(qcow)
+            self.writer.run(f"sync; qemu-img convert -f raw -O qcow2 {q_raw} {q_qcow}.tmp && mv -f {q_qcow}.tmp {q_qcow}", timeout=14400)
+            size = int(self.writer.run(f"stat -c %s {q_qcow}").strip())
+            proc = subprocess.Popen(self.writer.argv(f"cat {q_qcow}"), stdout=subprocess.PIPE)
+            try:
+                image = self.prism.upload_image(name, proc.stdout, size, cluster, f"ev2ahv staging, plan {self.p['name']}")
+            finally:
+                proc.stdout.close()
+                rc = proc.wait()
+            if rc:
+                self.prism.delete_image(image)
+                raise RuntimeError(f"reading {qcow} on the writer failed (rc {rc})")
+            images[disk["name"]] = image
+            self.state.set("images", images)
+            self.writer.run(f"rm -f {q_qcow}")
+
     def device_for(self, entry):
         """Find the staging device by serial and size, rescanning if it was offlined."""
+        if entry.get("file"):
+            have = int(self.writer.run(f"stat -c %s {shlex.quote(entry['file'])}").strip())
+            if have != int(entry["size"]):
+                raise RuntimeError(f"staging file {entry['file']} has the wrong size")
+            return entry["file"]
         for attempt in range(2):
             for name, d in tgt.block_devices(self.writer).items():
                 if d.get("serial") == entry["serial"]:
@@ -137,6 +191,21 @@ class Migration:
                 raise RuntimeError(f"VM {t['vm_name']} already exists")
             return "free" if not vm else "created by this plan"
         check("Target VM name", target_free)
+        if self.image_mode:
+            def space():
+                need = 0
+                for disk in self.p["disks"]:
+                    r = self.reader(disk)
+                    try:
+                        need += 2 * builder.align(r.size())
+                    finally:
+                        r.close()
+                base = self.p["target"]["staging_dir"]
+                free = int(self.writer.run(f"mkdir -p {shlex.quote(base)}; df -B1 --output=avail {shlex.quote(base)} | tail -1").strip())
+                if free < need:
+                    raise RuntimeError(f"writer has {free} bytes free, worst case needs {need}")
+                return f"{free} bytes free, worst case {need}"
+            check("Writer staging space", space)
         for d in self.p["disks"]:
             def src(disk=d):
                 r = self.reader(disk)
@@ -252,14 +321,22 @@ class Migration:
         staging = self.staging()
         writer_vm = self.writer_vm()
         if not self.step_done("quiesced"):
-            for entry in staging.values():
-                tgt.quiesce_device(self.writer, self.device_for(entry))
+            if self.image_mode:
+                t0 = time.time()
+                self.upload_images()
+                self.timing(image_upload_seconds=round(time.time() - t0, 1))
+            else:
+                for entry in staging.values():
+                    tgt.quiesce_device(self.writer, self.device_for(entry))
             self.mark("quiesced")
         vm_id = self.state.get("target_vm")
         if not self.step_done("created"):
             cluster = self.prism.cluster_id(t["cluster"])
             subnets = {n["subnet"]: self.prism.subnet_id(n["subnet"], cluster) for n in self.p.get("nics") or []}
-            sources = [(staging[d["name"]]["size"], self.prism.disk_ref(writer_vm, staging[d["name"]]["disk_id"]))
+            images = self.state.get("images", {})
+            sources = [(staging[d["name"]]["size"],
+                        self.prism.image_ref(images[d["name"]]) if self.image_mode
+                        else self.prism.disk_ref(writer_vm, staging[d["name"]]["disk_id"]))
                        for d in self.p["disks"]]
             vm_id = self.prism.create_vm(builder.vm_payload(self.p, cluster, sources, subnets))
             self.state.set("target_vm", vm_id)
@@ -327,6 +404,12 @@ class Migration:
         self.state.event("rollback", target=vm_id)
         return {"target_powered_off": bool(vm_id), "source_start": started, "source_status": status}
 
+    def forget_target_host_key(self):
+        """The pinned ssh key belonged to the VM just deleted. A rebuilt VM may legitimately differ."""
+        path = os.path.join(self.dir, "known_hosts")
+        if os.path.exists(path):
+            os.remove(path)
+
     def discard_target(self):
         """Delete the migrated VM after a rollback, keeping staging disks so resync stays incremental."""
         self.lock()
@@ -335,6 +418,7 @@ class Migration:
             raise RuntimeError("cutover is complete. Run rollback first if you really want to discard the VM")
         if vm_id and not self.dry_run:
             self.prism.delete_vm(vm_id)
+            self.forget_target_host_key()
             self.state.set("target_vm", None)
             self.state.set("cutover_step", None)
         return {"discarded": vm_id, "dry_run": self.dry_run}
@@ -348,15 +432,27 @@ class Migration:
             remaining = dict(self.staging())
             for name, entry in list(remaining.items()):
                 if self.dry_run:
-                    log.info("[dry-run] remove staging disk %s", entry["disk_id"])
+                    log.info("[dry-run] remove staging %s", entry.get("disk_id") or entry["file"])
                     continue
-                self.prism.remove_vm_disk(vm, entry["disk_id"])
+                if entry.get("file"):
+                    q = shlex.quote(entry["file"])
+                    self.writer.run(f"rm -f {q} {shlex.quote(entry['file'][:-4] + '.qcow2')}")
+                else:
+                    self.prism.remove_vm_disk(vm, entry["disk_id"])
                 out["removed_staging"].append(name)
                 del remaining[name]
                 self.state.set("staging", remaining)
+        for disk in self.p["disks"]:
+            image = self.prism.image_by_name(self.image_name(disk))
+            if image:
+                self.prism.delete_image(image["extId"])
+                out.setdefault("removed_images", []).append(image["name"])
+        if not self.dry_run:
+            self.state.set("images", {})
         if delete_target and self.state.get("target_vm"):
             if not self.dry_run:
                 self.prism.delete_vm(self.state.get("target_vm"))
+                self.forget_target_host_key()
                 self.state.set("target_vm", None)
                 self.state.set("cutover_step", None)
             out["deleted_target"] = not self.dry_run

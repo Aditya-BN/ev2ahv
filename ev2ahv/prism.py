@@ -233,6 +233,75 @@ class Prism:
         etag = hdr.get("ETag") or hdr.get("Etag") or hdr.get("etag")
         self.wait(self._call("DELETE", f"{VMS}/{vm_id}/disks/{disk_id}", None, etag)[0])
 
+    # ---- images (upload fallback) -------------------------------------------
+    def image_by_name(self, name):
+        rows = [i for i in self._all("/vmm/v4.2/content/images") if i.get("name") == name]
+        if len(rows) > 1:
+            raise PrismError(f"{len(rows)} images are named {name!r}")
+        return rows[0] if rows else None
+
+    def _wait_v3(self, task_uuid, timeout=900):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            t = self._call("GET", f"/tasks/{task_uuid}", base="/api/nutanix/v3")[0]
+            if t.get("status") == "SUCCEEDED":
+                return t
+            if t.get("status") in ("FAILED", "ABORTED"):
+                raise PrismError(f"task {task_uuid} {t['status']}: {t.get('error_detail')}")
+            time.sleep(2)
+        raise PrismError(f"task {task_uuid} timed out")
+
+    def upload_image(self, name, stream, size, cluster_id, description="ev2ahv staging image", timeout=7200):
+        """v4 has no file upload, so this uses the v3 image file API. Returns the image extId."""
+        if not name.startswith(OWNED_PREFIX):
+            raise NotOwned(f"refusing to create image {name!r}: not ev2ahv-owned")
+        if self.image_by_name(name):
+            raise PrismError(f"image {name} already exists")
+        if self.dry_run:
+            log.info("[dry-run] upload image %s (%d bytes)", name, size)
+            return None
+        body = {"spec": {"name": name, "description": description, "resources": {"image_type": "DISK_IMAGE"}},
+                "metadata": {"kind": "image"}}
+        doc = self._call("POST", "/images", body, base="/api/nutanix/v3")[0]
+        uuid_ = doc["metadata"]["uuid"]
+        task = doc["status"]["execution_context"]["task_uuid"]
+        self._wait_v3(task[0] if isinstance(task, list) else task)
+        url = f"https://{self.c.host}:{self.c.port}/api/nutanix/v3/images/{uuid_}/file"
+        headers = dict(self.c.headers(), **{"Content-Type": "application/octet-stream", "Content-Length": str(size),
+                                            "X-Nutanix-Destination-Cluster": cluster_id})
+        req = urllib.request.Request(url, data=stream, headers=headers, method="PUT")
+        try:
+            with urllib.request.urlopen(req, context=self.ctx, timeout=600) as r:
+                r.read()
+        except urllib.error.HTTPError as e:
+            raise PrismError(f"image upload: HTTP {e.code}: {e.read()[:800].decode(errors='replace')}") from None
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            state = (self._call("GET", f"/images/{uuid_}", base="/api/nutanix/v3")[0].get("status") or {}).get("state")
+            if state == "COMPLETE":
+                log.info("uploaded image %s %s", name, uuid_)
+                return uuid_
+            if state == "ERROR":
+                raise PrismError(f"image {name} ended in ERROR")
+            time.sleep(3)
+        raise PrismError(f"image {name} did not complete")
+
+    def delete_image(self, image_id):
+        doc, hdr = self._call("GET", f"/vmm/v4.2/content/images/{image_id}")
+        name = doc["data"].get("name") or ""
+        if not name.startswith(OWNED_PREFIX):
+            raise NotOwned(f"refusing to delete image {name!r}: not ev2ahv-owned")
+        if self.dry_run:
+            log.info("[dry-run] delete image %s", name)
+            return
+        etag = hdr.get("ETag") or hdr.get("Etag") or hdr.get("etag")
+        self.wait(self._call("DELETE", f"/vmm/v4.2/content/images/{image_id}", None, etag)[0])
+        log.info("deleted image %s", name)
+
+    @staticmethod
+    def image_ref(image_id):
+        return {"$objectType": "vmm.v4.ahv.config.ImageReference", "imageExtId": image_id}
+
     def delete_vm(self, vm_id):
         vm, etag = self._owned_vm(vm_id)
         if self.dry_run:

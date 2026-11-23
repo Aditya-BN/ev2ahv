@@ -35,6 +35,9 @@ def validate(p):
     for key in ("vm_name", "cluster", "container"):
         check(lambda k=key: _need(t, k, "target"))
     t.setdefault("firmware", "bios"); t.setdefault("disk_bus", "scsi"); t.setdefault("machine_type", "PC")
+    t.setdefault("transfer", "hotadd"); t.setdefault("staging_dir", "/var/tmp/ev2ahv-staging")
+    if t["transfer"] not in ("hotadd", "image"):
+        errors.append("target.transfer must be hotadd or image")
     t.setdefault("sockets", 1); t.setdefault("cores", 2); t.setdefault("threads", 1); t.setdefault("memory_mib", 2048)
     if t["firmware"] not in ("bios", "uefi"):
         errors.append("target.firmware must be bios or uefi")

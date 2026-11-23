@@ -61,4 +61,5 @@
   confirm how everRun exposes its mirrored disks.
 - A seed of a running guest is not consistent on its own. Consistency comes from the final sync
   with the source off.
-- The raw file to AHV image upload fallback is not built.
+- The image fallback needs up to twice the disk size free on the writer, and its upload adds to downtime
+  (about 1.7 min for the 10 GiB test image). Hot-add stays the default.
