@@ -1,0 +1,11 @@
+.env
+*.env
+__pycache__/
+.venv/
+*.db
+*.db-*
+runs/
+logs/
+*.qcow2
+*.raw
+credentials.json
