@@ -17,7 +17,7 @@ read, stopped and started. Rollback is powering it back on.
 | Prism username/password auth | Built, never used with valid credentials |
 | Linux prep script | Run on Rocky 9 |
 | Windows prep script | Not run or parsed. No PowerShell was available |
-| Real everRun source (Stage B) | Not started, waiting for the lab handoff |
+| Real everRun source (Stage B) | Read-only discovery only. No everRun guest migrated yet |
 | Raw file to AHV image upload fallback (`target.transfer: image`) | Verified end-to-end, including rollback and a second cutover |
 
 ## Quick start
