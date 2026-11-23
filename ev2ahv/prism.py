@@ -114,6 +114,42 @@ class Prism:
             raise PrismError(f"{len(rows)} VMs are named {name!r}")
         return rows[0] if rows else None
 
+    def _all(self, path):
+        out, page = [], 0
+        while True:
+            rows = self.get(f"{path}?$page={page}&$limit=100").get("data") or []
+            out += rows
+            if len(rows) < 100:
+                return out
+            page += 1
+
+    def cluster_id(self, name):
+        rows = [c for c in self._all("/clustermgmt/v4.2/config/clusters") if name in (c.get("name"), c.get("extId"))]
+        if len(rows) != 1:
+            raise PrismError(f"cluster {name!r}: {len(rows)} matches")
+        return rows[0]["extId"]
+
+    def container_id(self, name, cluster_id):
+        rows = [c for c in self._all("/clustermgmt/v4.2/config/storage-containers")
+                if c.get("clusterExtId") == cluster_id and name in (c.get("name"), c.get("containerExtId"))]
+        if len(rows) != 1:
+            raise PrismError(f"storage container {name!r}: {len(rows)} matches")
+        return rows[0]["containerExtId"]
+
+    def subnet_id(self, name, cluster_id):
+        rows = [s for s in self._all("/networking/v4.0/config/subnets")
+                if name in (s.get("name"), s.get("extId"))
+                and cluster_id in (s.get("clusterReference"), *(s.get("clusterReferenceList") or []))]
+        if len(rows) != 1:
+            raise PrismError(f"subnet {name!r}: {len(rows)} matches")
+        return rows[0]["extId"]
+
+    def mac_owners(self, mac):
+        mac = mac.lower()
+        return [v.get("name") for v in self.list_vms(select="name,nics")
+                if any(((n.get("backingInfo") or {}).get("macAddress") or "").lower() == mac
+                       for n in v.get("nics") or [])]
+
     def disk_ref(self, vm_id, disk_id):
         """v4 equivalent of clone_from_vmdisk: AHV needs the disk, its address and its VM."""
         disk = next((d for d in self.vm(vm_id).get("disks") or [] if d["extId"] == disk_id), None)

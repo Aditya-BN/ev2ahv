@@ -38,16 +38,19 @@ def sync(source, target, state, key, algo, verify_target=False, batch=32, progre
     known = state.digests(key, start)
     stats, began, pending = Stats(), time.monotonic(), []
     total = (size + chunk - 1) // chunk
-    target_iter = target.hashes(algo, start) if verify_target else None
+    target_iter = target.hashes(algo, start, limit=size) if verify_target else None
+    observed = []   # verified target digests that differ from the record
 
     def flush(next_pos):
-        updates = []
+        updates = list(observed)
+        observed.clear()
         if pending:
             wanted = dict(pending)
             items = []
             for idx, data in source.read([i for i, _ in pending]):
                 dg = fingerprint(data, algo)   # the bytes actually read, so a racing write shows up next pass
                 if dg == wanted[idx]:
+                    updates.append((idx, dg))
                     continue
                 items.append((idx, data))
                 updates.append((idx, dg))
@@ -69,6 +72,7 @@ def sync(source, target, state, key, algo, verify_target=False, batch=32, progre
                 raise RuntimeError(f"target hash out of step: {t_idx} vs {idx}")
             if have != known.get(idx, ZERO):
                 stats["repaired"] += have != src_dg
+                observed.append((idx, have))
         else:
             have = known.get(idx, ZERO)
         stats["scanned"] += 1

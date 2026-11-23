@@ -81,7 +81,8 @@ class Reader:
     """Read-only chunk reader. Prefers O_DIRECT so a running guest's writes are never hidden by
     a stale page cache; falls back to buffered reads with cache drops."""
 
-    def __init__(self, path, chunk):
+    def __init__(self, path, chunk, limit=None):
+        self.limit = limit
         self.chunk = chunk
         self.buf = mmap.mmap(-1, chunk)
         self.direct = False
@@ -99,6 +100,8 @@ class Reader:
             self.direct = False
             self.fd = os.open(path, flags)
             self.size = device_size(self.fd)
+        if self.limit is not None:
+            self.size = min(self.size, self.limit)
 
     @property
     def count(self):
@@ -151,7 +154,7 @@ def cmd_size(args):
 
 
 def cmd_hash(args):
-    reader = Reader(args.device, args.chunk)
+    reader = Reader(args.device, args.chunk, args.limit)
     throttle = Throttle(args.max_mbps)
     end = reader.count if args.end is None else min(args.end, reader.count)
     out = sys.stdout
@@ -264,6 +267,7 @@ def main(argv=None):
             p.add_argument("--algo", default="blake2b")
             p.add_argument("--start", type=int, default=0)
             p.add_argument("--end", type=int, default=None)
+            p.add_argument("--limit", type=int, default=None, help="hash only the first LIMIT bytes")
         p.set_defaults(fn=fn)
     args = parser.parse_args(argv)
     args.fn(args)

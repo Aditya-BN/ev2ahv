@@ -120,8 +120,10 @@ class BlockEndpoint:
     def size(self):
         return self.t.size(self.device)
 
-    def hashes(self, algo, start=0):
+    def hashes(self, algo, start=0, limit=None):
         args = ["hash", self.device, "--chunk", self.chunk, "--algo", algo, "--start", start]
+        if limit is not None:
+            args += ["--limit", limit]
         if self.max_mbps:
             args += ["--max-mbps", self.max_mbps]
         p = self.t.popen(*args)
@@ -186,4 +188,7 @@ class BlockEndpoint:
                 p.wait(timeout=60)
             except (OSError, subprocess.TimeoutExpired):
                 p.kill()
+                p.wait()
+            p.stdout.close()
+            p.stderr.close()
             setattr(self, attr, None)
