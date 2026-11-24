@@ -1,0 +1,26 @@
+URL: https://10.12.135.181/appliance-settings/prism-central-registration
+TITLE: Appliance Settings - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Back to Dashboard
+Settings
+General
+Docker Bridge IP
+NTP Servers
+Snapshot Configuration
+VDDK Upload
+Hostname
+Security & Authentication
+Prism Central Registration
+SSL Certificate
+Prism Central Registration
+
+Register Prism Central to Move to allow users to log in through Prism Central credentials. On successful registration, users will get an option to log in via Prism Central credentials from the Move login screen.
+
+Register Prism Central

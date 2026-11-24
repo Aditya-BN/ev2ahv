@@ -1,0 +1,35 @@
+URL: https://10.12.135.181/migrationplan/SelectTarget/cc92aeff-600e-4e7b-a3ac-1a0ee2138c21
+TITLE: Edit windows03-32 Migration Plan - Move
+
+windows03-32
+1
+Source & Target
+2
+Select VM's
+3
+Network and Policy
+4
+VM Preparation
+5
+VM Settings
+6
+Summary
+Select Source
+Select a Source
+Select Target
+Select a Target
+Refresh
+Target refreshed
+Target Project
+Target Cluster
+Target Container
+Security Policy (Optional)
+
+Nutanix Move supports migrating VM security policies from the NSX environment. You can migrate policies separately, before or along with VM migration.
+
+No NSX environment found for the selected source.
+No FNS environment found for the selected target.
+To add NSX or FNS environment, go to 
+security policy section
+Cancel
+Next

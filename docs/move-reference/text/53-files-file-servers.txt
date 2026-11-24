@@ -1,0 +1,44 @@
+URL: https://10.12.135.181/dashboard
+TITLE: File Servers - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Migration Plans
+Shares
+File Servers
+Saved File Servers
+Name
+	
+Type
+	
+Address
+	
+Discovered Shares
+	
+Added On
+	
+Actions
+
+Nutanix Files	Target
+Version: v5.3.0.2
+	10.12.135.183	4	September 9th 2026, 9:29 AM	
+Edit
+Remove
+
+win-files-serv
+Target Name: Nutanix Files
+	Source	FS01.bsp.local	9	September 9th 2026, 9:39 AM	
+Edit
+Remove
+
+win-files-serv-1
+Target Name: Nutanix Files
+	Source	FS01.bsp.local	9	September 9th 2026, 10:42 AM	
+Edit
+Remove
+Fetching data finished

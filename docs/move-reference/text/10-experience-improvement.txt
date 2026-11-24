@@ -1,0 +1,21 @@
+URL: https://10.12.135.181/bandwidth-configuration
+TITLE: Bandwidth Throttling - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Back to Dashboard
+You have no bandwidth throttling policies
+Bandwidth throttling policies help you to define the allowed bandwidth cap at the source level.
+ Create Policy
+Nutanix Customer Experience Program
+
+By participating in this program, Nutanix will collect non-identifying information for the purpose of product improvement.
+
+Participate in Nutanix Customer Experience Program
+Cancel
+OK

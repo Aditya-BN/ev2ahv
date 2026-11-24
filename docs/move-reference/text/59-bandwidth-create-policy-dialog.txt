@@ -1,0 +1,23 @@
+URL: https://10.12.135.181/bandwidth-configuration
+TITLE: Bandwidth Throttling - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Back to Dashboard
+You have no bandwidth throttling policies
+Bandwidth throttling policies help you to define the allowed bandwidth cap at the source level.
+ Create Policy
+Create Bandwidth Throttling Policy
+Policy Name
+Select Source
+Frequency
+Schedules use the local time zone of the Move Appliance. (UTC, UTC+0:00)
+Bandwidth Limit
+Enter the bandwidth in MBps (Maximum is 100000 MBps)
+Cancel
+Next

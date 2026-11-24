@@ -1,0 +1,190 @@
+URL: https://10.12.135.181/dashboard
+TITLE: VM Migration Dashboard - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Migration Plans
+Environments
+Add Environment
+AOS
+Nutanix
+
+Prism Central
+
+10.12.135.196
+58 VMs
+ESXi
+vCenter
+
+VMware vCenter
+
+vcenterdc.helioslab.local
+145 VMs
+VM Migration dashboard
+In Progress
+0 VMs
+Ready to Cutover
+0 VMs
+Failed
+1 VMs
+Paused
+0 VMs
+Completed
+1 VMs
+List of Migration Plans
+Viewing 4 plans
+New Migration Plan
+Actions
+Viewing 4 plans
+1 - 4 of 4
+	
+Plan name
+ Sortable
+	
+Created By
+	
+Source
+	
+Target
+	
+Data Migrated
+	
+Elapsed Time
+	
+Plan Status
+	
+VMs Status
+	
+Total VMs
+	
+Actions
+
+
+	
+windows03-32
+	nutanix	
+ESXi
+	
+AOS
+	
+Not Available
+	0m	
+Not Started
+	
+0
+0
+0
+	1	
+Actions
+
+
+	
+testingingg
+	nutanix	
+ESXi
+	
+AOS
+	
+24.37 GiB
+	137d 8h 43m	
+In Progress
+	
+0
+1
+0
+	1	
+View Details
+Actions
+
+
+	
+Test-win03-32bit
+	nutanix	
+ESXi
+	
+AOS
+	
+Not Available
+	0m	
+Not Started
+	
+0
+0
+0
+	1	
+Actions
+
+
+	
+Test
+	nutanix	
+ESXi
+	
+AOS
+	
+37.22 GiB
+	2h 30m	
+Completed
+	
+0
+0
+0
+	1	
+View Details
+Actions
+Fetching data finished
+Nutanix
+Prism Central
+Viewing 58 VMs
+Filters
+Viewing 58 VMs
+1 - 10 of 58
+Show:
+Name
+	
+Datacenter
+	
+Cluster
+	
+Host
+	
+OS
+	
+Power State
+
+
+AD-DNS
+	NTNX-DC	NTNX-DC	NX-DC-01		On
+
+Bastion
+	NTNX-DC	NTNX-DC	NX-DC-02	linux	On
+
+DA-SQL-22
+	NTNX-DC	NTNX-DC			Off
+
+DE-Rocky
+	NTNX-DC	NTNX-DC	NX-DC-04		On
+
+Harbor
+	NTNX-DC	NTNX-DC	NX-DC-04		On
+
+IP-BASTION
+	NTNX-DC	NTNX-DC	NX-DC-01		On
+
+IP-UBUNTU-CP-1
+	NTNX-DC	NTNX-DC	NX-DC-02		On
+
+IP-WORKER-01
+	NTNX-DC	NTNX-DC	NX-DC-04		On
+
+IP-WORKER-02
+	NTNX-DC	NTNX-DC	NX-DC-04		On
+
+IP_AIOPS
+	NTNX-DC	NTNX-DC	NX-DC-04		On
+Fetching data finished

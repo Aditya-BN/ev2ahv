@@ -1,0 +1,32 @@
+URL: https://10.12.135.181/migrationplan/SelectTarget
+TITLE: New VM Migration Plan - Move
+
+1
+Source & Target
+2
+Select VM's
+3
+Network and Policy
+4
+VM Preparation
+5
+VM Settings
+6
+Summary
+Select Source
+Select a Source
+Nutanix
+Prism Central
+vCenter
+VMware vCenter
+Select Target
+Select a Target
+Refresh
+Target refreshed
+Cancel
+Next
+New Migration Plan
+Plan Name
+Provide a unique name for your plan
+Cancel
+Proceed

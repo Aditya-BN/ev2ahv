@@ -1,0 +1,68 @@
+URL: https://10.12.135.181/events
+TITLE: Events - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Events
+Back to Dashboard
+viewing all 369 events
+Export as CSV
+1 - 10 of 369
+Show:
+Event Name
+Event Name
+ Sortable
+	
+User Name
+	
+Migration Name
+Migration Name
+ Sortable
+	
+Share Paths
+	
+Status
+	
+Start Time
+Start Time
+ Sorted: Descending
+	
+End Time
+End Time
+ Sortable
+	
+Note(s)
+
+User login	nutanix	Not Available	Not Available	Completed	Nov 24, 2026, 11:01 pm	Nov 24, 2026, 11:01 pm	Not Available
+User login	nutanix	Not Available	Not Available	Completed	Nov 24, 2026, 11:01 pm	Nov 24, 2026, 11:01 pm	Not Available
+User login	nutanix	Not Available	Not Available	Completed	Nov 24, 2026, 11:01 pm	Nov 24, 2026, 11:01 pm	Not Available
+User login	nutanix	Not Available	Not Available	Completed	Nov 24, 2026, 11:00 pm	Nov 24, 2026, 11:00 pm	Not Available
+User login	nutanix	Not Available	Not Available	Completed	Nov 24, 2026, 11:00 pm	Nov 24, 2026, 11:00 pm	Not Available
+Upgrade Move	system	Not Available	Not Available	Failed
+	Nov 24, 2026, 4:07 pm	Nov 24, 2026, 4:27 pm	Move appliance upgrade
+Upgrade Move	system	Not Available	Not Available	Failed
+	Nov 24, 2026, 4:06 pm	Nov 24, 2026, 4:06 pm	Move appliance upgrade
+User login	nutanix	Not Available	Not Available	Completed	Nov 24, 2026, 1:53 pm	Nov 24, 2026, 1:53 pm	Not Available
+User login	nutanix	Not Available	Not Available	Completed	Nov 24, 2026, 11:22 am	Nov 24, 2026, 11:22 am	Not Available
+Create Report	nutanix	full migration	Not Available	Completed	Sep 11, 2026, 4:30 pm	Sep 11, 2026, 4:30 pm	Not Available
+Fetching data finished
+Filters
+Clear
+Status
+Completed
+Defunct
+Failed
+In Progress
+Event Types
+Cluster Convers...
+Files Migration
+Global
+Migration Plan
+SP Migration
+VM Migration
+Event Names

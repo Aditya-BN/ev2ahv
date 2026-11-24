@@ -1,0 +1,47 @@
+URL: https://10.12.135.181/appliance-settings/vddk-library-upload
+TITLE: Appliance Settings - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Back to Dashboard
+Settings
+General
+Docker Bridge IP
+NTP Servers
+Snapshot Configuration
+VDDK Upload
+Hostname
+Security & Authentication
+Prism Central Registration
+SSL Certificate
+VDDK Upload
+
+To Migrate VMs from an ESXi source, you must upload the VDDK (VMware Virtual Disk Development Kit) in Move. You can download the VDDK from the VMware website and upload it here.
+
+Library Version
+	
+Status
+	
+Uploaded Date
+	
+Action
+
+VDDK-7.0.3.1
+	
+Uploaded
+	July 06, 2026	
+Update
+Remove
+
+VDDK-8.0.3.2
+	
+Uploaded
+	July 06, 2026	
+Update
+Remove
+Fetching data finished

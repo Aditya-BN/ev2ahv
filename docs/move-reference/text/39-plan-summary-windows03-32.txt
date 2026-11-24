@@ -1,0 +1,27 @@
+URL: https://10.12.135.181/plan-details/cc92aeff-600e-4e7b-a3ac-1a0ee2138c21
+TITLE: windows03-32 Plan Details - Move
+
+windows03-32
+Summary of migration plan. Click on the edit below to make a change.
+Source Environment Details
+Environment Type
+VMware vCenter
+Name
+vCenter
+Source IP
+vcenterdc.helioslab.local
+No. of VMs to Migrate
+1
+Target Environment Details
+Cluster
+NTNX-DC
+Container
+VM_Container
+Network Mapping
+Source Network
+	
+Target Network
+
+VLAN 130	VLAN130-IPAM
+Fetching data finished
+Edit

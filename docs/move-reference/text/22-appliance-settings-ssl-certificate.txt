@@ -1,0 +1,47 @@
+URL: https://10.12.135.181/appliance-settings/ssl-certificate
+TITLE: Appliance Settings - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Back to Dashboard
+Settings
+General
+Docker Bridge IP
+NTP Servers
+Snapshot Configuration
+VDDK Upload
+Hostname
+Security & Authentication
+Prism Central Registration
+SSL Certificate
+SSL Certificate
+Installed Certificate
+
+Any changes made to the certificate will
+Fail ongoing migrations (if any)
+Restart the move session
+
+Users will be logged out and asked to log in again.
+
+Read More
+
+Property
+	
+Value
+
+Organization	Nutanix Inc.
+Organization Unit	Manageability
+Common Name	*.nutanix.local
+Location	San Jose
+State	CA
+Country	US
+Key Type	rsaEncryption(2048 bit)
+Signing Algorithm	sha256WithRSAEncryption
+Expiry Date	Aug 30 2027, 12:46 AM
+Fetching data finished
+Replace Certificate

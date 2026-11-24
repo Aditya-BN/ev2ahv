@@ -1,0 +1,42 @@
+URL: https://10.12.135.181/cluster-conversion/dashboard
+TITLE: Cluster Conversion Dashboard - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Clusters
+Add Cluster
+Cluster Conversion
+How to Convert Clusters from ESXi to AHV
+Add 'ESXi on Nutanix Cluster' to Move
+
+Provide Prism Element and vCenter access to help Move read VM and host configurations
+
+Arrange hosts and VMs as per priority
+
+This ensures flexibility, scalability, and an optimised resource utilization
+
+Start converting the cluster
+
+All phases like validation, VM preparation and conversion will be tracked. Ensuring minimised downtimes and transparency
+
+Create Plan for Cluster Conversion
+Read more about Cluster Conversion
+Add Cluster
+General
+User Friendly Cluster Name
+Prism Element Details
+Prism Element Virtual IP
+Username
+Password
+Show
+vCenter Details
+vCenter Server IP
+Username
+Password
+Show
+Add Cluster

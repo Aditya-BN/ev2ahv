@@ -1,0 +1,59 @@
+URL: https://10.12.135.181/migration-progress/3037c9a5-9d7c-4084-b99e-40919cde5d1e
+TITLE: test Plan Progress - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+test
+Generate Report
+Actions
+To filter the shares, please click on the "Filters" link on the right side.
+Filters
+Viewing 2 shares
+2 Share(s)
+1 - 2 of 2
+Show:
+	
+Source
+	
+Target
+	
+File Transferred
+	
+Migrated Data Size
+	
+Sync Iteration Status
+	
+Status
+	
+Details
+	
+
+
+	
+HR
+	
+hr-distributed
+	3	8 Bytes	
+Completed
+	
+Completed
+	-	
+View Details
+
+
+	
+HR
+	
+hr-standard
+	5	64 Bytes	
+Completed
+	
+Completed
+	-	
+View Details
+Fetching data finished

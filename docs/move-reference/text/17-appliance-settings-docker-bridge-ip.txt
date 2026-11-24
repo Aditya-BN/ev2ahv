@@ -1,0 +1,25 @@
+URL: https://10.12.135.181/appliance-settings/docker-ip
+TITLE: Appliance Settings - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Back to Dashboard
+Settings
+General
+Docker Bridge IP
+NTP Servers
+Snapshot Configuration
+VDDK Upload
+Hostname
+Security & Authentication
+Prism Central Registration
+SSL Certificate
+Docker Bridge IP
+172.17.0.1
+To edit the Docker Bridge IP follow the KB article
+Go to KB Article 

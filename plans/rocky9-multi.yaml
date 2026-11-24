@@ -1,0 +1,79 @@
+name: ev2ahv-rocky9-multi
+writer:
+  vm: ev2ahv-writer
+  host: 10.12.136.211
+  user: nutanix
+source:
+  type: direct
+  host: 10.12.136.151
+  user: root
+  max_mbps: 100
+  stop_timeout: 600
+  power:
+    local: true
+    status: /home/adit@ntnx.hin/everrun-lab/av.sh vm-info ev2ahv-src-rocky9 | awk
+      '/-> state/{print $NF; exit}'
+    stop: ssh -i /home/adit@ntnx.hin/.config/ev2ahv/id_ed25519 -o BatchMode=yes -o
+      IdentitiesOnly=yes -o UserKnownHostsFile=/home/adit@ntnx.hin/.config/ev2ahv/known_hosts
+      root@10.12.136.162 /usr/local/sbin/ev2ahv-load stop > /home/adit@ntnx.hin/.local/share/ev2ahv/ev2ahv-rocky9-multi/expected.txt
+      && /home/adit@ntnx.hin/everrun-lab/av.sh vm-shutdown ev2ahv-src-rocky9
+    start: /home/adit@ntnx.hin/everrun-lab/av.sh vm-poweron ev2ahv-src-rocky9
+disks:
+- name: vda
+  path: /mnt/everrun/ev2ahvsrcrocky9boot_421653d7-7bbf-464c-829f-df1729d98e52_node0/ev2ahvsrcrocky9boot_421653d7-7bbf-464c-829f-df1729d98e52_639fe8ef-b702-4acb-ba5b-4f031e867268
+  size_bytes: 21474834432
+- name: vdc
+  path: /mnt/everrun/ev2ahvsrcrocky9data_6eea1278-731f-4c89-a45c-a57a3fc3eea0_node0/ev2ahvsrcrocky9data_6eea1278-731f-4c89-a45c-a57a3fc3eea0_e8aef167-1b5d-4c4b-9e05-f4572ac750c2
+  size_bytes: 10737416192
+- name: vdd
+  path: /mnt/everrun/ev2ahvsrcrocky9extra1_17de88e7-a843-493e-8a64-6e0b133c2547_node0/ev2ahvsrcrocky9extra1_17de88e7-a843-493e-8a64-6e0b133c2547_816e052b-ddb5-401d-a9cf-b956589f3d2f
+  size_bytes: 5368707072
+- name: vde
+  path: /mnt/everrun/ev2ahvsrcrocky9extra2_f23decf9-73d1-42dd-bb6c-af8de72f8a55_node0/ev2ahvsrcrocky9extra2_f23decf9-73d1-42dd-bb6c-af8de72f8a55_9a9d4aac-7d66-4ba7-b070-301d119735ab
+  size_bytes: 5368707072
+nics:
+- subnet: VLAN136
+  mac: 00:e0:09:a4:d7:40
+  keep_mac: true
+target:
+  vm_name: ev2ahv-rocky9-multi
+  cluster: NTNX-DC
+  container: VM_Container
+  sockets: 1
+  cores: 2
+  threads: 1
+  memory_mib: 4086
+  firmware: bios
+  disk_bus: scsi
+  machine_type: PC
+  convert_to_scsi: true
+  transfer: hotadd
+  staging_dir: /var/tmp/ev2ahv-staging
+sync:
+  chunk_mib: 4
+  algo: auto
+  batch: 32
+verify:
+  ip: 10.12.136.162
+  port: 22
+  timeout: 480
+  ssh_user: root
+  sudo: false
+  commands:
+  - /usr/local/sbin/ev2ahv-load check
+  - hostname
+  - findmnt -no TARGET,SOURCE,FSTYPE / ; findmnt -no TARGET,SOURCE,FSTYPE /boot ;
+    findmnt -no TARGET,SOURCE,FSTYPE /data
+  - lsblk -o NAME,SIZE,TYPE,MOUNTPOINT
+  - ip -br addr show scope global; ip -br link | grep -v "^lo"
+  - systemctl is-active sshd NetworkManager
+  - systemctl is-system-running || true
+  - systemctl --failed --no-legend | head -5
+  - cat /sys/class/dmi/id/sys_vendor
+  - findmnt -no TARGET,SOURCE,FSTYPE /ext4; findmnt -no TARGET,SOURCE,FSTYPE /span
+  - lvs -o lv_name,vg_name,lv_size,devices vgspan
+guest:
+  os: linux
+  prep: auto
+  address: 10.12.136.162
+  user: root

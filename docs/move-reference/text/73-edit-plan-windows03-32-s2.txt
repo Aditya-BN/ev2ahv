@@ -1,0 +1,200 @@
+URL: https://10.12.135.181/migrationplan/SelectTarget/cc92aeff-600e-4e7b-a3ac-1a0ee2138c21
+TITLE: Edit windows03-32 Migration Plan - Move
+
+windows03-32
+Source & Target
+2
+Select VM's
+3
+Network and Policy
+4
+VM Preparation
+5
+VM Settings
+6
+Summary
+Source: vCenter
+Refresh
+List of VM's
+Filter
+1 - 10 of 145
+Show:
+Add all VMs
+	
+Name
+Name
+ Sorted: Ascending
+	
+Datacenter
+Datacenter
+ Sortable
+	
+Cluster
+Cluster
+ Sortable
+	
+Host
+Host
+ Sortable
+	
+OS
+OS
+ Sortable
+	
+Power State
+Power State
+ Sortable
+	
+Source Network
+
+
+	
+AR-PClient-WS10
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Microsoft Windows Server 2022 (64-bit)
+	Off	
+VLAN 130
+
+
+	
+CentOS
+	
+DC Helios
+	
+Not Available
+	
+10.12.130.25
+	
+CentOS 7 (64-bit)
+	Off	
+VLAN 130
+
+
+	
+Clone-MWP-DC-WS19-001
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Microsoft Windows Server 2019 (64-bit)
+	On	
+AWS_vLAN_200
+
+
+	
+Core-DNS-135 [Do not touch]
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Other 2.6.x Linux (64-bit)
+	Off	
+VLAN 135
+
+
+	
+Core-NTP-135 [Do not touch]
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Other 2.6.x Linux (64-bit)
+	Off	
+VLAN 135
+
+
+	
+CPPM-6.12_Ocir
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Red Hat Enterprise Linux 8 (64-bit)
+	On	
+ISOLATED, VLAN 130
+
+
+	
+CPPM-Krisna
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Red Hat Enterprise Linux 8 (64-bit)
+	On	
+VLAN 130, VLAN 145
+
+
+	
+CPPM-VM-KW
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Red Hat Enterprise Linux 8 (64-bit)
+	On	
+VLAN 130
+
+
+	
+da-sqlserver
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Microsoft Windows Server 2022 (64-bit)
+	On	
+AWS_vLAN_200, VLAN 135
+
+
+	
+Debian-UEFI-DE
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Debian GNU/Linux 11 (64-bit)
+	Off	
+VLAN 135
+Fetching data finished
+1 - 10 of 145
+Show:
+Added VMs
+1
+Remove all
+All
+Warnings
+RN-WIN03-32
+Back
+Cancel
+Next

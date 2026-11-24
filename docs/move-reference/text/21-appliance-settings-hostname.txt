@@ -1,0 +1,29 @@
+URL: https://10.12.135.181/appliance-settings/hostname
+TITLE: Appliance Settings - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Back to Dashboard
+Settings
+General
+Docker Bridge IP
+NTP Servers
+Snapshot Configuration
+VDDK Upload
+Hostname
+Security & Authentication
+Prism Central Registration
+SSL Certificate
+Hostname
+Configure the hostname of this Move Appliance
+Hostname
+	
+Actions
+
+move	
+Fetching data finished

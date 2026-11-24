@@ -1,0 +1,18 @@
+URL: https://10.12.135.181/file-migration-plan/1c2e834f-d017-4781-a3cf-a2999f91d05b
+TITLE: full migration Plan Details - Move
+
+full migration
+Summary of migration plan.
+Source File Server Details
+Source Server Name
+win-files-serv-1
+Source Address
+FS01.bsp.local
+Target File Server Details
+Target Server Name
+Nutanix Files
+Target Address
+10.12.135.183
+Migration Details
+No. of Shares in Migration Plan
+3

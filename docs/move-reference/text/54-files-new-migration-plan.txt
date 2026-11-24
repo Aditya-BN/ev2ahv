@@ -1,0 +1,28 @@
+URL: https://10.12.135.181/files-migration-plan/select-source-target
+TITLE: New Files Migration Plan - Move
+
+1
+Select Source and Target
+2
+Select Shares
+3
+Settings
+4
+Review Summary
+Select Source & Target
+Target Nutanix File Server
+Add New
+Select File Server
+Source File Server
+Add New
+Select File Server
+Refresh
+Replication Type  
+Sync
+Mirror
+Next
+New Migration Plan
+Plan Name
+Provide a unique name for your plan
+Cancel
+Proceed

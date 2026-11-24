@@ -1,0 +1,35 @@
+URL: https://10.12.135.181/appliance-settings/ntp-servers
+TITLE: Appliance Settings - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Back to Dashboard
+Settings
+General
+Docker Bridge IP
+NTP Servers
+Snapshot Configuration
+VDDK Upload
+Hostname
+Security & Authentication
+Prism Central Registration
+SSL Certificate
+NTP Servers
+Configure one or more NTP servers that you would like to use. Servers that have been configured are displayed below. We do not validate the NTP servers while adding them.
+NTP Server Address
+Enter Hostname/IP Address and click on Add NTP Servers
+Add NTP Servers
+Added NTP Servers
+Hostname or IP Address
+Hostname or IP Address
+ Sortable
+	
+Actions
+
+0.centos.pool.ntp.org	
+Fetching data finished

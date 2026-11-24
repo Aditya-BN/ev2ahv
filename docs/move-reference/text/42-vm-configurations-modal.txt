@@ -1,0 +1,82 @@
+URL: https://10.12.135.181/migrationprogress/a462f03f-ed37-4064-9799-68ac9194251e
+TITLE: VM Migration Progress - Move
+
+testingingg
+Retry
+Discard
+Cutover
+Edit Cutover Settings
+Cancel
+Resume
+Pause
+Complete
+Viewing {total} VMs
+Viewing 1 VMs
+1 - 1 of 1
+Show:
+	
+VM Name
+	
+Migrated Data Size
+	
+Migration Status
+	
+Details
+
+
+	
+Foundation_VM-5.9
+VM Configurations
+	24.37 GiB	
+Failed
+	
+-
+Fetching data finished
+Filters
+Clear
+Migration Status
+All VMs
+In Progress
+Ready to Cutover
+Scheduled for Cutover
+Tested VMs
+Failed
+Paused
+Completed
+VM Configurations
+
+Target VM Properties can be configured by user action. Please use the edit option to make changes to the configuration of the target VM.
+
+VM Migration Type
+Viewing 8 Total Properties on Source and Target
+Refresh Source VM Properties
+Property
+Property
+ Sorted: Ascending
+	
+On Source
+	
+On Target
+	
+Action
+
+Name	Foundation_VM-5.9	Foundation_VM-5.9	
+Edit
+
+Power State	On	On	
+Edit
+
+vCPU(s)	2	2	
+Edit
+
+Number Of Cores Per vCPU	1	1	
+Edit
+
+Memory(GiB)	4	4	
+Edit
+
+Number of disks	1	1	
+Number of CD-ROMs	Not Available	1	
+Number of NICs	1	1	
+Fetching data finished
+Close

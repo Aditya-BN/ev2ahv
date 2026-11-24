@@ -1,0 +1,26 @@
+URL: https://10.12.135.181/plan-details/b2c5d762-fc25-4dce-8c6b-976e7298041d
+TITLE: Test Plan Details - Move
+
+Test
+Summary of migration plan.
+Source Environment Details
+Environment Type
+VMware vCenter
+Name
+vCenter
+Source IP
+vcenterdc.helioslab.local
+No. of VMs to Migrate
+1
+Target Environment Details
+Cluster
+NTNX-DC
+Container
+VM_Container
+Network Mapping
+Source Network
+	
+Target Network
+
+VLAN 135	VLAN130-IPAM
+Fetching data finished

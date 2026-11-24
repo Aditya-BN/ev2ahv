@@ -1,0 +1,125 @@
+URL: https://10.12.135.181/dashboard
+TITLE: Files Migration Dashboard - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Migration Plans
+Shares
+File Servers
+In Progress Shares
+0
+Failed Shares
+0
+Paused Shares
+0
+Ready to Cutover Shares
+0
+Completed Shares
+6
+New Migration Plan
+Generate Report
+Actions
+4 Plan(s)
+4 Plan(s)
+1 - 4 of 4
+Show:
+	
+Plan Name
+Plan Name
+ Sortable
+	
+Created By
+Created By
+ Sortable
+	
+Source Server
+Source Server
+ Sortable
+	
+Target Server
+Target Server
+ Sortable
+	
+Total Shares
+	
+Data Migrated
+Data Migrated
+ Sortable
+	
+Elapsed Time
+Elapsed Time
+ Sortable
+	
+Plan Status
+Plan Status
+ Sortable
+	
+Shares Status
+	
+Actions
+
+
+	
+full migration
+	nutanix	win-files-serv-1	Nutanix Files	
+3
+	6.2 GiB	44m	
+In Progress
+	
+0
+0
+1
+	
+View Details
+Actions
+
+
+	
+test
+	nutanix	win-files-serv	Nutanix Files	
+2
+	72 Bytes	5m	
+Completed
+	
+0
+0
+0
+	
+View Details
+Actions
+
+
+	
+test-mirror
+	nutanix	win-files-serv-1	Nutanix Files	
+1
+	160 Bytes	8m	
+Completed
+	
+0
+0
+0
+	
+View Details
+Actions
+
+
+	
+test-sync
+	nutanix	win-files-serv-1	Nutanix Files	
+1
+	45 Bytes	6m	
+Completed
+	
+0
+0
+0
+	
+View Details
+Actions
+Fetching data finished

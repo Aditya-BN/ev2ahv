@@ -1,0 +1,40 @@
+URL: https://10.12.135.181/appliance-settings/snapshot-configuration
+TITLE: Appliance Settings - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Back to Dashboard
+Settings
+General
+Docker Bridge IP
+NTP Servers
+Snapshot Configuration
+VDDK Upload
+Hostname
+Security & Authentication
+Prism Central Registration
+SSL Certificate
+Snapshot Configuration
+Snapshot Interval Frequency
+Data sync frequency when VMs are in ready to cutover state. Increasing Incremental Snapshot Interval Frequency may increase VM cutover time
+Source
+	
+Duration (in minutes)
+	
+Actions
+
+VMWare ESXi	10	
+
+Nutanix AHV	10	
+
+Microsoft Hyper-V	10	
+
+Amazon Web Services	10	
+
+Microsoft Azure	10	
+Fetching data finished

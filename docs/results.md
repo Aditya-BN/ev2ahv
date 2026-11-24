@@ -63,7 +63,22 @@ virtio-scsi controller: no device is bound to the driver, so Windows cannot use 
 prep script now treats a boot driver as ready only when a present device uses it. For guests like this,
 prep-check FAILs `disk_bus: scsi` and says to use `pci` and convert after cutover. The driver stays
 staged, so Windows can install it by itself once a SCSI controller exists on AHV. The conversion itself
-is not automated yet.
+is now automated (see below).
+
+### PCI to SCSI conversion (default since 2026-11-24)
+
+Windows run on `pci` with `convert_to_scsi` at its default (on):
+
+| Step | Result |
+|---|---|
+| Temporary 1 GiB SCSI disk hot-added, Windows installed `vioscsi` by itself | 4 s to add, then bound |
+| Guest shutdown, disks cloned to SCSI.0 and SCSI.1, boot set to SCSI.0, PCI disks removed | |
+| Boot on SCSI and full verification | passed |
+| **Added downtime for the conversion** | **182 s** |
+
+On AHV afterwards: both disks SCSI (`NUTANIX VDISK`), online and writable, C: and F: healthy, 799 of 799
+files match. Rollback afterwards was clean. The recorded total downtime for this run (2,211 s) is inflated
+by the test harness: about 10 min of checksumming 800 test files before the shutdown.
 
 ## Issues found and fixed
 
@@ -84,4 +99,3 @@ is not automated yet.
 
 - Ghost NIC removal on a real ghost adapter (none appeared), and the optional NGT install.
 - Windows guest cleanup in manual mode on AHV.
-- Converting a `pci` Windows guest to `scsi` after cutover.

@@ -1,0 +1,137 @@
+URL: https://10.12.135.181/dashboard
+TITLE: Files Migration Progress - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Migration Plans
+Shares
+File Servers
+Generate Report
+Actions
+To filter the shares, please click on the "Filters" link on the right side.
+Filters
+Viewing 7 shares
+7 Share(s)
+1 - 7 of 7
+Show:
+	
+Source
+	
+Target
+	
+Migration Plan
+	
+File Transferred
+	
+Migrated Data Size
+	
+Sync Iteration Status
+	
+Status
+	
+Details
+	
+
+
+	
+Data
+	
+Data
+	
+full migration
+	-	n/a	
+Completed
+	
+Completed with Failed Files
+	-	
+View Details
+
+
+	
+Finance
+	
+Finance
+	
+full migration
+	4	6.2 GiB	
+Completed
+	
+Completed
+	-	
+View Details
+
+
+	
+HR
+	
+HR
+	
+full migration
+	7	119 Bytes	
+Completed
+	
+Completed
+	-	
+View Details
+
+
+	
+HR
+	
+hr-distributed
+	
+test
+	3	8 Bytes	
+Completed
+	
+Completed
+	-	
+View Details
+
+
+	
+HR
+	
+hr-mirror
+	
+test-mirror
+	11	160 Bytes	
+Completed
+	
+Completed
+	-	
+View Details
+
+
+	
+HR
+	
+hr-standard
+	
+test
+	5	64 Bytes	
+Completed
+	
+Completed
+	-	
+View Details
+
+
+	
+HR
+	
+hr-sync
+	
+test-sync
+	8	45 Bytes	
+Completed
+	
+Completed
+	-	
+View Details
+Fetching data finished
