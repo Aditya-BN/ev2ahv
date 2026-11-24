@@ -310,9 +310,13 @@ class Migration:
                                "Run discard-target first. The source was not touched")
         began = self.state.get("downtime_start") or time.time()
         if not self.step_done("stopped"):
-            self.stop_source(assume_stopped)
-            began = time.time()
+            began = time.time()     # downtime includes the guest shutdown itself
             self.state.set("downtime_start", began)
+            try:
+                self.stop_source(assume_stopped)
+            except Exception:
+                self.state.set("downtime_start", None)
+                raise
             self.mark("stopped")
         elif self.source_stopped() is False:
             raise RuntimeError("source is running again. Run rollback before retrying the cutover")
