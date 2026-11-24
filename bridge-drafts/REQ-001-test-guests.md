@@ -1,11 +1,16 @@
 # REQ-001: test guests and read-only node access
 
-**Status: DRAFT. Not sent. Needs the owner's OK.**
+**Status: approved by the owner on 2026-11-24.**
 
 ## What
 
-Precondition: the owner has accepted the EULA and finished portal first-run. Do not accept it on
-their behalf.
+0. Portal first-run. The owner authorized accepting the EULA for this test lab, with a screenshot as
+   the record ("Screenshot and go"). Before accepting, save a screenshot of the EULA page, and of any
+   further terms page, to `~/lab-bridge/responses/REQ-001-eula-<n>.png`. Then finish first-run.
+   Keep the existing trial license. Do not register the product, enable call-home or remote support,
+   or enter personal or company details unless a field is mandatory. If one is mandatory, use
+   `ev2ahv lab` and say so in the response. Do not change the factory-default passwords unless the
+   portal forces it. If it does, stop and report before choosing one.
 
 1. Add this public key to `root` on both everRun nodes, for read-only discovery. It will be removed
    at cleanup: the contents of `~/.config/ev2ahv/id_ed25519.pub`.
@@ -16,7 +21,8 @@ their behalf.
 | `ev2ahv-src-win22` | HA | 2 | 6 GiB | 60 GiB boot + 10 GiB data | 10.12.136.161/24 | Administrator |
 | `ev2ahv-src-rocky9` | FT | 2 | 4 GiB | 20 GiB LVM root + 10 GiB data | 10.12.136.162/24 | root |
 
-- Windows: Windows Server 2022 from the media the owner approves, with VirtIO drivers.
+- Windows: Windows Server 2022 from the AHV image `win22` (owner approved), with the VirtIO drivers
+  already in everRun (`virtio-win-sra-0.1.262_rev_1`).
 - Rocky 9: root on LVM, data disk formatted and mounted by UUID, SSH enabled, the same public key
   added for `root`.
 - Do not write any password into a file in `~/lab-bridge`.
@@ -27,6 +33,7 @@ ev2ahv Stage B needs real everRun guests to map disks to block devices, then mig
 
 ## Acceptance check
 
+- `avcli unit-info` shows `configured: true`, and the EULA screenshots exist.
 - `avcli vm-info` shows both guests running, in the requested HA and FT modes.
 - From the bastion (10.12.135.197): `10.12.136.161` answers on TCP 3389 and `10.12.136.162` on TCP 22.
   This also proves AHV passes nested guest MAC traffic. If it does not, report that and stop.
