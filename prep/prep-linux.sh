@@ -112,7 +112,8 @@ fi
 nm_conn() { command -v nmcli >/dev/null && nmcli -g GENERAL.CONNECTION dev show "$1" 2>/dev/null | head -1; }
 pinned() {   # $1 name, $2 mac
   grep -qE 'net\.ifnames=0' /proc/cmdline && [[ "$1" == eth* ]] && return 0
-  grep -lis "MACAddress=$2" /etc/systemd/network/*.link 2>/dev/null | xargs -r grep -qs "^Name=$1\$" && return 0
+  local f
+  for f in $(grep -lis "MACAddress=$2" /etc/systemd/network/*.link 2>/dev/null); do grep -qs "^Name=$1\$" "$f" && return 0; done
   grep -qis "ATTR{address}==\"$2\".*NAME=\"$1\"" /etc/udev/rules.d/*.rules 2>/dev/null
 }
 bound_by_name() {
