@@ -26,6 +26,13 @@ def parse_facts(output):
 
 
 # ------------------------------------------------------------------ grading
+def _list(x):
+    """PowerShell writes a one-element array as a bare object; accept either."""
+    if x is None:
+        return []
+    return x if isinstance(x, list) else [x]
+
+
 def _item(name, status, detail):
     return {"name": name, "status": status, "detail": detail}
 
@@ -45,9 +52,9 @@ def grade_windows(f, bus, firmware):
                      "present" if net.get("sys") or net.get("staged") else "missing: no network on AHV"))
     san = f.get("san_policy", "unknown")
     out.append(_item("SAN policy", PASS if "Online All" in san else WARN, san))
-    static = [a for a in f.get("adapters") or [] if not a.get("dhcp")]
+    static = [a for a in _list(f.get("adapters")) if not a.get("dhcp")]
     task = f.get("task") or {}
-    missing = [a["mac"] for a in static if a["mac"] not in (task.get("saved_macs") or [])]
+    missing = [a["mac"] for a in static if a["mac"] not in _list(task.get("saved_macs"))]
     if not static:
         out.append(_item("Network re-apply", PASS, "all adapters use DHCP"))
     elif task.get("registered") and task.get("script") and not missing:
@@ -57,10 +64,10 @@ def grade_windows(f, bus, firmware):
                          ("task not registered" if not task.get("registered") else f"not saved for {missing}")))
     out.append(_item("Firmware", PASS if f.get("firmware") == firmware else FAIL,
                      f"guest {f.get('firmware')}, plan {firmware}"))
-    if f.get("stratus"):
+    if _list(f.get("stratus")):
         out.append(_item("Stratus guest software", WARN, f"{f['stratus']}. Removed by guest-cleanup on AHV"))
     out.append(_item("Prepared", PASS if f.get("prepared_at") else WARN, f.get("prepared_at") or "guest-prep has not run"))
-    for p in f.get("problems") or []:
+    for p in _list(f.get("problems")):
         out.append(_item("Prep script", WARN, p))
     return out
 
@@ -83,7 +90,7 @@ def grade_linux(f, bus, firmware):
         out.append(_item("crypttab references", FAIL, f"device names that change on AHV: {f['crypttab_bad']}"))
     if f.get("lvm_devices_file"):
         out.append(_item("LVM devices file", WARN, "device IDs change on AHV. guest-prep moves it aside"))
-    for n in f.get("nics") or []:
+    for n in _list(f.get("nics")):
         safe = n.get("pinned") or n.get("nm_by_mac") or not n.get("bound_by_name")
         out.append(_item(f"NIC {n['name']} {n['mac']}", PASS if safe else FAIL,
                          "name pinned by MAC" if n.get("pinned") else "profile matches by MAC" if n.get("nm_by_mac")
@@ -94,7 +101,7 @@ def grade_linux(f, bus, firmware):
     if f.get("stratus"):
         out.append(_item("Stratus packages", WARN, f"{f['stratus']}. Removed by guest-cleanup on AHV"))
     out.append(_item("Prepared", PASS if f.get("prepared_at") else WARN, f.get("prepared_at") or "guest-prep has not run"))
-    for p in f.get("problems") or []:
+    for p in _list(f.get("problems")):
         out.append(_item("Prep script", WARN, p))
     return out
 

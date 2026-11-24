@@ -17,6 +17,10 @@ def statuses(items):
 
 
 class Grading(unittest.TestCase):
+    def test_single_adapter_as_bare_object(self):
+        f = json.loads(json.dumps(WIN_OK)); f["adapters"] = f["adapters"][0]; f["task"]["saved_macs"] = "00:e0:09:a4:d7:41"
+        self.assertEqual(statuses(guest.grade("windows", f, "scsi", "bios"))["Network re-apply"], "PASS")
+
     def test_prepared_windows_passes(self):
         self.assertNotIn("FAIL", statuses(guest.grade("windows", WIN_OK, "scsi", "bios")).values())
 

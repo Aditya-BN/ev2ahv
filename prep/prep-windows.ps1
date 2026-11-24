@@ -270,7 +270,7 @@ switch ($Mode) {
 # Check and Prep both end with the current facts.
 $Facts.drivers = [ordered]@{ vioscsi = DriverState 'vioscsi'; viostor = DriverState 'viostor'; netkvm = DriverState 'netkvm' }
 $Facts.san_policy = SanPolicy
-$Facts.adapters = CaptureNetwork
+$Facts.adapters = @(CaptureNetwork)
 $Facts.task = TaskState
 $Facts.stratus = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
     Where-Object { $_.DisplayName -match 'Stratus|everRun' } | ForEach-Object { $_.DisplayName })
