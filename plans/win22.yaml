@@ -1,0 +1,55 @@
+name: ev2ahv-win22-ahv
+writer:
+  vm: ev2ahv-writer
+  host: 10.12.136.211
+  user: nutanix
+source:
+  type: direct
+  host: 10.12.136.152
+  user: root
+  max_mbps: 100
+  stop_timeout: 900
+  power:
+    local: true
+    status: /home/adit@ntnx.hin/everrun-lab/av.sh vm-info ev2ahv-src-win22 | awk '/->
+      state/{print $NF; exit}'
+    stop: cd /home/adit@ntnx.hin/ev2ahv && set -a && . /home/adit@ntnx.hin/.config/ev2ahv/win.env
+      && set +a && .venv/bin/python tools/winrm_run.py 10.12.136.161 - <<< '& powershell.exe
+      -NoProfile -ExecutionPolicy Bypass -File C:\ev2ahv\guest-load.ps1 -Mode stop'
+      > /home/adit@ntnx.hin/.local/share/ev2ahv/ev2ahv-win22-ahv/expected.txt && /home/adit@ntnx.hin/everrun-lab/av.sh
+      vm-shutdown ev2ahv-src-win22
+    start: /home/adit@ntnx.hin/everrun-lab/av.sh vm-poweron ev2ahv-src-win22
+disks:
+- name: vda
+  path: /mnt/everrun/ev2ahvsrcwin22boot_4cd11fc1-eb54-4ac1-b329-429d329171c0_node1/ev2ahvsrcwin22boot_4cd11fc1-eb54-4ac1-b329-429d329171c0_0ce47f60-dc81-4b92-b8f2-fa3800424691
+  size_bytes: 64424507392
+- name: vdc
+  path: /mnt/everrun/ev2ahvsrcwin22data_37de82e1-c876-4927-8045-2e34b6267fab_node1/ev2ahvsrcwin22data_37de82e1-c876-4927-8045-2e34b6267fab_17adf788-593c-4a81-acaa-7e74780ae4ea
+  size_bytes: 10737416192
+nics:
+- subnet: VLAN136
+  mac: 00:e0:09:a4:d7:41
+  keep_mac: true
+target:
+  vm_name: ev2ahv-win22-ahv
+  cluster: NTNX-DC
+  container: VM_Container
+  sockets: 1
+  cores: 2
+  threads: 1
+  memory_mib: 6134
+  firmware: bios
+  disk_bus: pci
+  machine_type: PC
+  transfer: hotadd
+  staging_dir: /var/tmp/ev2ahv-staging
+sync:
+  chunk_mib: 4
+  algo: auto
+  batch: 32
+verify:
+  ip: 10.12.136.161
+  port: 5985
+  timeout: 1200
+  local_commands:
+  - /home/adit@ntnx.hin/ev2ahv/tools/win_check.sh 10.12.136.161

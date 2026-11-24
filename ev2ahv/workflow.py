@@ -392,6 +392,8 @@ class Migration:
                         raise
                     time.sleep(5)
             out["commands"] = {c: shell.run(c, timeout=600).strip() for c in v["commands"]}
+        for cmd in v.get("local_commands") or []:   # e.g. a WinRM check for Windows guests
+            out.setdefault("local", {})[cmd] = LocalTransport().run(cmd, timeout=900).strip()
         return out
 
     def rollback(self):
