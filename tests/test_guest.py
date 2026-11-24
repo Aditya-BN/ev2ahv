@@ -29,13 +29,29 @@ class Grading(unittest.TestCase):
         self.assertEqual(statuses(guest.grade("windows", f, "scsi", "bios"))["Boot driver vioscsi for disk_bus scsi"], "FAIL")
         s = statuses(guest.grade("windows", f, "pci", "bios"))
         self.assertEqual(s["Boot driver viostor for disk_bus pci"], "PASS")
-        self.assertEqual(s["Alternate boot driver vioscsi"], "WARN")
+        self.assertEqual(s["vioscsi staged for SCSI conversion"], "WARN")
 
     def test_windows_staged_but_unbound_vioscsi_fails_scsi(self):
         f = json.loads(json.dumps(WIN_OK)); f["drivers"]["vioscsi"] = {"boot_ready": False, "staged": True, "bound": False, "sys": True}
         item = [i for i in guest.grade("windows", f, "scsi", "bios") if i["name"].startswith("Boot driver")][0]
         self.assertEqual(item["status"], "FAIL")
         self.assertIn("disk_bus: pci", item["detail"])
+
+    def test_pci_plan_reports_vioscsi_staging_for_conversion(self):
+        f = json.loads(json.dumps(WIN_OK)); f["drivers"]["vioscsi"] = {"staged": False, "bound": False}
+        self.assertEqual(statuses(guest.grade("windows", f, "pci", "bios"))["vioscsi staged for SCSI conversion"], "WARN")
+        f["drivers"]["vioscsi"]["staged"] = True
+        self.assertEqual(statuses(guest.grade("windows", f, "pci", "bios"))["vioscsi staged for SCSI conversion"], "PASS")
+
+    def test_conversion_default_and_opt_out(self):
+        base = {"name": "x", "writer": {"vm": "w", "host": "h"}, "source": {"type": "local"},
+                "target": {"vm_name": "ev2ahv-x", "cluster": "c", "container": "k", "disk_bus": "pci"}, "disks": [{"path": "/a"}]}
+        from ev2ahv.workflow import Migration
+        m = Migration.__new__(Migration); m.p = plan.validate(json.loads(json.dumps(base)))
+        self.assertTrue(m.wants_conversion())
+        base["target"]["convert_to_scsi"] = False
+        m.p = plan.validate(base)
+        self.assertFalse(m.wants_conversion())
 
     def test_windows_static_ip_without_task_fails(self):
         f = json.loads(json.dumps(WIN_OK)); f["task"] = {"registered": False, "saved_macs": []}

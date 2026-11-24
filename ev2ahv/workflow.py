@@ -9,7 +9,7 @@ from .transport import BlockEndpoint, LocalTransport, SshTransport
 
 log = logging.getLogger("ev2ahv.workflow")
 DATA_DIR = os.path.expanduser(os.environ.get("EV2AHV_DATA", "~/.local/share/ev2ahv"))
-STEPS = ("stopped", "synced", "quiesced", "created", "powered", "verified")
+STEPS = ("stopped", "synced", "quiesced", "created", "powered", "verified", "converted")
 
 
 def plan_dir(name):
@@ -192,6 +192,15 @@ class Migration:
                 raise RuntimeError(f"VM {t['vm_name']} already exists")
             return "free" if not vm else "created by this plan"
         check("Target VM name", target_free)
+        t_ = self.p["target"]
+        if self.wants_conversion() and (self.p.get("guest") or {}).get("os") == "windows":
+            g_ = self.p["guest"]
+            if g_.get("prep") != "auto" and not (g_.get("password_env") or g_.get("password_file")):
+                checks.append({"name": "PCI to SCSI conversion", "status": "WARN",
+                               "detail": "needs WinRM credentials in the guest section, so it will be skipped"})
+            else:
+                checks.append({"name": "PCI to SCSI conversion", "status": "PASS",
+                               "detail": "runs after cutover. Set target.convert_to_scsi: false to stay on PCI"})
         if self.image_mode:
             def space():
                 need = 0
@@ -424,7 +433,105 @@ class Migration:
             self.timing(downtime_seconds=round(time.time() - began, 1))
             self.state.set("phase", "cutover-complete")
             self.mark("verified")
-        return {"vm": vm_id, "timings": self.state.get("timings"), "verify": self.state.get("verify")}
+        if not self.step_done("converted"):
+            if self.wants_conversion():
+                t0 = time.time()
+                self.state.set("conversion", self.convert_to_scsi(vm_id))
+                self.timing(conversion_seconds=round(time.time() - t0, 1),
+                            downtime_seconds=round(time.time() - began, 1))
+            self.mark("converted")
+        return {"vm": vm_id, "timings": self.state.get("timings"), "verify": self.state.get("verify"),
+                "conversion": self.state.get("conversion")}
+
+    # ---- PCI to SCSI conversion ---------------------------------------------
+    def wants_conversion(self):
+        t = self.p["target"]
+        return t["disk_bus"] == "pci" and t.get("convert_to_scsi", True)
+
+    def _bus_disks(self, vm_id, bus):
+        return sorted((d for d in self.prism.vm(vm_id).get("disks") or [] if d["diskAddress"]["busType"] == bus),
+                      key=lambda d: d["diskAddress"]["index"])
+
+    def _wait_vioscsi(self, access, timeout=300):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            rc, out, _ = access.ps('$d = @(Get-CimInstance Win32_PnPEntity -Filter "Service = \'vioscsi\'"); '
+                                   '$s = (Get-ItemProperty HKLM:\\SYSTEM\\CurrentControlSet\\Services\\vioscsi -ErrorAction SilentlyContinue).Start; '
+                                   '"{0}|{1}|{2}" -f $d.Count, (@($d | ForEach-Object Status) -join ","), $s')
+            parts = out.strip().split("|")
+            if rc == 0 and len(parts) == 3 and parts[0] not in ("", "0") and "OK" in parts[1] and parts[2] == "0":
+                return
+            time.sleep(10)
+        raise RuntimeError("Windows did not install vioscsi for the temporary SCSI disk")
+
+    def _move_disks(self, vm_id, src_bus, dst_bus, boot_index):
+        """Clone every disk on src_bus to dst_bus (VM is off), point boot at the clone, then drop the originals."""
+        disks = self._bus_disks(vm_id, src_bus)
+        new_boot = None
+        for i, d in enumerate(disks):
+            self.prism.add_disk(vm_id, d["backingInfo"]["diskSizeBytes"], bus=dst_bus, index=i,
+                                clone_from=self.prism.disk_ref(vm_id, d["extId"]))
+            if d["diskAddress"]["index"] == boot_index:
+                new_boot = i
+        self.prism.set_boot_disk(vm_id, dst_bus, new_boot if new_boot is not None else 0)
+        for d in disks:
+            self.prism.remove_vm_disk(vm_id, d["extId"])
+
+    def convert_to_scsi(self, vm_id):
+        """Moves a verified VM from virtio-blk (PCI) to virtio-scsi. Windows first gets a temporary SCSI disk so it
+        installs vioscsi from the driver store. If the SCSI boot fails verification, the VM is moved back to PCI."""
+        pci = self._bus_disks(vm_id, "PCI")
+        if not pci:
+            return {"result": "already SCSI"}
+        boot = ((self.prism.vm(vm_id).get("bootConfig") or {}).get("bootDevice") or {}).get("diskAddress") or {}
+        boot_index = boot.get("index", 0) if boot.get("busType") == "PCI" else 0
+        g = self.p.get("guest") or {}
+        if g.get("os") == "windows":
+            try:
+                access = self.guest().access(target=True)
+            except Exception as e:
+                return {"result": "skipped", "reason": f"needs WinRM access to the migrated VM: {e}"}
+            cluster = self.prism.cluster_id(self.p["target"]["cluster"])
+            container = self.prism.container_id(self.p["target"]["container"], cluster)
+            dummy = self.prism.add_disk(vm_id, 1024 ** 3, container=container, bus="SCSI")
+            try:
+                self._wait_vioscsi(access)
+            except Exception as e:
+                self.prism.remove_vm_disk(vm_id, dummy)
+                return {"result": "skipped", "reason": str(e)}
+        else:
+            dummy = None
+        log.info("converting %s from PCI to SCSI", self.p["target"]["vm_name"])
+        self.prism.power(vm_id, "shutdown")
+        self.prism.wait_power(vm_id, "OFF", 900)
+        if dummy:
+            self.prism.remove_vm_disk(vm_id, dummy)
+        self._move_disks(vm_id, "PCI", "SCSI", boot_index)
+        self.prism.power(vm_id, "power-on")
+        try:
+            self.state.set("verify_scsi", self.verify())
+            return {"result": "converted", "disks": len(pci)}
+        except Exception as e:
+            log.warning("SCSI boot failed verification (%s). Moving %s back to PCI", e, self.p["target"]["vm_name"])
+            self.prism.power(vm_id, "power-off")
+            self.prism.wait_power(vm_id, "OFF")
+            self._move_disks(vm_id, "SCSI", "PCI", 0)
+            self.prism.set_boot_disk(vm_id, "PCI", boot_index)
+            self.prism.power(vm_id, "power-on")
+            self.verify()
+            return {"result": "reverted to PCI", "reason": str(e)[:300]}
+
+    def convert(self):
+        """CLI entry: convert a migrated VM later, for plans that kept PCI."""
+        self.lock()
+        if not self.step_done("verified"):
+            raise RuntimeError("convert-to-scsi runs on a migrated, verified VM")
+        vm_id = self.state.get("target_vm")
+        t0 = time.time()
+        r = self.convert_to_scsi(vm_id)
+        self.state.set("conversion", r)
+        self.timing(conversion_seconds=round(time.time() - t0, 1))
+        return r
 
     def verify(self):
         v = self.p.get("verify") or {}

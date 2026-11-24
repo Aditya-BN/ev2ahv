@@ -51,7 +51,11 @@ def grade_windows(f, bus, firmware):
     else:
         detail = "missing: Windows would stop with INACCESSIBLE_BOOT_DEVICE. Run guest-prep with VirtIO drivers"
     out.append(_item(f"Boot driver {boot} for disk_bus {bus}", PASS if bd.get("boot_ready") else FAIL, detail))
-    if not (d.get(other) or {}).get("boot_ready"):
+    if bus == "pci":
+        st = d.get("vioscsi") or {}
+        out.append(_item("vioscsi staged for SCSI conversion", PASS if st.get("staged") else WARN,
+                         "staged" if st.get("staged") else "not staged: run guest-prep with VirtIO drivers, or the VM stays on PCI"))
+    elif not (d.get(other) or {}).get("boot_ready"):
         out.append(_item(f"Alternate boot driver {other}", WARN, "cannot boot Windows yet, so the other disk bus is not an option"))
     net = d.get("netkvm") or {}
     out.append(_item("Network driver netkvm", PASS if net.get("sys") or net.get("staged") else FAIL,

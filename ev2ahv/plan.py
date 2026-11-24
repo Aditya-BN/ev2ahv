@@ -35,6 +35,7 @@ def validate(p):
     for key in ("vm_name", "cluster", "container"):
         check(lambda k=key: _need(t, k, "target"))
     t.setdefault("firmware", "bios"); t.setdefault("disk_bus", "scsi"); t.setdefault("machine_type", "PC")
+    t.setdefault("convert_to_scsi", True)    # only acts when disk_bus is pci
     t.setdefault("transfer", "hotadd"); t.setdefault("staging_dir", "/var/tmp/ev2ahv-staging")
     if t["transfer"] not in ("hotadd", "image"):
         errors.append("target.transfer must be hotadd or image")

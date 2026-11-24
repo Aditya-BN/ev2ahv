@@ -302,6 +302,26 @@ class Prism:
     def image_ref(image_id):
         return {"$objectType": "vmm.v4.ahv.config.ImageReference", "imageExtId": image_id}
 
+    def set_boot_disk(self, vm_id, bus, index):
+        """Points LegacyBoot or UefiBoot at a disk address. PUTs the VM back with only that field changed."""
+        vm, etag = self._owned_vm(vm_id)
+        boot = vm.get("bootConfig") or {}
+        boot["bootDevice"] = {"$objectType": "vmm.v4.ahv.config.BootDeviceDisk",
+                              "diskAddress": {"busType": bus, "index": int(index)}}
+        vm["bootConfig"] = boot
+        if self.dry_run:
+            log.info("[dry-run] boot %s from %s.%s", vm["name"], bus, index)
+            return
+        self.wait(self._call("PUT", f"{VMS}/{vm_id}", vm, etag)[0])
+        log.info("%s now boots from %s.%s", vm["name"], bus, index)
+
+    def wait_power(self, vm_id, state, timeout=600):
+        deadline = time.time() + timeout
+        while self.vm(vm_id).get("powerState") != state:
+            if time.time() > deadline:
+                raise PrismError(f"VM {vm_id} did not reach {state}")
+            time.sleep(5)
+
     def delete_vm(self, vm_id):
         vm, etag = self._owned_vm(vm_id)
         if self.dry_run:

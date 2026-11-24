@@ -116,7 +116,7 @@ def run_step(a):
         elif a.cmd == "cleanup":
             r = m.cleanup(delete_target=a.delete_target)
         else:
-            r = getattr(m, a.cmd.replace("-", "_"))()
+            r = m.convert() if a.cmd == "convert-to-scsi" else getattr(m, a.cmd.replace("-", "_"))()
         print(json.dumps(r, indent=1, default=str))
         return 0
     finally:
@@ -146,7 +146,7 @@ def main(argv=None):
     l = sub.add_parser("plan", help="create or validate a plan")
     l.add_argument("action", choices=["new", "validate"]); l.add_argument("file")
     l.set_defaults(fn=cmd_plan)
-    for name in ("prep-check", "guest-prep", "seed", "resync", "cutover", "rollback", "discard-target", "guest-cleanup", "cleanup", "status"):
+    for name in ("prep-check", "guest-prep", "seed", "resync", "cutover", "convert-to-scsi", "rollback", "discard-target", "guest-cleanup", "cleanup", "status"):
         s = sub.add_parser(name)
         s.add_argument("plan"); s.add_argument("--dry-run", action="store_true"); s.add_argument("-v", "--verbose", action="store_true")
         if name == "cutover":
