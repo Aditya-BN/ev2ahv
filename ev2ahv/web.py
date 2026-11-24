@@ -12,7 +12,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLANS = os.path.expanduser(os.environ.get("EV2AHV_PLANS", os.path.join(ROOT, "plans")))
 ASSET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_assets", "index.html")
 UI_FILE = os.path.join(credentials.CONFIG_DIR, "ui.json")
-ACTIONS = {"prep-check", "seed", "resync", "cutover", "rollback", "discard-target", "cleanup"}
+ACTIONS = {"prep-check", "guest-prep", "seed", "resync", "cutover", "rollback", "discard-target", "guest-cleanup", "cleanup"}
 CONFIRM = {"cutover", "rollback", "discard-target", "cleanup"}
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
 SESSION_SECONDS = 12 * 3600
@@ -280,6 +280,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             flags.append("--dry-run")
         if action == "cutover" and b.get("source_already_stopped"):
             flags.append("--source-already-stopped")
+        if action == "cutover" and b.get("force"):
+            flags.append("--force")
         if action == "cleanup" and b.get("delete_target"):
             flags.append("--delete-target")
         run_job(p["name"], fp, action, flags)

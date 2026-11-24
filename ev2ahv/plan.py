@@ -70,6 +70,19 @@ def validate(p):
                 errors.append(f"nics[{i}].mac is invalid")
         elif n["keep_mac"]:
             errors.append(f"nics[{i}].mac is required when keep_mac is true")
+    g = p.get("guest")
+    if g is not None:
+        if g.get("os") not in ("windows", "linux"):
+            errors.append("guest.os must be windows or linux")
+        g.setdefault("prep", "manual")
+        if g["prep"] not in ("auto", "manual", "none"):
+            errors.append("guest.prep must be auto, manual or none")
+        if g["prep"] == "auto" and not g.get("address"):
+            errors.append("guest.address is required for guest.prep auto")
+        if g.get("os") == "windows" and g["prep"] == "auto" and not (g.get("password_env") or g.get("password_file")):
+            errors.append("guest.password_env or guest.password_file is required for Windows auto prep")
+        if g.get("password"):
+            errors.append("guest.password is not allowed in a plan. Use password_env or password_file")
     for section, values in DEFAULTS.items():
         p.setdefault(section, {})
         for k, v in values.items():

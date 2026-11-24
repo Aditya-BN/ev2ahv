@@ -1,0 +1,5 @@
+#!/bin/bash
+# Runs ev2ahv with the project venv when present (pywinrm is needed for Windows guests).
+D="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PY="$D/.venv/bin/python"; [ -x "$PY" ] || PY=python3
+cd "$D" && exec "$PY" -m ev2ahv "$@"

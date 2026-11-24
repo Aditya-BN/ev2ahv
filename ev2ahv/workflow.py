@@ -2,7 +2,7 @@
 The source is only ever read, stopped and started. It is never modified or deleted."""
 import base64, fcntl, logging, os, re, shlex, socket, subprocess, time
 
-from . import builder, engine, target as tgt
+from . import builder, engine, guest as guestlib, target as tgt
 from .readers import make_reader
 from .state import State
 from .transport import BlockEndpoint, LocalTransport, SshTransport
@@ -163,13 +163,14 @@ class Migration:
 
     # ---- steps -------------------------------------------------------------
     def prep_check(self):
+        """Each item is PASS, WARN or FAIL. Cutover refuses on any FAIL unless forced."""
         checks = []
         def check(name, fn):
             try:
                 detail = fn()
-                checks.append({"name": name, "ok": True, "detail": detail or ""})
+                checks.append({"name": name, "status": "PASS", "detail": detail or ""})
             except Exception as e:
-                checks.append({"name": name, "ok": False, "detail": str(e)[:300]})
+                checks.append({"name": name, "status": "FAIL", "detail": str(e)[:300]})
         t = self.p["target"]
         check("Prism reachable", lambda: f"{len(self.prism.list_vms(flt=None, select='name'))} VMs visible")
         check("Cluster", lambda: self.prism.cluster_id(t["cluster"]))
@@ -214,7 +215,56 @@ class Migration:
                 finally:
                     r.close()
             check(f"Source disk {d['name']}", src)
+        checks += self.guest_checks()
         return checks
+
+    # ---- guest prep (Move-like) ---------------------------------------------
+    def guest(self):
+        return guestlib.GuestPrep(self.p, self.dir)
+
+    def guest_checks(self):
+        g = self.p.get("guest")
+        if not g:
+            return [{"name": "Guest readiness", "status": "WARN", "detail": "plan has no guest section, so the guest was not checked"}]
+        if g.get("prep") == "none":
+            return [{"name": "Guest readiness", "status": "WARN", "detail": "guest.prep is none, so the guest was not checked"}]
+        try:
+            facts = self.guest().facts_for_check()
+        except Exception as e:
+            return [{"name": "Guest readiness", "status": "FAIL", "detail": f"cannot read the guest state: {str(e)[:250]}"}]
+        if facts.get("on_ahv") and not self.step_done("created"):
+            return [{"name": "Guest readiness", "status": "FAIL", "detail": "guest.address answers from AHV, not from the source"}]
+        t = self.p["target"]
+        return [dict(c, name="Guest: " + c["name"]) for c in guestlib.grade(g["os"], facts, t["disk_bus"], t["firmware"])]
+
+    def guest_prep(self):
+        gp = self.guest()
+        if not self.p.get("guest"):
+            raise RuntimeError("plan has no guest section")
+        if gp.mode == "manual":
+            return {"mode": "manual", "bundle": gp.bundle("prep")}
+        if gp.mode == "none" or self.dry_run:
+            return {"mode": gp.mode, "dry_run": self.dry_run}
+        facts = gp.run("prep")
+        self.state.set("guest_prep", {"time": facts.get("time"), "changes": facts.get("changes"), "problems": facts.get("problems")})
+        self.state.event("guest-prep", changes=len(facts.get("changes") or []))
+        t = self.p["target"]
+        return {"mode": "auto", "changes": facts.get("changes"), "problems": facts.get("problems"),
+                "checks": guestlib.grade(self.p["guest"]["os"], facts, t["disk_bus"], t["firmware"])}
+
+    def guest_cleanup(self):
+        gp = self.guest()
+        if not self.p.get("guest"):
+            raise RuntimeError("plan has no guest section")
+        if not self.step_done("verified"):
+            raise RuntimeError("cleanup runs on the migrated VM, after a verified cutover")
+        if gp.mode == "manual":
+            return {"mode": "manual", "bundle": gp.bundle("cleanup")}
+        if gp.mode == "none" or self.dry_run:
+            return {"mode": gp.mode, "dry_run": self.dry_run}
+        facts = gp.run("cleanup", target=True)
+        self.state.set("guest_cleanup", {"time": facts.get("time"), "changes": facts.get("changes"), "problems": facts.get("problems")})
+        return {"mode": "auto", "changes": facts.get("changes"), "problems": facts.get("problems")}
 
     def _sync_all(self, verify=False, final=False):
         results = {}
@@ -296,9 +346,19 @@ class Migration:
             time.sleep(3)
         raise RuntimeError("source did not stop in time. Nothing on AHV was changed")
 
-    def cutover(self, assume_stopped=False):
+    def cutover(self, assume_stopped=False, force=False):
         self.lock()
         t = self.p["target"]
+        if not self.step_done("stopped") and not self.dry_run:
+            checks = self.prep_check()
+            self.state.set("cutover_checks", checks)
+            failed = [f"{c['name']}: {c['detail']}" for c in checks if c["status"] == "FAIL"]
+            if failed and not force:
+                raise RuntimeError("prep-check has FAIL items, so cutover did not start. The source was not touched:\n  "
+                                   + "\n  ".join(failed) + "\nFix them, or pass --force to override")
+            if failed:
+                self.state.event("cutover-forced", failed=failed)
+                log.warning("cutover forced past %d FAIL item(s)", len(failed))
         if self.dry_run:
             log.info("[dry-run] stop source, verified final sync, clone %d disk(s) into %s, power on, verify",
                      len(self.p["disks"]), t["vm_name"])

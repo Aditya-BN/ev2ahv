@@ -107,10 +107,12 @@ def run_step(a):
         if a.cmd == "prep-check":
             checks = m.prep_check()
             for c in checks:
-                print(f"[{'PASS' if c['ok'] else 'FAIL'}] {c['name']}: {c['detail']}")
-            return 0 if all(c["ok"] for c in checks) else 1
+                print(f"[{c['status']}] {c['name']}: {c['detail']}")
+            counts = {s: sum(c["status"] == s for c in checks) for s in ("PASS", "WARN", "FAIL")}
+            print(f"Summary: {counts['PASS']} PASS, {counts['WARN']} WARN, {counts['FAIL']} FAIL")
+            return 1 if counts["FAIL"] else 0
         if a.cmd == "cutover":
-            r = m.cutover(assume_stopped=a.source_already_stopped)
+            r = m.cutover(assume_stopped=a.source_already_stopped, force=a.force)
         elif a.cmd == "cleanup":
             r = m.cleanup(delete_target=a.delete_target)
         else:
@@ -144,11 +146,12 @@ def main(argv=None):
     l = sub.add_parser("plan", help="create or validate a plan")
     l.add_argument("action", choices=["new", "validate"]); l.add_argument("file")
     l.set_defaults(fn=cmd_plan)
-    for name in ("prep-check", "seed", "resync", "cutover", "rollback", "discard-target", "cleanup", "status"):
+    for name in ("prep-check", "guest-prep", "seed", "resync", "cutover", "rollback", "discard-target", "guest-cleanup", "cleanup", "status"):
         s = sub.add_parser(name)
         s.add_argument("plan"); s.add_argument("--dry-run", action="store_true"); s.add_argument("-v", "--verbose", action="store_true")
         if name == "cutover":
             s.add_argument("--source-already-stopped", action="store_true")
+            s.add_argument("--force", action="store_true", help="cut over even if prep-check has FAIL items")
         if name == "cleanup":
             s.add_argument("--delete-target", action="store_true", help="also delete the migrated AHV VM")
         s.set_defaults(fn=run_step)
