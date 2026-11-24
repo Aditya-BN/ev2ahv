@@ -10,7 +10,7 @@ A write load ran on both disks during seed and resync.
 | Measure | Result |
 |---|---|
 | Seed, with live writes | 172.7 s, 2.13 GiB sent of 30 GiB |
-| Resync | about 53 s per round, 0.27 to 0.53 GiB sent |
+| Resync | about 53 s per round, 0.27 to 0.50 GiB sent |
 | Guest shutdown | 104 s |
 | Final sync | 335 s (0.32 GiB sent, then a full verified pass on both sides) |
 | AHV power-on to SSH | 39 s |
