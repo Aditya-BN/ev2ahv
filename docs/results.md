@@ -80,6 +80,21 @@ On AHV afterwards: both disks SCSI (`NUTANIX VDISK`), online and writable, C: an
 files match. Rollback afterwards was clean. The recorded total downtime for this run (2,211 s) is inflated
 by the test harness: about 10 min of checksumming 800 test files before the shutdown.
 
+## Rocky multi-disk layout (REQ-002), 2026-11-25
+
+Four disks: 20 GiB boot (XFS + LVM root), 10 GiB XFS data, and two new 5 GiB disks holding a plain ext4
+partition, an LVM PV on a partition, a whole-disk PV with no partition table, and one ext4 LV (8 GiB)
+spanning both PVs. All mounted by UUID. Auto mode, write load on all four filesystems.
+
+| Measure | Result |
+|---|---|
+| prep-check | 18 PASS, 0 WARN, 0 FAIL |
+| Seed | 258 s |
+| Final sync | 464 s |
+| Downtime | 636 s |
+| On AHV | `/ext4` on sdc1, `/span` on vgspan across sdd and sdc2, 759 of 759 files match |
+| Rollback | source back, all four manifests identical |
+
 ## Issues found and fixed
 
 | Issue | Effect if missed | Fix |
