@@ -1,5 +1,7 @@
 #!/bin/bash
-# ev2ahv Linux guest prep check. Read-only: it changes nothing in the guest.
+# ev2ahv Linux guest prep check. Read-only unless --apply is given.
+# --apply makes two reversible changes that also work on the source: NetworkManager profiles match
+# the NIC by MAC instead of by name, and the LVM devices file is moved aside. Backups: /var/lib/ev2ahv-prep
 # Run as root inside the source VM. Writes a report to /var/tmp/ev2ahv-prep-<host>.txt
 # Exit: 0 ready, 1 warnings to review, 2 blocked (fix before cutover).
 set -u
@@ -16,6 +18,24 @@ info()  { echo "[info] $*"; }
 [ "$(id -u)" -eq 0 ] || { echo "Run as root."; exit 2; }
 echo "ev2ahv Linux prep check: $(hostname -f 2>/dev/null || hostname), kernel $KVER, $(date -u +%FT%TZ)"
 [ -r /etc/os-release ] && . /etc/os-release && info "OS: ${PRETTY_NAME:-unknown}"
+
+if [ "${1:-}" = "--apply" ]; then
+  echo; echo "--- Applying guest changes"
+  B=/var/lib/ev2ahv-prep; mkdir -p "$B"
+  if [ -f /etc/lvm/devices/system.devices ]; then
+    cp -an /etc/lvm/devices/system.devices "$B/system.devices" && rm -f /etc/lvm/devices/system.devices
+    ok "LVM devices file moved to $B/system.devices"
+  fi
+  if command -v nmcli >/dev/null; then
+    [ -d /etc/NetworkManager/system-connections ] && cp -an /etc/NetworkManager/system-connections "$B/" 2>/dev/null
+    nmcli -t -f NAME,DEVICE con show --active | while IFS=: read -r c d; do
+      [ -e "/sys/class/net/$d/device" ] || continue
+      m=$(cat "/sys/class/net/$d/address")
+      nmcli con mod "$c" connection.interface-name "" 802-3-ethernet.mac-address "$m" \
+        && ok "NetworkManager profile '$c' now matches MAC $m"
+    done
+  fi
+fi
 
 echo; echo "--- Firmware"
 if [ -d /sys/firmware/efi ]; then
@@ -91,7 +111,7 @@ if grep -lsE '^(HWADDR|MACADDR)=' /etc/sysconfig/network-scripts/ifcfg-* >/dev/n
   warn "ifcfg files pin a MAC. Safe only if the MAC is kept"; RISK=1
 fi
 if grep -lsE '^mac-address=' /etc/NetworkManager/system-connections/* >/dev/null 2>&1; then
-  warn "NetworkManager profiles pin a MAC. Safe only if the MAC is kept"; RISK=1
+  warn "NetworkManager profiles pin a MAC. Safe only if the MAC is kept"
 fi
 if grep -lsE 'macaddress:' /etc/netplan/*.y*ml >/dev/null 2>&1; then
   warn "netplan matches by MAC. Safe only if the MAC is kept"; RISK=1
@@ -101,7 +121,13 @@ if grep -qE 'net\.ifnames=0' /proc/cmdline; then
 else
   for path in /sys/class/net/*; do
     n=${path##*/}
-    case "$n" in en*) warn "$n is a slot-based name and may change on AHV because the PCI slot changes. Check that the network config matches by MAC or uses a wildcard"; RISK=1 ;; esac
+    case "$n" in en*)
+      c=$(nmcli -g GENERAL.CONNECTION dev show "$n" 2>/dev/null)
+      if [ -n "$c" ] && [ -n "$(nmcli -g 802-3-ethernet.mac-address con show "$c" 2>/dev/null)" ] && [ -z "$(nmcli -g connection.interface-name con show "$c" 2>/dev/null)" ]; then
+        ok "$n: profile '$c' matches by MAC, so a new NIC name on AHV is safe"
+      else
+        warn "$n is a slot-based name and may change on AHV because the PCI slot changes. Run with --apply, or make the config match by MAC"; RISK=1
+      fi ;; esac
   done
 fi
 [ "$RISK" -eq 0 ] && ok "No NIC rename risk found"

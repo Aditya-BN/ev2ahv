@@ -1,7 +1,7 @@
 """ev2ahv command line."""
 import argparse, getpass, json, logging, os, sys, time
 
-from . import __version__, credentials, plan as planlib
+from . import __version__, credentials, everrun, plan as planlib
 from .prism import Prism
 from .transport import SshTransport
 from .workflow import Migration, plan_dir, DATA_DIR
@@ -77,6 +77,17 @@ def cmd_inventory(a):
         print(t.run(c, check=False))
 
 
+def cmd_discover(a):
+    info = everrun.discover(a.vm, [n.strip() for n in a.nodes.split(",")])
+    print(json.dumps(info, indent=1))
+    if a.out:
+        if os.path.exists(a.out):
+            sys.exit(f"{a.out} already exists")
+        doc = everrun.build_plan(info, a.target_name, a.subnet, a.avcli, max_mbps=a.max_mbps, disk_bus=a.disk_bus)
+        planlib.dump(planlib.validate(doc), a.out)
+        print(f"Wrote {a.out}", file=sys.stderr)
+
+
 def cmd_plan(a):
     if a.action == "new":
         if os.path.exists(a.file):
@@ -124,6 +135,12 @@ def main(argv=None):
     i.add_argument("host"); i.add_argument("--user", default="root"); i.add_argument("--key")
     i.add_argument("--port", type=int, default=22); i.add_argument("--sudo", action="store_true")
     i.set_defaults(fn=cmd_inventory)
+    d = sub.add_parser("discover", help="read an everRun guest's layout and optionally write a plan")
+    d.add_argument("vm"); d.add_argument("--nodes", required=True, help="comma-separated node IPs")
+    d.add_argument("--out"); d.add_argument("--target-name"); d.add_argument("--subnet", default="VLAN136")
+    d.add_argument("--avcli", default="~/everrun-lab/av.sh"); d.add_argument("--max-mbps", type=float, default=100)
+    d.add_argument("--disk-bus", choices=["scsi", "pci"], default="scsi")
+    d.set_defaults(fn=cmd_discover)
     l = sub.add_parser("plan", help="create or validate a plan")
     l.add_argument("action", choices=["new", "validate"]); l.add_argument("file")
     l.set_defaults(fn=cmd_plan)

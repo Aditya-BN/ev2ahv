@@ -1,6 +1,6 @@
 import os, sys, tempfile, unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from ev2ahv import engine, plan, builder, target
+from ev2ahv import engine, everrun, plan, builder, target
 from ev2ahv.prism import Prism, NotOwned
 from ev2ahv.credentials import Credentials
 from ev2ahv.readers import LocalReader
@@ -102,6 +102,30 @@ class Sync(Base):
         self.assertEqual(self.run_sync()["sent"], 0)
         self.assertEqual(self.run_sync(verify_target=True)["repaired"], 0)
 
+    def test_limit_excludes_everrun_trailer(self):
+        with open(self.src, "r+b") as f:
+            f.seek(40 * C - 2048); f.write(b"T" * 2048)
+        self.r.limit = 40 * C - 2048
+        self.run_sync()
+        self.w.close()
+        with open(self.dst, "rb") as f:
+            f.seek(40 * C - 2048)
+            self.assertEqual(f.read(), bytes(2048))
+        rounds, s = engine.final_sync(self.r, self.w, self.state, "d", "blake2b")
+        self.assertEqual((rounds, s["sent"]), (1, 0))
+
+    def test_sparse_holes_hash_as_zero(self):
+        sparse = os.path.join(self.tmp.name, "sparse")
+        with open(sparse, "wb") as f:
+            f.truncate(20 * C); f.seek(9 * C); f.write(b"x" * C)
+        r = LocalReader(sparse, chunk=C)
+        try:
+            got = dict(r.hashes("blake2b"))
+        finally:
+            r.close()
+        self.assertEqual(sum(v != "z" for v in got.values()), 1)
+        self.assertNotEqual(got[9], "z")
+
     def test_refuses_smaller_target(self):
         with open(self.dst, "r+b") as f:
             f.truncate(10 * C)
@@ -157,6 +181,23 @@ class Safety(unittest.TestCase):
                 "disks": [{"path": "/tmp/a"}]}
         with self.assertRaises(plan.PlanError):
             plan.validate(base)
+
+    def test_everrun_domain_parsing(self):
+        xml = """<domain><name>g</name><memory>4184064</memory><vcpu>2</vcpu><os><type>hvm</type></os><devices>
+          <disk device='disk'><driver type='raw'/><source file='/mnt/everrun/a/b'/><target dev='vda'/></disk>
+          <disk device='cdrom'><target dev='hdb'/></disk>
+          <interface type='bridge'><mac address='00:E0:09:A4:D7:40'/><model type='virtio'/></interface>
+        </devices></domain>"""
+        d = everrun.parse_domain(xml)
+        self.assertEqual((d["firmware"], d["vcpus"], d["memory_mib"]), ("bios", 2, 4086))
+        self.assertEqual([x["dev"] for x in d["disks"]], ["vda"])
+        self.assertEqual(d["nics"][0]["mac"], "00:e0:09:a4:d7:40")
+
+    def test_everrun_active_node_must_be_unique(self):
+        self.assertEqual(everrun.active_node({"a": "running", "b": "paused"}), "a")
+        for bad in ({"a": "paused", "b": "paused"}, {"a": "running", "b": "running"}):
+            with self.assertRaises(RuntimeError):
+                everrun.active_node(bad)
 
     def test_alignment_rounds_up(self):
         self.assertEqual(builder.align(1), 1024 ** 2)

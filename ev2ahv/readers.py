@@ -49,6 +49,12 @@ class ExportReader(SourceReader):
 
 
 def make_reader(src, disk, chunk, default_key=None, known_hosts=None):
+    reader = _make_reader(src, disk, chunk, default_key, known_hosts)
+    reader.limit = disk.get("size_bytes")
+    return reader
+
+
+def _make_reader(src, disk, chunk, default_key, known_hosts):
     kind, mbps = src["type"], src.get("max_mbps", 0)
     if kind == "local":
         return LocalReader(disk["path"], chunk, mbps, sudo=src.get("sudo", False))

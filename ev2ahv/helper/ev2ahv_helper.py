@@ -8,10 +8,12 @@ Frames on the wire: >QI (chunk index, payload length) + payload. Index END close
 index FLUSH asks the writer to fsync and acknowledge.
 """
 import argparse
+import errno
 import hashlib
 import json
 import mmap
 import os
+import stat
 import struct
 import sys
 import time
@@ -102,6 +104,19 @@ class Reader:
             self.size = device_size(self.fd)
         if self.limit is not None:
             self.size = min(self.size, self.limit)
+        self.sparse = stat.S_ISREG(os.fstat(self.fd).st_mode)
+
+    def is_hole(self, index):
+        """True if the whole chunk is a hole in a sparse file, so it reads as zeros without I/O."""
+        if not self.sparse:
+            return False
+        offset = index * self.chunk
+        try:
+            return os.lseek(self.fd, offset, os.SEEK_DATA) >= offset + min(self.chunk, self.size - offset)
+        except OSError as e:
+            if e.errno == errno.ENXIO:
+                return True
+            return False
 
     @property
     def count(self):
@@ -159,17 +174,20 @@ def cmd_hash(args):
     end = reader.count if args.end is None else min(args.end, reader.count)
     out = sys.stdout
     for index in range(args.start, end):
-        data = reader.read(index)
-        out.write("%d %s\n" % (index, "z" if is_zero(data) else digest(data, args.algo)))
+        if reader.is_hole(index):
+            out.write("%d z\n" % index)
+        else:
+            data = reader.read(index)
+            out.write("%d %s\n" % (index, "z" if is_zero(data) else digest(data, args.algo)))
+            throttle.account(len(data))
         if index % 16 == 0:
             out.flush()
-        throttle.account(len(data))
     out.write("done %d\n" % end)
     out.flush()
 
 
 def cmd_read(args):
-    reader = Reader(args.device, args.chunk)
+    reader = Reader(args.device, args.chunk, args.limit)
     throttle = Throttle(args.max_mbps)
     out = sys.stdout.buffer
     for line in sys.stdin:
@@ -263,11 +281,12 @@ def main(argv=None):
         p.add_argument("device")
         p.add_argument("--chunk", type=int, default=4 * 1024 * 1024)
         p.add_argument("--max-mbps", type=float, default=0)
+        if name != "write":
+            p.add_argument("--limit", type=int, default=None, help="use only the first LIMIT bytes")
         if name == "hash":
             p.add_argument("--algo", default="blake2b")
             p.add_argument("--start", type=int, default=0)
             p.add_argument("--end", type=int, default=None)
-            p.add_argument("--limit", type=int, default=None, help="hash only the first LIMIT bytes")
         p.set_defaults(fn=fn)
     args = parser.parse_args(argv)
     args.fn(args)

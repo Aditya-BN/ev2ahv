@@ -111,6 +111,7 @@ class BlockEndpoint:
     def __init__(self, transport, device, chunk=4 * 1024 ** 2, max_mbps=0, writable=False):
         self.t, self.device, self.chunk, self.max_mbps = transport, device, chunk, max_mbps
         self.writable = writable
+        self.limit = None    # expose only the first N bytes (everRun files carry a metadata trailer)
         self._reader = self._writer = None
         self.t.setup()
 
@@ -118,10 +119,12 @@ class BlockEndpoint:
         return self.t.caps()
 
     def size(self):
-        return self.t.size(self.device)
+        size = self.t.size(self.device)
+        return size if self.limit is None else min(size, self.limit)
 
     def hashes(self, algo, start=0, limit=None):
         args = ["hash", self.device, "--chunk", self.chunk, "--algo", algo, "--start", start]
+        limit = self.limit if limit is None else limit
         if limit is not None:
             args += ["--limit", limit]
         if self.max_mbps:
@@ -148,6 +151,8 @@ class BlockEndpoint:
     def read(self, indices):
         if self._reader is None:
             args = ["read", self.device, "--chunk", self.chunk]
+            if self.limit is not None:
+                args += ["--limit", self.limit]
             if self.max_mbps:
                 args += ["--max-mbps", self.max_mbps]
             self._reader = self.t.popen(*args, stdin=subprocess.PIPE)

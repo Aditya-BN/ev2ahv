@@ -268,7 +268,8 @@ class Migration:
         cmd = power.get(action)
         if not cmd:
             return None
-        return self.source_shell().run(cmd, timeout=300).strip()
+        shell = LocalTransport() if power.get("local") else self.source_shell()
+        return shell.run(cmd, timeout=300).strip()
 
     def source_stopped(self):
         out = self._source_power("status")

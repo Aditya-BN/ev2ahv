@@ -53,6 +53,8 @@ def validate(p):
         if not d.get("path"):
             errors.append(f"disks[{i}].path is required")
         d.setdefault("name", f"disk{i}")
+        if d.get("size_bytes") is not None and (not isinstance(d["size_bytes"], int) or d["size_bytes"] <= 0):
+            errors.append(f"disks[{i}].size_bytes must be a positive integer")
         if d.get("bus") not in (None, "scsi", "pci"):
             errors.append(f"disks[{i}].bus must be scsi or pci")
     names = [d.get("name") for d in p.get("disks") or []]

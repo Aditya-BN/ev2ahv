@@ -97,7 +97,8 @@ def sync(source, target, state, key, algo, verify_target=False, batch=32, progre
 
 
 def final_sync(source, target, state, key, algo, rounds=5, **kw):
-    """Repeat verified passes until source and target hash identically."""
+    """A fast source-only pass sends what changed, then verified passes run until both sides match."""
+    sync(source, target, state, key, algo, verify_target=False, **kw)
     for n in range(1, rounds + 1):
         stats = sync(source, target, state, key, algo, verify_target=True, **kw)
         if stats["sent"] == 0:
