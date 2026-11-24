@@ -9,16 +9,17 @@ read, stopped and started. Rollback is powering it back on.
 | Area | State |
 |---|---|
 | Hot-add, clone from attached disk, hot-remove on AHV | Verified on NTNX-DC |
-| Sync engine, resume, zero-skip, corruption repair | Verified, 22 unit tests |
+| Sync engine, resume, zero-skip, corruption repair | Verified, 38 unit tests |
 | LocalReader, DirectBlockReader (ssh + loop device), ExportReader (qcow2) | Verified |
 | End-to-end: live seed, resync, cutover, boot, checksums, rollback | Verified with a fake source |
 | Web console | Verified in Chrome |
 | Prism API key auth | Verified |
 | Prism username/password auth | Built, never used with valid credentials |
 | Linux prep script | Run on Rocky 9 |
-| Windows prep script | Not run or parsed. No PowerShell was available |
+| Windows prep script | Run on Windows Server 2022 over WinRM |
 | Real everRun Rocky 9 FT guest | Migrated, verified and rolled back. See docs/results.md |
-| Real everRun Windows HA guest | Pending, still installing |
+| Real everRun Windows HA guest | Migrated on virtio-blk, verified and rolled back. virtio-scsi boot did not work, so pci is required |
+| Guest prep, auto and manual (Move-like) | Tested on both guests. See docs/results.md |
 | Raw file to AHV image upload fallback (`target.transfer: image`) | Verified end-to-end, including rollback and a second cutover |
 
 ## Quick start

@@ -15,7 +15,7 @@ source:
       '/-> state/{print $NF; exit}'
     stop: ssh -i /home/adit@ntnx.hin/.config/ev2ahv/id_ed25519 -o BatchMode=yes -o
       IdentitiesOnly=yes -o UserKnownHostsFile=/home/adit@ntnx.hin/.config/ev2ahv/known_hosts
-      root@10.12.136.162 /usr/local/sbin/ev2ahv-load stop > /home/adit@ntnx.hin/.local/share/ev2ahv/ev2ahv-rocky9-ahv/expected.txt
+      root@10.12.136.162 /usr/local/sbin/ev2ahv-load stop > /home/adit@ntnx.hin/.local/share/ev2ahv/ev2ahv-rocky9-manual/expected.txt
       && /home/adit@ntnx.hin/everrun-lab/av.sh vm-shutdown ev2ahv-src-rocky9
     start: /home/adit@ntnx.hin/everrun-lab/av.sh vm-poweron ev2ahv-src-rocky9
 disks:

@@ -40,7 +40,7 @@ target:
   threads: 1
   memory_mib: 6134
   firmware: bios
-  disk_bus: scsi
+  disk_bus: pci
   machine_type: PC
   transfer: hotadd
   staging_dir: /var/tmp/ev2ahv-staging
