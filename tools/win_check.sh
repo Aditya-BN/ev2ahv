@@ -2,7 +2,10 @@
 # Post-cutover / post-rollback check for the Windows test guest, over WinRM. Exit non-zero on failure.
 set -a; . ~/.config/ev2ahv/win.env; set +a
 cd "$(dirname "$0")/.." || exit 1
-.venv/bin/python tools/winrm_run.py "${1:-10.12.136.161}" - <<'PS'
+export EV2AHV_WINRM_TIMEOUT=300
+# The guest may still be resetting its NIC when this first runs, so retry a hung or refused session.
+for try in 1 2 3 4 5; do
+.venv/bin/python tools/winrm_run.py "${1:-10.12.136.161}" - <<'PS' && exit 0
 $cs = Get-CimInstance Win32_ComputerSystem
 "platform: $($cs.Manufacturer) $($cs.Model)"
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\ev2ahv\guest-load.ps1 -Mode check
@@ -15,3 +18,6 @@ $t = Get-ScheduledTask -TaskName 'ev2ahv-apply-network' -ErrorAction SilentlyCon
 if (Test-Path C:\ProgramData\ev2ahv\apply-network.log) { Get-Content C:\ProgramData\ev2ahv\apply-network.log | Select-Object -Last 4 }
 if ((& powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\ev2ahv\guest-load.ps1 -Mode check) -match 'FAILED') { exit 3 }
 PS
+rc=$?; [ "$rc" = 3 ] && exit 3; echo "attempt $try failed (rc $rc), retrying" >&2; sleep 20
+done
+exit 1

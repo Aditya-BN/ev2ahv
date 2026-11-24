@@ -352,6 +352,11 @@ class Migration:
                     self.prism.customize_cloud_init(vm_id, base64.b64encode(fh.read()).decode())
             self.mark("created")
         if not self.step_done("powered"):
+            # MAC and IP are kept, so the source must be off before the target starts.
+            if self.source_stopped() is False:
+                raise RuntimeError("source is running. Refusing to power on the AHV VM with the same MAC")
+            if self.source_stopped() is None and not assume_stopped:
+                raise RuntimeError("cannot confirm the source is off. Pass --source-already-stopped")
             self.prism.power(vm_id, "power-on")
             self.mark("powered")
         if not self.step_done("verified"):
@@ -405,6 +410,12 @@ class Migration:
             return {"dry_run": True}
         if vm_id:
             self.prism.power(vm_id, "power-off")
+            # Same MAC and IP: never start the source while the AHV copy may still be on.
+            deadline = time.time() + 300
+            while self.prism.vm(vm_id).get("powerState") != "OFF":
+                if time.time() > deadline:
+                    raise RuntimeError("AHV VM did not power off. The source was NOT started")
+                time.sleep(5)
         started = self._source_power("start")
         status = self._source_power("status")
         deadline = time.time() + 300

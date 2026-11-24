@@ -11,7 +11,8 @@ import winrm
 host = sys.argv[1]
 s = winrm.Session(f"http://{host}:5985/wsman", auth=(os.environ.get("EV2AHV_WIN_USER", "Administrator"),
                   os.environ["EV2AHV_WIN_PASS"]), transport="ntlm", server_cert_validation="ignore",
-                  read_timeout_sec=900, operation_timeout_sec=850)
+                  read_timeout_sec=int(os.environ.get("EV2AHV_WINRM_TIMEOUT", "900")),
+                  operation_timeout_sec=int(os.environ.get("EV2AHV_WINRM_TIMEOUT", "900")) - 30)
 
 
 def ps(script):

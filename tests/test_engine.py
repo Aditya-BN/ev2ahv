@@ -210,6 +210,38 @@ class Safety(unittest.TestCase):
         m._source_power = lambda action: "running"
         self.assertFalse(m.source_stopped())
 
+    def _mig(self, power_state, source_status, steps=()):
+        from ev2ahv.workflow import Migration
+        m = Migration.__new__(Migration)
+        calls = []
+        class FakePrism:
+            def power(self, vm, action): calls.append(action)
+            def vm(self, vm): return {"powerState": power_state}
+        m.prism, m.dry_run = FakePrism(), False
+        m.lock = lambda: None
+        m._source_power = lambda action: calls.append("source-" + action) or source_status
+        kv = {"target_vm": "t"}
+        class FakeState:
+            def get(self, k, d=None): return kv.get(k, d)
+            def set(self, k, v): kv[k] = v
+            def event(self, *a, **k): pass
+        m.state = FakeState()
+        return m, calls
+
+    def test_rollback_never_starts_source_while_target_on(self):
+        import ev2ahv.workflow as wf
+        m, calls = self._mig("ON", "stopped")
+        real_sleep, real_time = wf.time.sleep, wf.time.time
+        clock = [0]
+        wf.time.sleep = lambda s: clock.__setitem__(0, clock[0] + s)
+        wf.time.time = lambda: clock[0]
+        try:
+            with self.assertRaises(RuntimeError):
+                m.rollback()
+        finally:
+            wf.time.sleep, wf.time.time = real_sleep, real_time
+        self.assertNotIn("source-start", calls)
+
     def test_alignment_rounds_up(self):
         self.assertEqual(builder.align(1), 1024 ** 2)
         self.assertEqual(builder.align(1024 ** 2), 1024 ** 2)
