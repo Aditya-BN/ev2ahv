@@ -18,13 +18,24 @@ was changed.
 | Guest VMs | None |
 | ISO already in everRun | `virtio-win-sra-0.1.262_rev_1` |
 
+## Node platform (read-only, 2026-11-24 07:45 WIB)
+
+- Ubuntu 24.04.4, kernel 6.8, Python 3.12.3. The helper's stdlib needs are all present. xxhash is
+  absent, so syncs will use blake2b.
+- Storage is one LVM volume group, `everrun` (298 GiB), on each node, with DRBD 8.4 replicating
+  between nodes. The system volume is `everrun/shared.fs` under `drbd5`, Primary on node0.
+- `virsh -r` works on both nodes and `qemu-img` is present.
+
+**Working hypothesis, to confirm once guests exist:** each guest disk is an LV under its own
+`/dev/drbdN`. The reader should use the DRBD device on the Primary node, not the backing LV, because
+DRBD 8.4 refuses opens on a Secondary and internal metadata may sit at the end of the LV.
+
 ## Still unknown
 
-These need a guest VM and root shell access on a node:
+These need a guest VM:
 
 - Which block device or LV backs each guest disk, and on which node it can be read while running.
-- Whether reading the backing device on the active node gives a consistent view of the mirror.
-- Whether the nodes have `python3`, which the source helper requires.
+- Whether reading the DRBD device on the active node gives a consistent view of the mirror.
 - How firmware, disk bus and NIC MAC appear in `virsh` for HA and FT guests.
 - Whether AHV passes traffic from nested guest MACs. If it does not, guests cannot reach the bastion.
 
