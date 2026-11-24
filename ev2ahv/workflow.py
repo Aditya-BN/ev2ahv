@@ -256,10 +256,10 @@ class Migration:
         gp = self.guest()
         if not self.p.get("guest"):
             raise RuntimeError("plan has no guest section")
+        if gp.mode == "manual":
+            return {"mode": "manual", "bundle": gp.bundle("cleanup")}   # files only, safe at any time
         if not self.step_done("verified"):
             raise RuntimeError("cleanup runs on the migrated VM, after a verified cutover")
-        if gp.mode == "manual":
-            return {"mode": "manual", "bundle": gp.bundle("cleanup")}
         if gp.mode == "none" or self.dry_run:
             return {"mode": gp.mode, "dry_run": self.dry_run}
         facts = gp.run("cleanup", target=True)
