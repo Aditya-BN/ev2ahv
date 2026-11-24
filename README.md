@@ -9,7 +9,7 @@ read, stopped and started. Rollback is powering it back on.
 | Area | State |
 |---|---|
 | Hot-add, clone from attached disk, hot-remove on AHV | Verified on NTNX-DC |
-| Sync engine, resume, zero-skip, corruption repair | Verified, 17 unit tests |
+| Sync engine, resume, zero-skip, corruption repair | Verified, 22 unit tests |
 | LocalReader, DirectBlockReader (ssh + loop device), ExportReader (qcow2) | Verified |
 | End-to-end: live seed, resync, cutover, boot, checksums, rollback | Verified with a fake source |
 | Web console | Verified in Chrome |
@@ -17,7 +17,8 @@ read, stopped and started. Rollback is powering it back on.
 | Prism username/password auth | Built, never used with valid credentials |
 | Linux prep script | Run on Rocky 9 |
 | Windows prep script | Not run or parsed. No PowerShell was available |
-| Real everRun source (Stage B) | Read-only discovery only. No everRun guest migrated yet |
+| Real everRun Rocky 9 FT guest | Migrated, verified and rolled back. See docs/results.md |
+| Real everRun Windows HA guest | Pending, still installing |
 | Raw file to AHV image upload fallback (`target.transfer: image`) | Verified end-to-end, including rollback and a second cutover |
 
 ## Quick start

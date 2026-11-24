@@ -405,6 +405,10 @@ class Migration:
             self.prism.power(vm_id, "power-off")
         started = self._source_power("start")
         status = self._source_power("status")
+        deadline = time.time() + 300
+        while status is not None and self.source_stopped() and time.time() < deadline:
+            time.sleep(5)       # the start command returns before the hypervisor reports the new state
+            status = self._source_power("status")
         self.state.set("cutover_step", None)
         self.state.set("downtime_start", None)
         self.state.set("phase", "rolled-back")

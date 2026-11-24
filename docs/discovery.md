@@ -26,18 +26,28 @@ was changed.
   between nodes. The system volume is `everrun/shared.fs` under `drbd5`, Primary on node0.
 - `virsh -r` works on both nodes and `qemu-img` is present.
 
-**Working hypothesis, to confirm once guests exist:** each guest disk is an LV under its own
-`/dev/drbdN`. The reader should use the DRBD device on the Primary node, not the backing LV, because
-DRBD 8.4 refuses opens on a Secondary and internal metadata may sit at the end of the LV.
+## Guest disks (confirmed on `ev2ahv-src-rocky9`, FT, 2026-11-24)
+
+- **Each guest disk is a raw sparse file**, not a DRBD device: an LV per disk per node, formatted XFS and
+  mounted under `/mnt/everrun/<volume>_nodeN/`, holding one file. My earlier DRBD guess was wrong.
+- **The last 2,048 bytes of the file are everRun metadata** that the guest does not see. A 20 GiB file is
+  21,474,834,432 bytes to the guest. ev2ahv copies only the guest-visible bytes (`size_bytes`).
+- Bytes read from the file on the running node matched the guest's own view at four sampled 4 MiB offsets.
+- For an FT guest, the domain is `running` on one node and `paused` on the other. The running node is the
+  source. `ev2ahv discover` refuses unless exactly one node is running the guest.
+- Both guests use `pc-i440fx-2.6`, BIOS, virtio disks (`directsync` cache) and a virtio NIC with a
+  Stratus MAC (`00:e0:09:...`). AHV accepted that MAC.
+- Nested guest traffic does pass through AHV: the bastion reaches the guest directly.
+
+## Guest changes needed before cutover (Rocky 9)
+
+- `/etc/lvm/devices/system.devices` pinned the PV to `/dev/vda2`, which becomes `/dev/sda2` on AHV SCSI.
+- The NetworkManager profile was bound to `ens3f0`, and the NIC is named `ens3` on AHV.
+- `prep-linux.sh --apply` handles both, reversibly, and both changes also work on everRun.
 
 ## Still unknown
 
-These need a guest VM:
-
-- Which block device or LV backs each guest disk, and on which node it can be read while running.
-- Whether reading the DRBD device on the active node gives a consistent view of the mirror.
-- How firmware, disk bus and NIC MAC appear in `virsh` for HA and FT guests.
-- Whether AHV passes traffic from nested guest MACs. If it does not, guests cannot reach the bastion.
+- The Windows guest's layout, until its install finishes.
 
 If direct block access proves impossible, the plan switches to `ExportReader`.
 
