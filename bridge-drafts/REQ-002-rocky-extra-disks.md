@@ -1,6 +1,6 @@
 # REQ-002: two extra disks on the Rocky test guest
 
-**Status: DRAFT. Not sent. Needs the owner's OK.**
+**Status: approved by the owner on 2026-11-24.**
 
 ## What
 
