@@ -73,7 +73,7 @@ def build_plan(info, target_name, subnet, avcli, writer=None, container="VM_Cont
         "source": {"type": "direct", "host": info["active_host"], "user": "root", "max_mbps": max_mbps,
                    "stop_timeout": 600,
                    "power": {"local": True,
-                             "status": f"{cli} vm-info {vm} | awk '/-> state/{{print $3; exit}}'",
+                             "status": f"{cli} vm-info {vm} | awk '/-> state/{{print $NF; exit}}'",
                              "stop": f"{cli} vm-shutdown {vm}", "start": f"{cli} vm-poweron {vm}"}},
         "disks": [{"name": d["dev"], "path": d["path"], "size_bytes": d["guest_bytes"]} for d in info["disks"]],
         "nics": [{"subnet": subnet, "mac": n["mac"], "keep_mac": True} for n in info["nics"]],

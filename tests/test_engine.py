@@ -199,6 +199,17 @@ class Safety(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 everrun.active_node(bad)
 
+    def test_unreadable_power_state_is_an_error(self):
+        from ev2ahv.workflow import Migration
+        m = Migration.__new__(Migration)
+        m._source_power = lambda action: ":"
+        with self.assertRaises(RuntimeError):
+            m.source_stopped()
+        m._source_power = lambda action: "stopped"
+        self.assertTrue(m.source_stopped())
+        m._source_power = lambda action: "running"
+        self.assertFalse(m.source_stopped())
+
     def test_alignment_rounds_up(self):
         self.assertEqual(builder.align(1), 1024 ** 2)
         self.assertEqual(builder.align(1024 ** 2), 1024 ** 2)

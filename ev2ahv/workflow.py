@@ -275,6 +275,8 @@ class Migration:
         out = self._source_power("status")
         if out is None:
             return None
+        if not re.search(r"[a-z]{3}", out, re.I):
+            raise RuntimeError(f"cannot read the source power state from {out!r}. Check source.power.status")
         return bool(re.search(r"\b(stopped|shut ?off|off)\b", out, re.I))
 
     def stop_source(self, assume_stopped=False):
