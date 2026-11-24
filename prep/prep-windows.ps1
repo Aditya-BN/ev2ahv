@@ -74,8 +74,11 @@ function DriverState($name) {
     if (Test-Path $svc) { $start = (Get-ItemProperty $svc).Start }
     $override = Test-Path "$svc\StartOverride"
     $staged = [bool](Get-ChildItem "$env:SystemRoot\System32\DriverStore\FileRepository" -Directory -Filter "$name.inf_*" -ErrorAction SilentlyContinue)
-    [ordered]@{ name = $name; sys = $sys; start = $start; staged = $staged; start_override = $override
-                boot_ready = ($sys -and $start -eq 0 -and -not $override) }
+    # A storage driver can boot Windows on a new bus only if a present device already uses it.
+    # Boot-start alone is not enough: tested on Server 2022, it ends in the recovery environment.
+    $bound = [bool](Get-CimInstance Win32_PnPEntity -Filter "Service = '$name'" -ErrorAction SilentlyContinue)
+    [ordered]@{ name = $name; sys = $sys; start = $start; staged = $staged; start_override = $override; bound = $bound
+                boot_ready = ($sys -and $start -eq 0 -and -not $override -and $bound) }
 }
 
 function FindInf($name) {
@@ -99,23 +102,8 @@ function InstallDriver($name, [bool]$bootStart) {
         Change "staged $name from $inf"
     }
     if (-not $bootStart) { return }
-    # A boot disk on a bus the VM has never had needs the driver loaded by the boot loader. Staging alone
-    # is not enough when no such device exists yet, so make sure the service exists and is boot-start.
-    $dst = "$env:SystemRoot\System32\drivers\$name.sys"
-    if (-not (Test-Path $dst)) { Copy-Item (Join-Path (Split-Path $inf) "$name.sys") $dst; Change "copied $name.sys" }
     $svc = "HKLM:\SYSTEM\CurrentControlSet\Services\$name"
-    if (-not (Test-Path $svc)) {
-        New-Item $svc -Force | Out-Null
-        New-ItemProperty $svc -Name Type -Value 1 -PropertyType DWord -Force | Out-Null
-        New-ItemProperty $svc -Name ErrorControl -Value 1 -PropertyType DWord -Force | Out-Null
-        New-ItemProperty $svc -Name ImagePath -Value "System32\drivers\$name.sys" -PropertyType ExpandString -Force | Out-Null
-        New-ItemProperty $svc -Name Group -Value 'SCSI miniport' -PropertyType String -Force | Out-Null
-        New-Item "$svc\Parameters\PnpInterface" -Force | Out-Null
-        New-ItemProperty "$svc\Parameters\PnpInterface" -Name 5 -Value 1 -PropertyType DWord -Force | Out-Null
-        New-ItemProperty $svc -Name Start -Value 0 -PropertyType DWord -Force | Out-Null
-        Change "created boot-start service $name"
-    }
-    if ((Get-ItemProperty $svc).Start -ne 0) { Set-ItemProperty $svc -Name Start -Value 0; Change "set $name to boot-start" }
+    if ((Test-Path $svc) -and (Get-ItemProperty $svc).Start -ne 0 -and (DriverState $name).bound) { Set-ItemProperty $svc -Name Start -Value 0; Change "set $name to boot-start" }
     if (Test-Path "$svc\StartOverride") { Remove-Item "$svc\StartOverride" -Recurse -Force; Change "removed $name StartOverride" }
 }
 
@@ -251,7 +239,7 @@ switch ($Mode) {
     'Prep' {
         if ($Facts.on_ahv) { Problem 'refusing: Prep runs on the source, and this is already on AHV'; Emit; exit 2 }
         InstallDriver 'viostor' ($Bus -eq 'pci')
-        InstallDriver 'vioscsi' ($Bus -eq 'scsi')
+        InstallDriver 'vioscsi' ($Bus -eq 'scsi')   # staged now, so Windows installs it by itself when a SCSI controller appears on AHV
         InstallDriver 'netkvm' $false
         if ((SanPolicy) -notmatch 'Online All') { SetSanOnlineAll; Change 'SAN policy set to OnlineAll' }
         $net = CaptureNetwork

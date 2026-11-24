@@ -31,6 +31,12 @@ class Grading(unittest.TestCase):
         self.assertEqual(s["Boot driver viostor for disk_bus pci"], "PASS")
         self.assertEqual(s["Alternate boot driver vioscsi"], "WARN")
 
+    def test_windows_staged_but_unbound_vioscsi_fails_scsi(self):
+        f = json.loads(json.dumps(WIN_OK)); f["drivers"]["vioscsi"] = {"boot_ready": False, "staged": True, "bound": False, "sys": True}
+        item = [i for i in guest.grade("windows", f, "scsi", "bios") if i["name"].startswith("Boot driver")][0]
+        self.assertEqual(item["status"], "FAIL")
+        self.assertIn("disk_bus: pci", item["detail"])
+
     def test_windows_static_ip_without_task_fails(self):
         f = json.loads(json.dumps(WIN_OK)); f["task"] = {"registered": False, "saved_macs": []}
         self.assertEqual(statuses(guest.grade("windows", f, "scsi", "bios"))["Network re-apply"], "FAIL")

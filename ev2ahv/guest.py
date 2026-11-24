@@ -42,9 +42,15 @@ def grade_windows(f, bus, firmware):
     boot = "vioscsi" if bus == "scsi" else "viostor"
     other = "viostor" if bus == "scsi" else "vioscsi"
     d = f.get("drivers") or {}
-    out.append(_item(f"Boot driver {boot} for disk_bus {bus}", PASS if (d.get(boot) or {}).get("boot_ready") else FAIL,
-                     "boot-start" if (d.get(boot) or {}).get("boot_ready") else
-                     "not boot-start: Windows would stop with INACCESSIBLE_BOOT_DEVICE. Run guest-prep with VirtIO drivers"))
+    bd = d.get(boot) or {}
+    if bd.get("boot_ready"):
+        detail = "boot-start and in use by a device"
+    elif bd.get("staged") and not bd.get("bound"):
+        detail = ("staged, but no device uses it yet, so Windows cannot boot from it. Use disk_bus: pci now and "
+                  "convert to SCSI after cutover" if bus == "scsi" else "staged but not in use by any device")
+    else:
+        detail = "missing: Windows would stop with INACCESSIBLE_BOOT_DEVICE. Run guest-prep with VirtIO drivers"
+    out.append(_item(f"Boot driver {boot} for disk_bus {bus}", PASS if bd.get("boot_ready") else FAIL, detail))
     if not (d.get(other) or {}).get("boot_ready"):
         out.append(_item(f"Alternate boot driver {other}", WARN, "not boot-start, so the other disk bus is not an option"))
     net = d.get("netkvm") or {}
