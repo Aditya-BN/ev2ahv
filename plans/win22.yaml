@@ -19,6 +19,7 @@ source:
       > /home/adit@ntnx.hin/.local/share/ev2ahv/ev2ahv-win22-ahv/expected.txt && /home/adit@ntnx.hin/everrun-lab/av.sh
       vm-shutdown ev2ahv-src-win22
     start: /home/adit@ntnx.hin/everrun-lab/av.sh vm-poweron ev2ahv-src-win22
+    timeout: 1200
 disks:
 - name: vda
   path: /mnt/everrun/ev2ahvsrcwin22boot_4cd11fc1-eb54-4ac1-b329-429d329171c0_node1/ev2ahvsrcwin22boot_4cd11fc1-eb54-4ac1-b329-429d329171c0_0ce47f60-dc81-4b92-b8f2-fa3800424691
