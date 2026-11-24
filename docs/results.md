@@ -51,7 +51,7 @@ the adapter with the same MAC, RDP and WinRM up, and 537 of 537 files match.
 | Rocky, **manual** | FAIL "prep.json not found" before, 16 PASS after the operator ran the bundle | Downtime 457 s. 382 of 382 files match. Operator ran the cleanup bundle on AHV | Source back, data intact |
 | Windows, **auto**, `scsi` | 16 PASS at the time (a false pass, fixed below) | **Did not boot**: recovery environment. Nothing lost | AHV VM off first, source booted normally |
 | Windows, **auto**, `pci` | `scsi` now FAILs correctly. `pci`: 16 PASS, 1 WARN | 799 of 799 files match. IP re-applied by MAC. `guest-cleanup` ran, no ghost NICs existed | Source back |
-| Windows, **manual** | see below | prep only (not migrated in manual mode) | |
+| Windows, **manual** | FAIL "prep.json not found" before, 15 PASS + 1 WARN after the operator ran the bundle (the remaining FAIL was the existing AHV copy's name) | Prep and verification only, not migrated in manual mode | |
 
 Recorded downtime for the Windows `pci` run was 1,512 s (25 min). It includes about 4 min of test-manifest
 hashing before shutdown, which a real migration does not have.
