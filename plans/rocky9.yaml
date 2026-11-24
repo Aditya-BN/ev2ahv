@@ -63,3 +63,8 @@ verify:
   - systemctl is-system-running || true
   - systemctl --failed --no-legend | head -5
   - cat /sys/class/dmi/id/sys_vendor
+guest:
+  os: linux
+  prep: auto
+  address: 10.12.136.162
+  user: root

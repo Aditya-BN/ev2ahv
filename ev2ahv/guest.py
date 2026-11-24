@@ -271,11 +271,21 @@ class GuestPrep:
         return facts
 
     def facts_for_check(self):
-        """Live facts when the guest is reachable; otherwise a prep.json copied to the bastion (manual mode)."""
+        """Auto mode runs the read-only check live. Manual mode only reads the prep.json the operator's run
+        wrote, from a copy on the bastion (guest.prep_json_file) or straight from the guest."""
         if self.g.get("prep_json_file"):
             with open(os.path.expanduser(self.g["prep_json_file"]), encoding="utf-8-sig") as fh:
                 return json.load(fh)
-        return self.run("check")
+        if self.mode == "auto":
+            return self.run("check")
+        access = self.access()
+        if self.os == "windows":
+            rc, out, err = access.ps(r"if (Test-Path C:\ev2ahv\prep.json) { Get-Content C:\ev2ahv\prep.json -Raw } else { 'MISSING' }")
+        else:
+            rc, out = 0, access.t.run("cat /root/ev2ahv/prep.json 2>/dev/null || echo MISSING")
+        if out.strip() == "MISSING" or not out.strip():
+            raise RuntimeError("prep.json not found in the guest. Run the manual prep bundle first")
+        return json.loads(out.strip().lstrip("\ufeff"))
 
     def bundle(self, mode):
         """Manual mode: writes the script and step-by-step instructions. Nothing runs on the guest."""

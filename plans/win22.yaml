@@ -39,7 +39,7 @@ target:
   threads: 1
   memory_mib: 6134
   firmware: bios
-  disk_bus: pci
+  disk_bus: scsi
   machine_type: PC
   transfer: hotadd
   staging_dir: /var/tmp/ev2ahv-staging
@@ -53,3 +53,13 @@ verify:
   timeout: 1200
   local_commands:
   - /home/adit@ntnx.hin/ev2ahv/tools/win_check.sh 10.12.136.161
+guest:
+  os: windows
+  prep: auto
+  address: 10.12.136.161
+  user: Administrator
+  password_env: EV2AHV_WIN_PASS
+  password_file: ~/.config/ev2ahv/win.env
+  virtio_iso: ~/ev2ahv-media/fedora/virtio-win.iso
+  virtio_os_folder: 2k22
+  ngt: false
