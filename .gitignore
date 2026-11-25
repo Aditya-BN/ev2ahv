@@ -9,3 +9,5 @@ logs/
 *.qcow2
 *.raw
 credentials.json
+build/
+dist/

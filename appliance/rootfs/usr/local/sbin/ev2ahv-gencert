@@ -1,0 +1,26 @@
+#!/bin/bash
+# Generate the self-signed TLS certificate for the ev2ahv web UI (EC P-256, 825 days).
+# SAN = hostname + localhost + every address currently configured. Marker file
+# tls/.selfsigned tells ev2ahv-config the cert may be regenerated when the IP changes.
+set -euo pipefail
+TLS=/var/lib/ev2ahv/tls
+HN=$(cat /proc/sys/kernel/hostname)
+[ -n "$HN" ] || HN=ev2ahv
+SAN="DNS:${HN},DNS:localhost,IP:127.0.0.1,IP:::1"
+SHORT=${HN%%.*}
+[ "$SHORT" != "$HN" ] && SAN="$SAN,DNS:${SHORT}"
+for ip in $(ip -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1); do SAN="$SAN,IP:$ip"; done
+install -d -m 0750 -o ev2ahv -g ev2ahv "$TLS"
+umask 0137
+T=$(mktemp -d "$TLS/.gen.XXXXXX")
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 825 -sha256 \
+  -keyout "$T/server.key" -out "$T/server.crt" -subj "/CN=${HN}/O=ev2ahv appliance" \
+  -addext "subjectAltName=${SAN}" -addext "basicConstraints=critical,CA:FALSE" \
+  -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=serverAuth" 2>/dev/null
+chown ev2ahv:ev2ahv "$T/server.key" "$T/server.crt"
+chmod 0640 "$T/server.key" "$T/server.crt"
+mv -f "$T/server.key" "$TLS/server.key"
+mv -f "$T/server.crt" "$TLS/server.crt"   # last: ev2ahv-tls.path watches the cert
+rmdir "$T"
+touch "$TLS/.selfsigned"; chown ev2ahv:ev2ahv "$TLS/.selfsigned"
+restorecon -R "$TLS" 2>/dev/null || true

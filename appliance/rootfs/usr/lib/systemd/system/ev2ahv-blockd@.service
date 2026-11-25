@@ -1,0 +1,16 @@
+[Unit]
+Description=ev2ahv root block helper (per connection)
+After=ev2ahv-boot.service
+Requires=ev2ahv-boot.service
+
+[Service]
+User=root
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+ExecStart=/opt/ev2ahv/venv/bin/python -I /opt/ev2ahv/app/ev2ahv/blockd.py serve
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/run/ev2ahv-boot /sys

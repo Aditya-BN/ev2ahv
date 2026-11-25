@@ -1,0 +1,36 @@
+[Unit]
+Description=ev2ahv migration web app (API on unix socket, behind nginx)
+After=network.target ev2ahv-boot.service ev2ahv-firstboot.service
+Wants=ev2ahv-boot.service
+
+[Service]
+Type=simple
+User=ev2ahv
+Group=ev2ahv
+EnvironmentFile=/etc/ev2ahv/ev2ahv.env
+WorkingDirectory=/opt/ev2ahv/app/server
+ExecStart=/opt/ev2ahv/venv/bin/python -m ev2ahv_server --uds /run/ev2ahv/app.sock
+RuntimeDirectory=ev2ahv
+RuntimeDirectoryMode=0750
+UMask=0007
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/ev2ahv /var/log/ev2ahv
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# The app lists disks (lsblk / udevadm / /dev/disk/by-id), so it keeps the real /dev.
+PrivateDevices=no
+
+[Install]
+WantedBy=multi-user.target

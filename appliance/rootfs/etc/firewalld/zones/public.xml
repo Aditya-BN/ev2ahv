@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<zone>
+  <short>Public</short>
+  <description>ev2ahv appliance: only SSH and HTTPS are reachable.</description>
+  <service name="ssh"/>
+  <service name="https"/>
+</zone>

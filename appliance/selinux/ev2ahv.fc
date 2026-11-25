@@ -1,0 +1,3 @@
+/opt/ev2ahv/app/web/dist(/.*)?		system_u:object_r:httpd_sys_content_t:s0
+/var/lib/ev2ahv/tls(/.*)?		system_u:object_r:cert_t:s0
+/run/ev2ahv(/.*)?			system_u:object_r:httpd_var_run_t:s0

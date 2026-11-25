@@ -1,0 +1,17 @@
+[Unit]
+Description=ev2ahv record boot disks and VM identity
+DefaultDependencies=no
+Before=ev2ahv.service ev2ahv-blockd.socket
+After=local-fs.target systemd-tmpfiles-setup.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=root
+RuntimeDirectory=ev2ahv-boot
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+ExecStart=/opt/ev2ahv/venv/bin/python -I /opt/ev2ahv/app/ev2ahv/blockd.py baseline
+
+[Install]
+WantedBy=multi-user.target

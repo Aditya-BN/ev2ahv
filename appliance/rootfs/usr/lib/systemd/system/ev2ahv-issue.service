@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh /etc/issue.d with the ev2ahv URL
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ev2ahv-config --write-issue
+
+[Install]
+WantedBy=multi-user.target

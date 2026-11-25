@@ -1,0 +1,6 @@
+[Unit]
+Description=Reload nginx after the ev2ahv TLS certificate changed
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'nginx -t && systemctl try-reload-or-restart nginx.service'

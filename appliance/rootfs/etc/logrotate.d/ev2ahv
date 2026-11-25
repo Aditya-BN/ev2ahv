@@ -1,0 +1,9 @@
+/var/log/ev2ahv/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

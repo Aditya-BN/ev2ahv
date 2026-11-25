@@ -1,0 +1,10 @@
+module ev2ahv 1.0;
+
+require {
+	type httpd_t;
+	type unconfined_service_t;
+	class unix_stream_socket connectto;
+}
+
+# nginx (httpd_t) proxies /api/ to the app, which runs as unconfined_service_t.
+allow httpd_t unconfined_service_t:unix_stream_socket connectto;

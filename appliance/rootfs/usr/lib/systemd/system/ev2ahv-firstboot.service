@@ -1,0 +1,13 @@
+[Unit]
+Description=ev2ahv first boot: unique SSH host keys, TLS certificate and instance key
+ConditionPathExists=!/etc/ev2ahv/.initialized
+After=local-fs.target NetworkManager.service systemd-hostnamed.service
+Before=nginx.service ev2ahv.service sshd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/ev2ahv-firstboot
+
+[Install]
+WantedBy=multi-user.target

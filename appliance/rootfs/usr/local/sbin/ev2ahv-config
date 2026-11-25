@@ -1,0 +1,343 @@
+#!/usr/bin/python3
+"""ev2ahv appliance console menu (python3 stdlib only).
+
+  ev2ahv-config --console      menu on tty1 (root, restricted to the actions below)
+  ev2ahv-config --write-issue  refresh /etc/issue.d/50-ev2ahv.issue with the URL and exit
+  ev2ahv-config --status       print status and exit
+"""
+import ipaddress
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+
+DATA = "/var/lib/ev2ahv"
+TLS = DATA + "/tls"
+ISSUE = "/etc/issue.d/50-ev2ahv.issue"
+PRIMARY_CON = "ev2ahv-primary"
+SSH_AUTH = "/etc/ssh/sshd_config.d/00-ev2ahv-auth.conf"
+CHRONY = "/etc/chrony.conf"
+MARK_B, MARK_E = "# ev2ahv-managed begin", "# ev2ahv-managed end"
+
+
+def run(cmd, check=False, timeout=60):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except Exception as e:  # missing binary, timeout
+        return 127, "", str(e)
+    if check and p.returncode:
+        raise RuntimeError((p.stderr or p.stdout).strip() or "%s failed" % cmd[0])
+    return p.returncode, p.stdout, p.stderr
+
+
+def version():
+    for p in ("/opt/ev2ahv/app/VERSION",):
+        try:
+            return open(p).read().strip()
+        except OSError:
+            pass
+    return "unknown"
+
+
+def primary_nic():
+    rc, out, _ = run(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device"])
+    nics = [l.split(":") for l in out.splitlines() if l.count(":") >= 2]
+    eth = [n for n in nics if n[1] == "ethernet"]
+    for n in eth:
+        if n[2].startswith("connected"):
+            return n[0]
+    return eth[0][0] if eth else None
+
+
+def addresses():
+    """[(dev, ip)] global IPv4 addresses."""
+    rc, out, _ = run(["ip", "-4", "-o", "addr", "show", "scope", "global"])
+    res = []
+    for l in out.splitlines():
+        f = l.split()
+        if len(f) >= 4:
+            res.append((f[1], f[3].split("/")[0]))
+    return res
+
+
+def primary_ip():
+    a = addresses()
+    return a[0][1] if a else None
+
+
+def url():
+    ip = primary_ip()
+    return "https://%s/" % ip if ip else None
+
+
+def write_issue():
+    u = url()
+    os.makedirs(os.path.dirname(ISSUE), exist_ok=True)
+    with open(ISSUE, "w") as f:
+        f.write("ev2ahv web UI: %s\n\n" % (u if u else "(no IP address yet - use the console menu on tty1)"))
+
+
+def tls_fingerprint():
+    rc, out, err = run(["openssl", "x509", "-in", TLS + "/server.crt", "-noout", "-fingerprint", "-sha256",
+                        "-subject", "-enddate"])
+    return out.strip() if rc == 0 else "no certificate: " + err.strip()
+
+
+def regen_cert_if_selfsigned():
+    if os.path.exists(TLS + "/.selfsigned"):
+        rc, out, err = run(["/usr/local/sbin/ev2ahv-gencert"], timeout=60)
+        return rc == 0
+    return False
+
+
+def ask(prompt, default=None):
+    s = input("%s%s: " % (prompt, " [%s]" % default if default else "")).strip()
+    return s or (default or "")
+
+
+def pause():
+    try:
+        input("\nPress Enter to continue...")
+    except EOFError:
+        pass
+
+
+def show_status():
+    print("ev2ahv %s" % version())
+    print("Hostname : %s" % socket.getfqdn())
+    nic = primary_nic()
+    print("Primary NIC: %s" % (nic or "none"))
+    for dev, ip in addresses():
+        print("Address  : %s (%s)" % (ip, dev))
+    rc, out, _ = run(["nmcli", "-g", "IP4.GATEWAY,IP4.DNS", "device", "show", nic or "lo"])
+    if out.strip():
+        print("Gateway/DNS: %s" % " ".join(x for x in out.split() if x))
+    u = url()
+    print("Web UI   : %s" % (u or "(no address)"))
+    rc, out, _ = run(["systemctl", "is-active", "ev2ahv", "nginx", "chronyd", "sshd", "firewalld"])
+    print("Services : ev2ahv/nginx/chronyd/sshd/firewalld = %s" % "/".join(out.split()))
+
+
+def after_network():
+    regen_cert_if_selfsigned()
+    write_issue()
+    u = url()
+    if u:
+        print("\nOpen %s" % u)
+    else:
+        print("\nNo IPv4 address yet; check cabling or DHCP.")
+
+
+def _ipv4(s, what):
+    try:
+        return ipaddress.IPv4Address(s)
+    except ValueError:
+        raise ValueError("%s: not an IPv4 address: %r" % (what, s))
+
+
+def set_network():
+    nic = primary_nic()
+    if not nic:
+        print("No ethernet interface found.")
+        return
+    print("Interface: %s" % nic)
+    mode = ask("Mode: (d)hcp or (s)tatic", "d").lower()[:1]
+    try:
+        if mode == "s":
+            ipp = ask("IPv4 address/prefix (e.g. 10.1.2.3/24)")
+            iface = ipaddress.IPv4Interface(ipp)
+            if "/" not in ipp:
+                raise ValueError("prefix length required, e.g. 10.1.2.3/24")
+            gw = ask("Gateway")
+            _ipv4(gw, "gateway")
+            dns = ask("DNS servers (comma or space separated)", "")
+            dnsl = [d for d in re.split(r"[,\s]+", dns) if d]
+            for d in dnsl:
+                _ipv4(d, "dns")
+            args = ["ipv4.method", "manual", "ipv4.addresses", str(iface), "ipv4.gateway", gw,
+                    "ipv4.dns", " ".join(dnsl), "ipv4.ignore-auto-dns", "yes" if dnsl else "no"]
+        elif mode == "d":
+            args = ["ipv4.method", "auto", "ipv4.addresses", "", "ipv4.gateway", "", "ipv4.dns", "",
+                    "ipv4.ignore-auto-dns", "no"]
+        else:
+            print("Cancelled.")
+            return
+        # replace every ethernet profile with the single managed one
+        rc, out, _ = run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"])
+        for l in out.splitlines():
+            name, _, typ = l.rpartition(":")
+            if typ == "802-3-ethernet" and name != PRIMARY_CON:
+                run(["nmcli", "connection", "delete", name])
+        rc, out, _ = run(["nmcli", "-t", "-f", "NAME", "connection", "show"])
+        if PRIMARY_CON not in out.split():
+            run(["nmcli", "connection", "add", "type", "ethernet", "ifname", nic, "con-name", PRIMARY_CON,
+                 "connection.autoconnect", "yes"], check=True)
+        run(["nmcli", "connection", "modify", PRIMARY_CON, "connection.interface-name", nic] + args, check=True)
+        print("Applying...")
+        run(["nmcli", "connection", "up", PRIMARY_CON], check=True, timeout=90)
+        run(["nm-online", "-q", "-t", "20"])
+    except (ValueError, RuntimeError) as e:
+        print("Error: %s" % e)
+        return
+    after_network()
+
+
+def set_hostname():
+    cur = socket.gethostname()
+    h = ask("Hostname", cur)
+    if not re.fullmatch(r"[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", h or ""):
+        print("Invalid hostname.")
+        return
+    rc, _, err = run(["hostnamectl", "set-hostname", h])
+    if rc:
+        print("Error: %s" % err.strip())
+        return
+    after_network()
+    print("Hostname set to %s" % h)
+
+
+def set_ntp():
+    try:
+        txt = open(CHRONY).read()
+    except OSError as e:
+        print("Cannot read %s: %s" % (CHRONY, e))
+        return
+    cur = re.findall(r"^(?:server|pool)\s+(\S+)", txt, re.M)
+    print("Current NTP sources: %s" % (", ".join(cur) or "none"))
+    s = ask("NTP servers (comma or space separated, empty = cancel)", "")
+    srv = [x for x in re.split(r"[,\s]+", s) if x]
+    if not srv:
+        return
+    if not all(re.fullmatch(r"[A-Za-z0-9.:-]+", x) for x in srv):
+        print("Invalid server name.")
+        return
+    out = []
+    skip = False
+    for l in txt.splitlines():
+        if l.strip() == MARK_B:
+            skip = True
+            continue
+        if l.strip() == MARK_E:
+            skip = False
+            continue
+        if skip:
+            continue
+        if re.match(r"^(server|pool)\s", l):
+            l = "#" + l
+        out.append(l)
+    out += [MARK_B] + ["server %s iburst" % x for x in srv] + [MARK_E]
+    with open(CHRONY, "w") as f:
+        f.write("\n".join(out) + "\n")
+    rc, _, err = run(["systemctl", "restart", "chronyd"])
+    print("chronyd restarted with: %s" % ", ".join(srv) if rc == 0 else "chronyd restart failed: " + err.strip())
+
+
+def toggle_ssh_password():
+    try:
+        cur = "yes" in open(SSH_AUTH).read().split("PasswordAuthentication")[1].split()[0]
+    except (OSError, IndexError):
+        cur = True
+    new = "no" if cur else "yes"
+    if new == "no":
+        print("WARNING: with password login disabled only SSH keys work. Make sure admin has an")
+        print("authorized key in ~admin/.ssh/authorized_keys first, or you lock yourself out of SSH.")
+    if ask("SSH password authentication is %s. Set to %s? (y/N)" % ("enabled" if cur else "disabled", new)).lower() != "y":
+        return
+    with open(SSH_AUTH, "w") as f:
+        f.write("# Managed by ev2ahv-config (console menu: toggle SSH password authentication)\n"
+                "PasswordAuthentication %s\n" % new)
+    rc, out, err = run(["sshd", "-t"])
+    if rc:
+        print("sshd config invalid: %s" % err.strip())
+        return
+    run(["systemctl", "reload", "sshd"])
+    print("PasswordAuthentication %s" % new)
+
+
+def reset_ui_password():
+    if ask("Reset the web UI admin password to the default (forced change at next login)? (y/N)").lower() != "y":
+        return
+    p = DATA + "/ui.reset"
+    with open(p, "w") as f:
+        f.write("reset\n")
+    try:
+        shutil.chown(p, "ev2ahv", "ev2ahv")
+        os.chmod(p, 0o640)
+    except (OSError, LookupError):
+        pass
+    print("Done. The app applies the reset at its next check; log in as nutanix / nutanix/4u.")
+
+
+def show_cert():
+    print(tls_fingerprint())
+
+
+def regen_cert():
+    if not os.path.exists(TLS + "/.selfsigned"):
+        print("The certificate was uploaded by an administrator; it is not replaced.")
+        return
+    if ask("Regenerate the self-signed certificate for the current hostname/IPs? (y/N)").lower() == "y":
+        print("OK" if regen_cert_if_selfsigned() else "Failed")
+
+
+def login_shell():
+    os.execv("/bin/login", ["/bin/login"])
+
+
+MENU = [
+    ("Show status / URL", show_status),
+    ("Network: DHCP or static IPv4", set_network),
+    ("Hostname", set_hostname),
+    ("NTP servers", set_ntp),
+    ("Toggle SSH password authentication", toggle_ssh_password),
+    ("Reset web UI admin password to default", reset_ui_password),
+    ("Show TLS certificate fingerprint", show_cert),
+    ("Regenerate self-signed TLS certificate", regen_cert),
+    ("Login shell", login_shell),
+]
+
+
+def console():
+    os.environ.setdefault("TERM", "linux")
+    while True:
+        print("\033c", end="")
+        print("=== ev2ahv appliance %s ===" % version())
+        u = url()
+        print("Web UI: %s\n" % (u or "no IP address - choose 2 to configure the network"))
+        for i, (t, _) in enumerate(MENU, 1):
+            print("  %d) %s" % (i, t))
+        try:
+            c = input("\nSelect: ").strip()
+        except EOFError:
+            return
+        if not c.isdigit() or not 1 <= int(c) <= len(MENU):
+            continue
+        print()
+        try:
+            MENU[int(c) - 1][1]()
+        except (KeyboardInterrupt, EOFError):
+            print()
+        except Exception as e:  # keep the console alive
+            print("Error: %s" % e)
+        if MENU[int(c) - 1][1] is not login_shell:
+            pause()
+
+
+def main():
+    a = sys.argv[1:]
+    if a == ["--write-issue"]:
+        write_issue()
+    elif a == ["--status"]:
+        show_status()
+    elif a == ["--console"] or not a:
+        if os.geteuid() != 0:
+            sys.exit("must run as root")
+        console()
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

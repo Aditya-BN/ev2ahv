@@ -1,0 +1,14 @@
+#!/bin/bash
+# Runs once per instance (ConditionPathExists=!/etc/ev2ahv/.initialized).
+set -euo pipefail
+# Give DHCP a short chance so the certificate SAN carries the real address.
+nm-online -s -q -t 20 || true
+rm -f /etc/ssh/ssh_host_*
+ssh-keygen -A
+install -d -m 0750 -o root -g ev2ahv /etc/ev2ahv
+install -d -m 0750 -o ev2ahv -g ev2ahv /var/lib/ev2ahv /var/log/ev2ahv
+( umask 0137; head -c 32 /dev/urandom | base64 > /etc/ev2ahv/instance.key )
+chown root:ev2ahv /etc/ev2ahv/instance.key; chmod 0640 /etc/ev2ahv/instance.key
+/usr/local/sbin/ev2ahv-gencert
+restorecon -R /etc/ssh /etc/ev2ahv /var/lib/ev2ahv /var/log/ev2ahv 2>/dev/null || true
+touch /etc/ev2ahv/.initialized

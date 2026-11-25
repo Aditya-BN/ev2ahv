@@ -1,0 +1,12 @@
+[Unit]
+Description=ev2ahv root block helper socket
+
+[Socket]
+ListenStream=/run/ev2ahv-blockd.sock
+SocketMode=0660
+SocketUser=root
+SocketGroup=ev2ahv
+Accept=yes
+
+[Install]
+WantedBy=sockets.target

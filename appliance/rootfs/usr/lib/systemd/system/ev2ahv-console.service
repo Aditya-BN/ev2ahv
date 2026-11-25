@@ -1,0 +1,25 @@
+[Unit]
+Description=ev2ahv console configuration menu (tty1)
+After=systemd-user-sessions.service NetworkManager.service ev2ahv-firstboot.service
+Conflicts=getty@tty1.service
+Before=getty.target
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/local/sbin/ev2ahv-config --write-issue
+ExecStart=/usr/local/sbin/ev2ahv-config --console
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+KillMode=process
+Restart=always
+RestartSec=0
+IgnoreSIGPIPE=no
+SendSIGHUP=yes
+
+[Install]
+WantedBy=getty.target
