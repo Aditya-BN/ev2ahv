@@ -36,13 +36,41 @@ read, stopped and started. Rollback is powering it back on.
 
 Plan steps accept `--dry-run`. Run the tests with `python3 -m unittest discover -s tests`.
 
-## Web console
+## Using the UI
 
-    python3 -m ev2ahv ui                             # http://127.0.0.1:8460
-    ssh -L 8460:127.0.0.1:8460 <bastion>             # from your workstation
+A Move-style web UI (environments, migration plans, a 6-step plan wizard, progress, cutover and
+rollback) on HTTPS port 8443, backed by a REST API at `/api/v2` (docs at `/api/v2/docs`).
 
-Sign in with the default `nutanix` account, then change the password under Settings. The console
-binds to localhost and serves plain HTTP, so reach it through the ssh tunnel.
+    cd ~/ev2ahv/web && npm ci && npm run build        # once, or after UI changes
+    cd ~/ev2ahv/server
+    ../.venv/bin/python -m ev2ahv_server --live       # real engine, https://<host>:8443
+    ../.venv/bin/python -m ev2ahv_server --mock       # demo data, no lab systems touched
+
+As a service: `cp deploy/ev2ahv.service ~/.config/systemd/user/ && systemctl --user enable --now ev2ahv`.
+The certificate is self-signed (`~/.config/ev2ahv/tls/`); replace `server.crt`/`server.key` with your own.
+Sign in as `nutanix` (same account file as the old console), then change the password from the user menu.
+
+1. **Add environments.** Source: *Stratus everRun* (system IP, admin user and password, node IPs; disks
+   are read over ssh as root with `~/.config/ev2ahv/id_ed25519`), or *Plan files* (a directory of CLI
+   plan YAMLs). Target: *Nutanix AOS* (Prism Central with an API key or user/password).
+2. **Create a migration plan**: source and target, VMs, network mapping, VM preparation (automatic over
+   WinRM/SSH, or manual with a downloadable script), per-VM settings (target name, guest IP for
+   automatic prep, disk bus, PCI to SCSI conversion), then *Save and Start* or schedule it.
+3. The server runs guest prep, prep-check and the seed, then resyncs every *resync interval* while the
+   VM waits in **Ready to Cutover**. Prep-check results show on each VM; a FAIL blocks cutover unless you
+   choose *Cutover anyway*.
+4. **Cutover** stops the source, runs the final verified sync, creates and starts the AHV VM and checks it.
+   **Rollback** powers the AHV VM off and the source back on; a later cutover discards the old copy first.
+
+Each VM's engine log is under *View Log* and in `~/.local/share/ev2ahv/ui/<plan id>/`. Passwords are
+write-only in the API, stored apart from plans in the server database (`~/.local/share/ev2ahv/server.db`,
+mode 0600) and handed to the engine through a 0600 file or environment variables. Test migration (an
+isolated test VM) appears in mock mode only; the engine does not do it yet. The CLI keeps working and
+uses the same engine; the UI's engine plans are ordinary plan files you can also run with the CLI.
+
+Lab guard: live mode only migrates `ev2ahv-*` VMs unless `EV2AHV_ALLOW_ANY_SOURCE=1` is set.
+
+The older stdlib console (`python3 -m ev2ahv ui`, http://127.0.0.1:8460) still works but is superseded.
 
 ## Prism credentials
 
