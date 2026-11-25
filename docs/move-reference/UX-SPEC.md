@@ -140,10 +140,16 @@ Step 3 - Network and Policy (Edit wizard [74]):
 - `Security Policies (Optional)`: text "Nutanix Move supports migrating VM security policies from the NSX environment..." plus "No NSX environment found for the selected source." and "No FNS environment found for the selected target."
 - Buttons: Back, Cancel, **Save and Continue** (save-equivalent; not pressed).
 
-Steps 4-6 (not reached; from the wizard header only):
-- 4 VM Preparation: guest preparation step (not observed in UI).
-- 5 VM Settings: per-VM settings (not observed).
-- 6 Summary: review and final create/save (not observed).
+Steps 4-6: NOT OBSERVED. Creating a throwaway plan on the appliance to reach them was blocked by the
+session's permission policy, so these are reconstructed from the owner's Stage C brief and public Nutanix
+material (Move blog and community write-ups). Verify against a live Move before calling them exact.
+- 4 VM Preparation (reconstructed): Preparation mode `Automatic` / `Manual` (manual offers a script
+  download per OS); guest credentials per OS (Windows user/password, Linux user/password or key);
+  `Retain IP` (static IP), `Retain MAC`, `Uninstall source guest tools` (for ev2ahv: the Stratus agent),
+  `Install Nutanix Guest Tools`, `Bypass guest operations`. Move 6.3 notes add WINS and IPv6 retention.
+- 5 VM Settings (reconstructed): per-VM table with overrides (target name, vCPU, memory, timezone) and a
+  `Schedule data seeding` option (date/time + timezone); defaults kept in the Move 6.1 walkthrough.
+- 6 Summary (reconstructed): read-only review of steps 1-5, buttons `Back`, `Save`, `Save and Start`.
 
 Validation messages observed: `Next` disabled until the required field is set (step 1).
 
