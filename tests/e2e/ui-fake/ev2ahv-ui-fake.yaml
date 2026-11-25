@@ -1,0 +1,38 @@
+# C4.2 fake source for the web UI: register tests/e2e/ui-fake as a "Plan files" environment.
+name: ev2ahv-ui-fake
+writer:
+  vm: ev2ahv-writer
+  host: 10.12.136.211
+  user: nutanix
+source:
+  type: direct
+  host: 10.12.136.211
+  user: nutanix
+  max_mbps: 0
+  power:
+    status: /var/tmp/ev2ahv-uifake-power.sh status
+    stop: /var/tmp/ev2ahv-uifake-power.sh stop
+    start: /var/tmp/ev2ahv-uifake-power.sh start
+disks:
+- name: disk0
+  path: /var/tmp/ev2ahv-uifake/disk.raw
+  size_bytes: 2147483648
+nics:
+- subnet: VLAN136
+  mac: 50:6b:8d:ee:c4:02
+  keep_mac: true
+target:
+  vm_name: ev2ahv-ui-fake
+  cluster: NTNX-DC
+  container: VM_Container
+  sockets: 1
+  cores: 1
+  threads: 1
+  memory_mib: 1024
+  firmware: bios
+  disk_bus: scsi
+sync:
+  chunk_mib: 4
+  algo: auto
+  batch: 32
+verify: {}

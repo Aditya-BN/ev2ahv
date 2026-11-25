@@ -41,13 +41,18 @@ def _parse_env(path):
 
 
 def load():
+    """Environment variables win (the web server passes each environment's own credentials this way),
+    then the saved file, then the existing ~/nutanix/.env."""
+    env = os.environ
+    if env.get("NTNX_PC") and env.get("NTNX_API_KEY"):
+        return Credentials(env["NTNX_PC"], api_key=env["NTNX_API_KEY"], source="env")
+    if env.get("NTNX_PC") and env.get("NTNX_USERNAME") and env.get("NTNX_PASSWORD"):
+        return Credentials(env["NTNX_PC"], username=env["NTNX_USERNAME"], password=env["NTNX_PASSWORD"], source="env")
     if os.path.exists(CRED_FILE):
         with open(CRED_FILE) as fh:
             d = json.load(fh)
         return Credentials(d["host"], d.get("port", 9440), d.get("api_key"), d.get("username"),
                            d.get("password"), d.get("verify_tls", False), "ev2ahv")
-    if os.environ.get("NTNX_PC") and os.environ.get("NTNX_API_KEY"):
-        return Credentials(os.environ["NTNX_PC"], api_key=os.environ["NTNX_API_KEY"], source="env")
     if os.path.exists(FALLBACK_ENV):
         e = _parse_env(FALLBACK_ENV)
         if e.get("PC_HOST") and e.get("PC_API_KEY"):

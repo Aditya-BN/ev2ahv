@@ -1,7 +1,8 @@
 """Persistent state for the server: JSON documents in SQLite, so jobs and plans survive restarts."""
 import json, os, sqlite3, threading, time, uuid
 
-DB = os.path.expanduser(os.environ.get("EV2AHV_SERVER_DB", "~/.local/share/ev2ahv/server.db"))
+_default = "server-mock.db" if os.environ.get("EV2AHV_SERVER_MODE", "mock") == "mock" else "server.db"
+DB = os.path.expanduser(os.environ.get("EV2AHV_SERVER_DB", "~/.local/share/ev2ahv/" + _default))
 _lock = threading.RLock()
 
 

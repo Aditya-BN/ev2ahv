@@ -6,10 +6,10 @@ Secrets are write-only: request models accept them, response models never contai
 from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
-ProviderType = Literal["everrun", "aos"]
+ProviderType = Literal["everrun", "aos", "plans"]  # plans: a directory of engine plan YAML files (CLI plans, test rigs)
 PlanStatus = Literal["Not Started", "In Progress", "Paused", "Completed", "Failed", "Cancelled", "Scheduled"]
 VmStatus = Literal["Queued", "Preparing", "Seeding", "Ready to Cutover", "Scheduled for Cutover", "Cutover in Progress",
-                   "Testing", "Tested", "Completed", "Failed", "Paused", "Cancelled"]
+                   "Testing", "Tested", "Rolling Back", "Completed", "Failed", "Paused", "Cancelled"]
 PlanAction = Literal["start", "pause", "resume", "cutover", "test", "cancel", "retry", "discard", "complete", "rollback"]
 CheckStatus = Literal["PASS", "WARN", "FAIL"]
 
@@ -113,6 +113,7 @@ class VmSettings(BaseModel):
     convert_to_scsi: bool = True
     firmware: Optional[Literal["bios", "uefi"]] = None
     timezone: Optional[str] = None
+    guest_address: Optional[str] = Field(None, description="IP the server uses to reach the guest for automatic prep")
 
 
 class Schedule(BaseModel):
@@ -167,6 +168,8 @@ class PlanVm(BaseModel):
     test_vm_id: Optional[str] = None
     checks: List[Check] = Field(default_factory=list)
     error: Optional[str] = None
+    phase: Optional[str] = Field(None, description="engine step running now, e.g. guest-prep, seed, resync, cutover")
+    sync_progress: Optional[float] = Field(None, description="percent of the running sync pass (resync, cutover)")
     actions: List[PlanAction] = Field(default_factory=list)
 
 

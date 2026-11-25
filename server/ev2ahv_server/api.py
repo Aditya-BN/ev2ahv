@@ -97,13 +97,17 @@ def providers(who=Depends(user)):
 
 
 def _probe(body: m.ProviderIn):
-    """Mock validation: real probes arrive with live mode."""
     if not body.address:
         raise HTTPException(400, "Address is required")
-    if not (body.password or body.api_key):
+    if not (body.password or body.api_key) and body.type != "plans":
         raise HTTPException(400, "Password or API key is required")
     if body.type == "everrun" and not body.node_addresses:
         raise HTTPException(400, "everRun needs at least one node address for disk access")
+    if MODE == "live":
+        try:
+            return dict(ok=True, **live.probe(body))
+        except live.LiveError as e:
+            raise HTTPException(400, str(e))
     return {"ok": True, "version": "8.1.1" if body.type == "everrun" else "pc.2025.1"}
 
 
@@ -118,8 +122,8 @@ def add_provider(body: m.ProviderIn, who=Depends(user)):
     if any(p["name"] == body.name for p in store.all("provider")):
         raise HTTPException(409, f"An environment named {body.name} already exists")
     pid = store.new_id()
-    doc = _new_provider(pid, body, info["version"])
     _save_secrets(pid, body)
+    doc = _new_provider(pid, body, info["version"])
     store.put("provider", doc)
     store.event("info", f"{who} added environment {body.name}")
     bump()
@@ -127,7 +131,7 @@ def add_provider(body: m.ProviderIn, who=Depends(user)):
 
 
 def _new_provider(pid, body, version):
-    role = "source" if body.type == "everrun" else "target"
+    role = "target" if body.type == "aos" else "source"
     doc = {"id": pid, "name": body.name, "type": body.type, "role": role, "address": body.address,
            "username": body.username, "auth": "api_key" if body.api_key else "password", "status": "Connected",
            "version": version, "node_addresses": body.node_addresses, "last_refreshed": time.time(),
@@ -135,7 +139,16 @@ def _new_provider(pid, body, version):
     if MODE == "mock":
         from . import mock
         mock.fill_provider(doc)
+    else:
+        _live_refresh(doc)
     return doc
+
+
+def _live_refresh(doc):
+    try:
+        live.refresh(doc, store.secret)
+    except Exception as e:
+        doc["status"], doc["error"] = "Error", str(e)
 
 
 def _save_secrets(pid, body):
@@ -190,6 +203,8 @@ def refresh_provider(pid: str, who=Depends(user)):
     p = _provider(pid)
     p["last_refreshed"] = time.time()
     p["status"] = "Connected"
+    if MODE == "live":
+        _live_refresh(p)
     store.put("provider", p)
     store.event("info", f"Refreshed inventory of {p['name']}")
     bump()
@@ -201,7 +216,7 @@ def workloads(pid: str, who=Depends(user)):
     p = _provider(pid)
     if p["role"] != "source":
         raise HTTPException(400, "Workloads are listed for source environments only")
-    w = [m.Workload(**x) for x in p.get("workloads", [])]
+    w = [m.Workload(**{k: v for k, v in x.items() if not k.startswith("_")}) for x in p.get("workloads", [])]
     return {"entities": w, "total": len(w)}
 
 
@@ -217,10 +232,15 @@ VM_ACTIONS = {
     "Testing": [],
     "Tested": ["cutover", "test", "discard", "cancel"],
     "Cutover in Progress": [],
+    "Rolling Back": [],
     "Completed": ["rollback"],
     "Failed": ["retry", "cancel"],
     "Cancelled": [],
 }
+
+
+# Test migration needs an isolated-subnet clone, which the engine does not do yet.
+LIVE_UNSUPPORTED = {"test", "discard"} if MODE == "live" else set()
 
 
 def finish(plan):
@@ -229,8 +249,8 @@ def finish(plan):
     c = {"total": len(vms), "in_progress": 0, "ready_to_cutover": 0, "failed": 0, "paused": 0, "completed": 0}
     for v in vms:
         s = v["status"]
-        v["actions"] = list(VM_ACTIONS.get(s, [])) if plan.get("started_at") else []
-        if s in ("Preparing", "Seeding", "Cutover in Progress", "Testing") or (s == "Queued" and plan.get("started_at")):
+        v["actions"] = [a for a in VM_ACTIONS.get(s, []) if a not in LIVE_UNSUPPORTED] if plan.get("started_at") else []
+        if s in ("Preparing", "Seeding", "Cutover in Progress", "Testing", "Rolling Back") or (s == "Queued" and plan.get("started_at")):
             c["in_progress"] += 1
         elif s in ("Ready to Cutover", "Tested", "Scheduled for Cutover"):
             c["ready_to_cutover"] += 1
@@ -322,7 +342,8 @@ def _build(body: m.PlanIn, pid, who, created=None):
 
 
 def checks(w, body: m.PlanIn):
-    """Prep-check shape (PASS/WARN/FAIL). Live mode replaces this with Migration.prep_check()."""
+    """Mock prep-check (PASS/WARN/FAIL). In live mode the engine's prep-check replaces these when the VM is
+    prepared, or on POST /plans/{id}/precheck."""
     vs = body.vm_settings.get(w["id"], m.VmSettings())
     out = [m.Check(name="Source reachable", status="PASS", detail=w.get("active_node", "")).model_dump()]
     if body.prep.bypass_guest_ops:
@@ -439,10 +460,15 @@ def plan_action(pid: str, body: m.ActionIn, who=Depends(user)):
                 raise HTTPException(409, {"message": "Prep-check failed. Fix it, or cut over with force.",
                                           "failing": failing})
         nxt = {"pause": "Paused", "cancel": "Cancelled", "cutover": "Cutover in Progress", "test": "Testing",
-               "retry": "Preparing", "rollback": "Ready to Cutover"}
+               "retry": "Preparing", "rollback": "Rolling Back"}
         for v in targets:
             a = body.action
-            if a == "resume":
+            if MODE == "live" and a in ("pause", "cancel"):
+                worker.stop(doc["id"], v["id"])
+            if a == "retry":
+                v["status"] = v.pop("fail_from", None) or "Preparing"
+                v["error"] = None
+            elif a == "resume":
                 v["status"] = v.pop("resume_to", "Seeding")
             elif a == "pause":
                 v["resume_to"] = v["status"]
@@ -454,8 +480,8 @@ def plan_action(pid: str, body: m.ActionIn, who=Depends(user)):
                 v["status"] = nxt[a]
                 v["error"] = None
                 v["phase_t"] = time.time()
-            if a == "rollback":
-                v["rolled_back"] = True
+            if a == "cutover":
+                v["force"] = body.force or None
             store.event("warning" if a in ("cancel", "rollback") else "info",
                         f"{who}: {a} {v['name']}" + (" (forced past prep-check FAIL)" if body.force else ""),
                         plan=doc["name"], vm=v["name"])
@@ -467,7 +493,9 @@ def plan_action(pid: str, body: m.ActionIn, who=Depends(user)):
 @app.post("/api/v2/plans/{pid}/precheck", response_model=m.Plan)
 def precheck(pid: str, who=Depends(user)):
     doc = _plan(pid)
-    store.event("info", "Prep-check refreshed", plan=doc["name"])
+    if MODE == "live":
+        worker.precheck(doc)
+    store.event("info", "Prep-check requested", plan=doc["name"])
     bump()
     return _plan_out(doc)
 
@@ -486,6 +514,18 @@ def plan_events(pid: str, who=Depends(user)):
     return {"entities": ev, "total": len(ev)}
 
 
+@app.get("/api/v2/plans/{pid}/vms/{vid}/log", response_class=PlainTextResponse)
+def vm_log(pid: str, vid: str, lines: int = 400, who=Depends(user)):
+    """Engine log of one VM (live mode): every step's output, UTC timestamps."""
+    _plan(pid)
+    import re as _re
+    f = os.path.join(os.path.expanduser("~/.local/share/ev2ahv/ui"), pid, _re.sub(r"[^\w.-]", "_", vid) + ".log")
+    if not os.path.exists(f):
+        return "No engine log yet." if MODE == "live" else "Mock mode: no engine log."
+    with open(f, errors="replace") as fh:
+        return "".join(fh.readlines()[-lines:])
+
+
 # ---------------------------------------------------------------- events, settings, support
 
 @app.get("/api/v2/events")
@@ -494,7 +534,8 @@ def events(limit: int = 500, who=Depends(user)):
     return {"entities": ev, "total": len(ev)}
 
 
-DEFAULT_SETTINGS = {"id": "settings", "resync_minutes": 60, "bandwidth_policies": [], "timezone": "Asia/Jakarta"}
+DEFAULT_SETTINGS = {"id": "settings", "resync_minutes": 60, "bandwidth_policies": [], "timezone": "Asia/Jakarta",
+                    "writer": {"vm": "ev2ahv-writer", "host": "10.12.136.211", "user": "nutanix"}}
 
 
 @app.get("/api/v2/settings")
@@ -505,7 +546,7 @@ def get_settings(who=Depends(user)):
 @app.put("/api/v2/settings")
 def put_settings(body: dict, who=Depends(user)):
     doc = dict(get_settings(who))
-    for k in ("resync_minutes", "bandwidth_policies", "timezone"):
+    for k in ("resync_minutes", "bandwidth_policies", "timezone", "writer"):
         if k in body:
             doc[k] = body[k]
     store.put("settings", doc)
@@ -575,9 +616,17 @@ def spa(path: str):
     return PlainTextResponse("ev2ahv API is running. The UI is not built yet (cd web && npm run build).")
 
 
+worker = None
+if MODE == "live":
+    from . import live
+    worker = live.Live(store, lock, finish, bump)
+
+
 @app.on_event("startup")
 def _startup():
     if MODE == "mock":
         from . import mock
         mock.seed(store)
         threading.Thread(target=mock.simulate, args=(store, lock, finish, bump), daemon=True).start()
+    else:
+        threading.Thread(target=worker.loop, daemon=True).start()

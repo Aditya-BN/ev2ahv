@@ -51,11 +51,11 @@ def seed(store):
     if store.all("provider"):
         return
     now = time.time()
-    src = {"id": "p-everrun", "name": "everrun-lab", "type": "everrun", "role": "source", "address": "10.12.136.150",
+    src = {"id": "p-everrun", "name": "everrun-lab", "type": "everrun", "role": "source", "address": "10.12.136.153",
            "username": "admin", "auth": "password", "status": "Connected", "version": "8.1.1",
            "node_addresses": ["10.12.136.151", "10.12.136.152"], "last_refreshed": now, "clusters": [],
            "containers": [], "subnets": []}
-    tgt = {"id": "p-pc", "name": "PC-136", "type": "aos", "role": "target", "address": "10.12.136.10",
+    tgt = {"id": "p-pc", "name": "PC-136", "type": "aos", "role": "target", "address": "10.12.135.196",
            "username": "admin", "auth": "api_key", "status": "Connected", "version": "pc.2025.1",
            "node_addresses": [], "last_refreshed": now}
     fill_provider(src)
@@ -75,7 +75,7 @@ def seed(store):
                                    {"name": "Guest preparation", "status": "PASS", "detail": "Automatic"}]
                         + [{"name": "Source warning", "status": "WARN", "detail": x} for x in w["warnings"]],
                         "target_vm_id": f"tvm-{vid}" if status == "Completed" else None,
-                        "target_vm_url": "https://10.12.136.10:9440/" if status == "Completed" else None,
+                        "target_vm_url": "https://10.12.135.196:9440/" if status == "Completed" else None,
                         "actions": []})
         d = {"id": id_, "name": name, "created_by": "nutanix", "created_at": now - age_h * 3600,
              "source": {"id": "p-everrun", "name": "everrun-lab"}, "target": {"id": "p-pc", "name": "PC-136"},
@@ -140,8 +140,13 @@ def simulate(store, lock, finish, bump):
                         dirty = True
                     elif s == "Cutover in Progress" and age > 15:
                         v["status"], v["target_vm_id"] = "Completed", f"tvm-{v['id']}"
-                        v["target_vm_url"] = "https://10.12.136.10:9440/"
+                        v["target_vm_url"] = "https://10.12.135.196:9440/"
                         store.event("info", "Cutover complete, downtime 7m 31s (mock)", plan=p["name"],
+                                    vm=v["name"])
+                        dirty = True
+                    elif s == "Rolling Back" and age > 10:
+                        v["status"], v["rolled_back"] = "Ready to Cutover", True
+                        store.event("warning", "Rolled back: AHV VM off, source VM on (mock)", plan=p["name"],
                                     vm=v["name"])
                         dirty = True
                     elif s == "Testing" and age > 10:
