@@ -76,3 +76,43 @@ Security Policy: "Create Policy Migration Plan" is aria-disabled until an NSX en
 - Step 1 "Source & Target" fields: Select a Source (readonly dropdown), Select a Target (readonly dropdown), Target Project (text, placeholder `None`), Target Cluster (text, placeholder `NTNX-DC`), Target Container (text, placeholder `VM_Container`), Security Policy (Optional) panel. Button: Next.
 - Step 2 "Select VM's": source inventory table (columns: Name, Datacenter, Cluster, Host, OS, Power State, Source Network), 145 VMs on the vCenter source, paged 10 per page. Controls: Filter, Add all VMs, Remove all, All / Warnings tabs, Back, Cancel, Next.
 - Step 3 "Network and Policy": network map (Source Network -> Target Type / Target VPC / Target Subnet), optional Test Network checkbox, optional Security Policies panel. Buttons: Back, Cancel, **Save and Continue** (this is a save-equivalent; not pressed). Steps 4-6 are behind this save and were not reached.
+
+## Create-wizard pass (har/move-wizard.har, bodies embedded and redacted)
+
+Source: `har/move-wizard.har` (178 entries, 12 browser sessions; login body, Authorization/Cookie/Set-Cookie/CSRF headers and any password/token/secret JSON values redacted; static assets and the global polls appinfo/checkUpgrade/supportbundle/iamproviders removed). A Playwright route net aborted any path containing /start, /cutover, /test, /pause, /resume, /retry, /abort, /discard, /complete, /settings, /appliance, /users, /password, /upgrade and any non-list POST under /providers/. Nothing was aborted.
+
+Result: the plan was NEVER created. `POST /move/v2/plans` was sent from step 3 `Next` and answered HTTP 500 (below). The plan-create payload is therefore observed, the plan-update flow and steps 4-6 are not.
+
+### Plan create request (`POST /move/v2/plans`, from wizard step 3 Next)
+```json
+{"Spec":{"Name":"ev2ahv-uxref",
+ "SourceInfo":{"ProviderUUID":"<vCenter provider uuid>"},
+ "TargetInfo":{"ProviderUUID":"<Prism Central provider uuid>",
+   "AOSProviderAttrs":{"ClusterUUID":"<cluster uuid>","ContainerUUID":"<container uuid>"}},
+ "NetworkMappings":[{"SourceNetworkID":"VLAN 135","TargetNetworkID":"<subnet uuid>","TestNetworkID":"","TargetSubnetID":"","TestSubnetID":"","TargetSecurityGroupIDs":[]}],
+ "Workload":{"Type":"VM","VMs":[{
+   "VMReference":{"UUID":"<vm uuid>","VMID":"vm-31023"},
+   "VMCustomizedNicsInfo":{"MetaInfo":{"ConfigMode":"retain","IsConfigured":false}},
+   "GuestPrepMode":"auto","RetainMacAddress":true,"SkipIPRetention":false,"UninstallGuestTools":true,
+   "SkipCdrom":false,"EnableMemoryOvercommit":false,"VMPriority":"Medium","CategoriesMapping":{},
+   "RetainUserData":false,"CreatePublicIpAddress":false,"VMCustomizeType":"static",
+   "PowerOffForpRDMtovRDMConversion":true}]},
+ "SecurityPolicySettings":{"AddToSecurityPolicy":false},
+ "Settings":{"IsConfigPending":false}},
+ "IsUpdatePlanFlow":false}
+```
+Defaults visible in the payload: VM preparation mode `auto`, MAC retained, IP retention on (`SkipIPRetention` false, `VMCustomizeType` static), guest tools uninstall on, CD-ROM kept, priority `Medium`. Test network IDs are empty strings when the Test Network box is off. `IsUpdatePlanFlow` is false for create (true presumably for the Edit flow; not observed).
+
+Error response (HTTP 500): `{"ApiVersion":"2.3.0","Code":20543,"Message":"Connection to source failed: Post \"https://<vcenter fqdn>/sdk\": dial tcp: lookup <fqdn> on 127.0.0.11:53: no such host","State":"Error"}`. The create call therefore validates the source connection (and a UI-side "Checking capacity on the target cluster" spinner precedes it). The name gate `Proceed` makes no API call.
+
+### Source workloads list (`POST /move/v2/providers/{vcenterId}/workloads/list`)
+Request: `{"Filter":{"Datacenter":[],"TargetType":"AOS_PC"},"SortBy":"VMName","SortOrderDesc":false}`. Response top-level keys `Entities`, `MetaData`, `Shares`. Entity: `VMName`, `VMUuid`, `VmID` (e.g. `vm-31023`), `InternalUuid`, `SourceUuid`, `RecID`, `DatacenterName`, `ClusterName`, `HostName`, `OSType`, `PowerState` (`PoweredOn`/`PoweredOff`), `NumCPU`, `NumCoresPerSocket`, `MemoryMB`, `NumCDROMs`, `NumEthernetCards`, `StorageAllocatedInBytes`, `StorageUsedInBytes`, `Networks[{ID,Name,Devices[],MacIDs[],IpAddresses}]`, `Nics.NicsInfo[{Mac,NetworkName,IpsConf}]`, `AssociatedPolicies[]`, `AssociatedCategories`, `ErrorMessages`, `WarningMessages[]` (strings shown in the step 2 warning tooltip), `MigrationSupportWarningStatus` (int bitmask, e.g. 2050), and `AdditionalProperties` (strings: `bootfirmware`, `secureboot`, `vtpmenabled`, `vbsenabled`, `guestid`, `targetguestid`, `osfamily`, `esxversion`, `esxbuild`, `annotation`, JSON-in-string `esxvmconfig` and `videocard`).
+
+### Provider list (`POST /move/v2/providers/list`, body `{"EntityType":"VM"}`)
+Entity `{MetaData:{UUID,CreationTime,LastUpdateTime,LastInventoryRefreshTime,NumDiscoveredWorkloads}, Spec:{AOSAccessInfo:{IPorFQDN,Username,Password,...}, AOSProperties:{Clusters[{Name,UUID,TargetUUID,Type,Version,IPorFQDN,Containers[],Networks[],Vpcs[],HypervisorTypes[],SupportedCpuModels[],CompatibleTargetTypes[]}], Projects[{Name,UUID,ClusterList,SubnetList,...}], CategoriesMapping{...}, FeaturesStatus[], Users[], Runbooks[], Version}, CompatibleTargetTypes[]}}`. `Password` is returned by the appliance in this response; it is redacted in the HAR. Cluster, container, subnet and project dropdowns of wizard steps 1 and 3 are fed from this object.
+
+### Plan list entity (`POST /move/v2/plans/list`, body `{"EntityType":"VM"}`)
+`MetaData`: `UUID`, `Name`, `Owner`, `IamName`, `CreatedTime` (epoch ns), `State`/`StateString`, `Status`/`StatusString`, `Actions[]` (allowed now, e.g. `DELETE`), `AllActions[]` (`START`,`RESUME`,`ABORT`,`DISCARD`,`EDIT`,`DELETE`,`PAUSE`), `NumVMs`, `NumEntities`, `VMStateCounts{Completed:n,...}`, `VMStatus`, `DataInBytes`, `MigratedDataInBytes`, `ElapsedTime{Hours,Minutes}`, `Schedule{ScheduleAtEpochSec,RWStartTimeAtEpochSec,RWEndTimeAtEpochSec}`, `SourceInfo{Name,Type,UUID}`, `TargetInfo{Name,Type,UUID,Cluster}`, `ErrorReasons`, `ValidationWarnings`, `FilesStateCounts`, `FilesStatus`, `SpStateCounts`, `SpStatus`, `AssociatedPlans`. The row Actions menu reads `Actions[]`. Not-started plans: `Actions` includes START/EDIT/DELETE; a Completed plan only `DELETE`.
+
+### Not observed
+Plan update payload (`IsUpdatePlanFlow:true`), plan-details/start/delete requests, prep-mode `manual` values, credential fields and the schedule fields of step 5 stayed behind the failed create and the route net; do not infer them from this section.

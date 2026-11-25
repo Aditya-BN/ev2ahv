@@ -1,0 +1,116 @@
+URL: https://10.12.135.181/migrationplan/SelectTarget
+TITLE: New VM Migration Plan - Move
+
+ev2ahv-uxref
+1
+Source & Target
+2
+Select VM's
+3
+Network and Policy
+4
+VM Preparation
+5
+VM Settings
+6
+Summary
+Select Source
+Select a Source
+Select Target
+Select a Target
+Refresh
+Target refreshed
+Target Project
+Target Cluster
+Target Container
+Security Policy (Optional)
+
+Nutanix Move supports migrating VM security policies from the NSX environment. You can migrate policies separately, before or along with VM migration.
+
+No NSX environment found for the selected source.
+No FNS environment found for the selected target.
+To add NSX or FNS environment, go to 
+security policy section
+Cancel
+Next
+
+--- FIELDS ---
+{
+ "fields": [
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-select-source-element",
+   "label": "Select a Source",
+   "value": "vCenter",
+   "checked": false,
+   "placeholder": "Select a Source...",
+   "disabled": false,
+   "readonly": true,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-select-target-element",
+   "label": "Select a Target",
+   "value": "Nutanix",
+   "checked": false,
+   "placeholder": "Select a Target...",
+   "disabled": false,
+   "readonly": true,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "target_projects",
+   "label": "Target Project",
+   "value": "",
+   "checked": false,
+   "placeholder": "None",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "target_cluster",
+   "label": "Target Cluster",
+   "value": "",
+   "checked": false,
+   "placeholder": "NTNX-DC",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-select-container-element",
+   "label": "Target Container",
+   "value": "",
+   "checked": false,
+   "placeholder": "VM_Container",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  }
+ ],
+ "buttons": [
+  " {rename migration plan}",
+  " {learn more about migration plan}",
+  " {Close}",
+  "1 Source & Target",
+  "2 Select VM's [disabled]",
+  "3 Network and Policy [disabled]",
+  "4 VM Preparation [disabled]",
+  "5 VM Settings [disabled]",
+  "6 Summary [disabled]",
+  "Refresh {refresh target list}",
+  "security policy section",
+  "Cancel {Cancel creating Vm migration Plan ev2ahv-uxref}",
+  "Next {Next to Select VMs}"
+ ]
+}

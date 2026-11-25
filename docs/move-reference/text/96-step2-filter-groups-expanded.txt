@@ -1,0 +1,891 @@
+URL: https://10.12.135.181/migrationplan/SelectTarget
+TITLE: New VM Migration Plan - Move
+
+ev2ahv-uxref
+Source & Target
+2
+Select VM's
+3
+Network and Policy
+4
+VM Preparation
+5
+VM Settings
+6
+Summary
+Filters
+Clear
+Hosts
+Networks
+OS Types
+Power States
+Tags
+Migratable State
+Migratable VMs
+Non - Migratable VMs
+View Type
+Source: vCenter
+Refresh
+List of VM's
+Filter
+1 - 10 of 145
+Show:
+Add all VMs
+	
+Name
+Name
+ Sorted: Ascending
+	
+Datacenter
+Datacenter
+ Sortable
+	
+Cluster
+Cluster
+ Sortable
+	
+Host
+Host
+ Sortable
+	
+OS
+OS
+ Sortable
+	
+Power State
+Power State
+ Sortable
+	
+Source Network
+
+
+	
+AR-PClient-WS10
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Microsoft Windows Server 2022 (64-bit)
+	Off	
+VLAN 130
+
+
+	
+CentOS
+	
+DC Helios
+	
+Not Available
+	
+10.12.130.25
+	
+CentOS 7 (64-bit)
+	Off	
+VLAN 130
+
+
+	
+Clone-MWP-DC-WS19-001
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Microsoft Windows Server 2019 (64-bit)
+	On	
+AWS_vLAN_200
+
+
+	
+Core-DNS-135 [Do not touch]
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Other 2.6.x Linux (64-bit)
+	Off	
+VLAN 135
+
+
+	
+Core-NTP-135 [Do not touch]
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Other 2.6.x Linux (64-bit)
+	Off	
+VLAN 135
+
+
+	
+CPPM-6.12_Ocir
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Red Hat Enterprise Linux 8 (64-bit)
+	On	
+ISOLATED, VLAN 130
+
+
+	
+CPPM-Krisna
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Red Hat Enterprise Linux 8 (64-bit)
+	On	
+VLAN 130, VLAN 145
+
+
+	
+CPPM-VM-KW
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Red Hat Enterprise Linux 8 (64-bit)
+	On	
+VLAN 130
+
+
+	
+da-sqlserver
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Microsoft Windows Server 2022 (64-bit)
+	On	
+AWS_vLAN_200, VLAN 135
+
+
+	
+Debian-UEFI-DE
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Debian GNU/Linux 11 (64-bit)
+	Off	
+VLAN 135
+Fetching data finished
+1 - 10 of 145
+Show:
+Back
+Cancel
+Next
+
+--- FIELDS ---
+{
+ "fields": [
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-3-item-0",
+   "label": "10.12.130.25",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-3-item-1",
+   "label": "10.12.135.91",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-4-item-0",
+   "label": "AWS_vLAN_200",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-4-item-1",
+   "label": "AWS_vLAN_MGNT",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-4-item-2",
+   "label": "ISOLATED",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-4-item-3",
+   "label": "LN-LN-DVS-10",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-4-item-4",
+   "label": "TRUNK",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-4-item-5",
+   "label": "VLAN 130",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-4-item-6",
+   "label": "VLAN 135",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-4-item-7",
+   "label": "VLAN 145",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-4-item-8",
+   "label": "VLAN192",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-4-item-9",
+   "label": "VLAN200",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-4-item-10",
+   "label": "VM Network",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-0",
+   "label": "CentOS 4/5 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-1",
+   "label": "CentOS 4/5/6/7 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-2",
+   "label": "CentOS 7 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-3",
+   "label": "CentOS 8 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-4",
+   "label": "Debian GNU/Linux 10 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-5",
+   "label": "Debian GNU/Linux 11 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-6",
+   "label": "Debian GNU/Linux 8 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-7",
+   "label": "Microsoft Windows 10 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-8",
+   "label": "Microsoft Windows Server 2003 (32-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-9",
+   "label": "Microsoft Windows Server 2008 (32-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-10",
+   "label": "Microsoft Windows Server 2012 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-11",
+   "label": "Microsoft Windows Server 2016 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-12",
+   "label": "Microsoft Windows Server 2016 or later (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-13",
+   "label": "Microsoft Windows Server 2019 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-14",
+   "label": "Microsoft Windows Server 2022 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-15",
+   "label": "Other (32-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-16",
+   "label": "Other (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-17",
+   "label": "Other 2.6.x Linux (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-18",
+   "label": "Other 3.x or later Linux (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-19",
+   "label": "Other Linux (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-20",
+   "label": "Red Hat Enterprise Linux 6 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-21",
+   "label": "Red Hat Enterprise Linux 8 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-22",
+   "label": "Red Hat Enterprise Linux 9 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-23",
+   "label": "Red Hat Fedora (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-24",
+   "label": "SUSE Linux Enterprise 11 (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-25",
+   "label": "Ubuntu Linux (64-bit)",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-5-item-26",
+   "label": "VMware ESXi 7.0 or later",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-6-item-0",
+   "label": "Off",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-6-item-1",
+   "label": "On",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-8-item-0",
+   "label": "Migratable VMs",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "sub-filter-8-item-1",
+   "label": "Non - Migratable VMs",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "radio",
+   "id": "radio-165",
+   "label": "General",
+   "value": "General",
+   "checked": true,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "radio",
+   "id": "radio-166",
+   "label": "Configuration",
+   "value": "Configuration",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": false
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-vm-search-box",
+   "label": "",
+   "value": "",
+   "checked": false,
+   "placeholder": "e.g. VM Apache",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "mini-select-130",
+   "label": "Show:",
+   "value": "10 rows",
+   "checked": false,
+   "placeholder": "select",
+   "disabled": false,
+   "readonly": true,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "mini-select-145",
+   "label": "Show:",
+   "value": "10 rows",
+   "checked": false,
+   "placeholder": "select",
+   "disabled": false,
+   "readonly": true,
+   "visible": true
+  }
+ ],
+ "buttons": [
+  " {rename migration plan}",
+  " {learn more about migration plan}",
+  " {Close}",
+  "Source & Target",
+  "2 Select VM's",
+  "3 Network and Policy [disabled]",
+  "4 VM Preparation [disabled]",
+  "5 VM Settings [disabled]",
+  "6 Summary [disabled]",
+  "Clear {Clear filters}",
+  " {Close filters}",
+  "Hosts",
+  "Networks",
+  "OS Types",
+  "Power States",
+  "Tags",
+  "Migratable State",
+  "View Type",
+  "Refresh {refresh source inventory}",
+  "Filter {Add Filters to choose vm's}",
+  " [disabled] { Previous page}",
+  " {Next page}",
+  "Add all VMs {Add all VMs to the migration plan}",
+  "Name  Sorted: Ascending",
+  "Datacenter  Sortable",
+  "Cluster  Sortable",
+  "Host  Sortable",
+  "OS  Sortable",
+  "Power State  Sortable",
+  " {Add VM AR-PClient-WS10 to the migration plan}",
+  " [disabled] {Add VM CentOS to the migration plan}",
+  " [disabled] {Add VM Clone-MWP-DC-WS19-001 to the migration plan}",
+  " {Add VM Core-DNS-135 [Do not touch] to the migration plan}",
+  " {Add VM Core-NTP-135 [Do not touch] to the migration plan}",
+  " {Add VM CPPM-6.12_Ocir to the migration plan}",
+  " {Add VM CPPM-Krisna to the migration plan}",
+  " {Add VM CPPM-VM-KW to the migration plan}",
+  " [disabled] {Add VM da-sqlserver to the migration plan}",
+  " {Add VM Debian-UEFI-DE to the migration plan}",
+  " [disabled] { Previous page}",
+  " {Next page}",
+  "Back {Go back to Source & Target Selection}",
+  "Cancel {Cancel creating Vm migration Plan ev2ahv-uxref}",
+  "Next [disabled] {Next to Network Configuration}"
+ ]
+}
+
+--- EXTRA ---
+sub-filter-3-item-0: 10.12.130.25
+sub-filter-3-item-1: 10.12.135.91
+sub-filter-4-item-0: AWS_vLAN_200
+sub-filter-4-item-1: AWS_vLAN_MGNT
+sub-filter-4-item-2: ISOLATED
+sub-filter-4-item-3: LN-LN-DVS-10
+sub-filter-4-item-4: TRUNK
+sub-filter-4-item-5: VLAN 130
+sub-filter-4-item-6: VLAN 135
+sub-filter-4-item-7: VLAN 145
+sub-filter-4-item-8: VLAN192
+sub-filter-4-item-9: VLAN200
+sub-filter-4-item-10: VM Network
+sub-filter-5-item-0: CentOS 4/5 (64-bit)
+sub-filter-5-item-1: CentOS 4/5/6/7 (64-bit)
+sub-filter-5-item-2: CentOS 7 (64-bit)
+sub-filter-5-item-3: CentOS 8 (64-bit)
+sub-filter-5-item-4: Debian GNU/Linux 10 (64-bit)
+sub-filter-5-item-5: Debian GNU/Linux 11 (64-bit)
+sub-filter-5-item-6: Debian GNU/Linux 8 (64-bit)
+sub-filter-5-item-7: Microsoft Windows 10 (64-bit)
+sub-filter-5-item-8: Microsoft Windows Server 2003 (32-bit)
+sub-filter-5-item-9: Microsoft Windows Server 2008 (32-bit)
+sub-filter-5-item-10: Microsoft Windows Server 2012 (64-bit)
+sub-filter-5-item-11: Microsoft Windows Server 2016 (64-bit)
+sub-filter-5-item-12: Microsoft Windows Server 2016 or later (64-bit)
+sub-filter-5-item-13: Microsoft Windows Server 2019 (64-bit)
+sub-filter-5-item-14: Microsoft Windows Server 2022 (64-bit)
+sub-filter-5-item-15: Other (32-bit)
+sub-filter-5-item-16: Other (64-bit)
+sub-filter-5-item-17: Other 2.6.x Linux (64-bit)
+sub-filter-5-item-18: Other 3.x or later Linux (64-bit)
+sub-filter-5-item-19: Other Linux (64-bit)
+sub-filter-5-item-20: Red Hat Enterprise Linux 6 (64-bit)
+sub-filter-5-item-21: Red Hat Enterprise Linux 8 (64-bit)
+sub-filter-5-item-22: Red Hat Enterprise Linux 9 (64-bit)
+sub-filter-5-item-23: Red Hat Fedora (64-bit)
+sub-filter-5-item-24: SUSE Linux Enterprise 11 (64-bit)
+sub-filter-5-item-25: Ubuntu Linux (64-bit)
+sub-filter-5-item-26: VMware ESXi 7.0 or later
+sub-filter-6-item-0: Off
+sub-filter-6-item-1: On
+sub-filter-8-item-0: Migratable VMs
+sub-filter-8-item-1: Non - Migratable VMs

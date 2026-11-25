@@ -1,0 +1,68 @@
+URL: https://10.12.135.181/migrationplan/SelectTarget
+TITLE: New VM Migration Plan - Move
+
+ev2ahv-uxref
+1
+Source & Target
+2
+Select VM's
+3
+Network and Policy
+4
+VM Preparation
+5
+VM Settings
+6
+Summary
+Select Source
+Select a Source
+Select Target
+Select a Target
+Refresh
+Target refreshed
+Cancel
+Next
+
+--- FIELDS ---
+{
+ "fields": [
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-select-source-element",
+   "label": "Select a Source",
+   "value": "vCenter",
+   "checked": false,
+   "placeholder": "Select a Source...",
+   "disabled": false,
+   "readonly": true,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-select-target-element",
+   "label": "Select a Target",
+   "value": "",
+   "checked": false,
+   "placeholder": "Select a Target...",
+   "disabled": false,
+   "readonly": true,
+   "visible": true
+  }
+ ],
+ "buttons": [
+  " {rename migration plan}",
+  " {learn more about migration plan}",
+  " {Close}",
+  "1 Source & Target",
+  "2 Select VM's [disabled]",
+  "3 Network and Policy [disabled]",
+  "4 VM Preparation [disabled]",
+  "5 VM Settings [disabled]",
+  "6 Summary [disabled]",
+  "Refresh [disabled] {Refresh is disabled until you select a Target Environment}",
+  "Cancel {Cancel creating Vm migration Plan ev2ahv-uxref}",
+  "Next [disabled] {Next to Select VMs}"
+ ]
+}

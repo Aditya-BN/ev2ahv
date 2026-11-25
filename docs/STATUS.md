@@ -7,7 +7,7 @@
   enforcement, PCI to SCSI conversion (default, `target.convert_to_scsi: false` to opt out), multi-disk ext4 /
   spanned LVM. All tested on both lab guests.
 - Stage C1: Move 6.2.0 reference in docs/move-reference/ (74 screens, redacted HAR, api-notes, UX-SPEC, feature
-  matrix). Wizard steps 4-6 are reconstructed, not observed (creating a plan on Move was blocked by policy).
+  matrix). Wizard steps 4-6 are reconstructed, not observed: with owner approval a throwaway plan was attempted, but Move itself failed to create it (HTTP 500, code 20543: the appliance cannot resolve its vCenter hostname). Steps 1-3 are observed.
 
 ## In progress: Stage C3/C4 step 1 (API contract + clickable mock UI)
 - server/ev2ahv_server/models.py (contract) and store.py (SQLite docs, write-only secrets, events, jobs) written.

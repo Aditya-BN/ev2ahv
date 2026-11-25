@@ -1,0 +1,102 @@
+URL: https://10.12.135.181/migrationplan/SelectTarget
+TITLE: New VM Migration Plan - Move
+
+ev2ahv-uxref
+Source & Target
+2
+Select VM's
+3
+Network and Policy
+4
+VM Preparation
+5
+VM Settings
+6
+Summary
+Source: vCenter
+Refresh
+List of VM's
+Filter
+Add all VMs
+	
+Name
+Name
+ Sorted: Ascending
+	
+Datacenter
+Datacenter
+ Sortable
+	
+Cluster
+Cluster
+ Sortable
+	
+Host
+Host
+ Sortable
+	
+OS
+OS
+ Sortable
+	
+Power State
+Power State
+ Sortable
+	
+Source Network
+
+
+No data found
+Fetching data finished
+Added VMs
+All
+Warnings
+Back
+Cancel
+Next
+
+--- FIELDS ---
+{
+ "fields": [
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-vm-search-box",
+   "label": "",
+   "value": "zzzz-nomatch",
+   "checked": false,
+   "placeholder": "e.g. VM Apache",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  }
+ ],
+ "buttons": [
+  " {rename migration plan}",
+  " {learn more about migration plan}",
+  " {Close}",
+  "Source & Target",
+  "2 Select VM's",
+  "3 Network and Policy [disabled]",
+  "4 VM Preparation [disabled]",
+  "5 VM Settings [disabled]",
+  "6 Summary [disabled]",
+  " {Clear filters}",
+  " {Close filters}",
+  "Refresh {refresh source inventory}",
+  "Filter {Add Filters to choose vm's}",
+  " {Clear current value}",
+  "Add all VMs [disabled] {Add all VMs to the migration plan}",
+  "Name  Sorted: Ascending",
+  "Datacenter  Sortable",
+  "Cluster  Sortable",
+  "Host  Sortable",
+  "OS  Sortable",
+  "Power State  Sortable",
+  "All {All}",
+  "Warnings {Warnings}",
+  "Back {Go back to Source & Target Selection}",
+  "Cancel {Cancel creating Vm migration Plan ev2ahv-uxref}",
+  "Next [disabled] {Next to Network Configuration}"
+ ]
+}

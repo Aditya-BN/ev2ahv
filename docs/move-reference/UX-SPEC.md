@@ -4,9 +4,9 @@
 
 - Appliance: `https://10.12.135.181/` (test/dev, owner-approved read-only exploration). Login page title `Login - Move`; post-login title `VM Migration Dashboard - Move`. Brand confirmed as Nutanix Move.
 - Version (About Move dialog, screenshot 24): **Move 6.2.0**. Copyright 2026. The Help link points to Move 6.2 docs. A "New Update Available" badge appears in later sessions.
-- Screenshots: 74 files in `screenshots/` (numbered in visiting order; a few numbers, e.g. 49, 56, 60, 61, 66-68, are gaps left by failed clicks and have no file).
+- Screenshots: 74 files from the first pass plus 39 files (82-120) from the Create-wizard pass in `screenshots/` (numbered in visiting order; a few numbers, e.g. 49, 56, 60, 61, 66-68, are gaps left by failed clicks and have no file).
 - Text: 74 matching `text/*.txt` files (visible text, URL, title).
-- HAR: `har/move.har`, redacted (see `api-notes.md`).
+- HAR: `har/move.har`, redacted (see `api-notes.md`); `har/move-wizard.har` (bodies embedded, redacted) for the Create wizard pass.
 
 Screens visited (summary):
 - Dashboard (VM): 01, 26-31, 32-38 (Add Environment types), 39-46 (plan summary/details, VM configurations, dashboard filter lists, target VM link), 79-81 (data-size and environment popups).
@@ -15,12 +15,13 @@ Screens visited (summary):
 - Security Policy: 04, 63, 65, 69, 70 (dashboard, Add Environment dialog, Migration Plans tab, Policies tab).
 - Events: 05.
 - Settings and account: 06 (user menu), 07 (settings menu), 08-23 (Appliance Settings and each tab), 09-10 (bandwidth throttling and experience improvement), 12-15 (realtime logs, upgrade dialog, VDDK library, view metrics), 24 (About), 25 (change password dialog).
-- Create Migration Plan wizard: 47-51 (name modal gate and step 1 behind it).
+- Create Migration Plan wizard: 47-51 (name modal gate and step 1 behind it); 82-120 (live walk of the Create flow, steps 1-3 plus the create error and leave-wizard confirm).
 - Edit Migration Plan wizard (existing plan): 71-75 (steps 1-3).
 - Environment dialogs: 76-78 (view/edit details, vCenter view).
 - Bandwidth: 59 (create policy dialog).
 
 Screens NOT reached, and why:
+- Create wizard steps 4-6 (VM Preparation, VM Settings, Summary), plan-details of the new plan and the Delete confirmation: the Create wizard pass (owner-authorized throwaway plan `ev2ahv-uxref`) got through steps 1-3, but `POST /move/v2/plans` returned 500 (appliance cannot resolve `vcenterdc.helioslab.local`), so no plan was created and the later steps were not reachable. Nothing to delete; the final dashboard [120] shows only the four original plans.
 - Create Migration Plan wizard steps 2-6 (Select VMs, Network and Policy, VM Preparation, VM Settings, Summary). The "New Migration Plan" name modal gates the wizard. Its only forward action, **Proceed**, creates the plan record on the appliance, which is a state change. Cancel and Escape close the whole wizard. Step 1 was read from the DOM behind the modal, and the source dropdown was opened read-only. Steps 2-6 are documented from the Edit wizard and the wizard header, not from the Create path.
 - Edit Migration Plan wizard steps 4-6. Step 3 uses **Save and Continue**, which is save-equivalent, so it was not pressed.
 - Files migration wizard steps 2-4 (Select Shares, Settings, Review Summary). Same Proceed gate as the VM wizard (text 54).
@@ -140,18 +141,38 @@ Step 3 - Network and Policy (Edit wizard [74]):
 - `Security Policies (Optional)`: text "Nutanix Move supports migrating VM security policies from the NSX environment..." plus "No NSX environment found for the selected source." and "No FNS environment found for the selected target."
 - Buttons: Back, Cancel, **Save and Continue** (save-equivalent; not pressed).
 
-Steps 4-6: NOT OBSERVED. Creating a throwaway plan on the appliance to reach them was blocked by the
-session's permission policy, so these are reconstructed from the owner's Stage C brief and public Nutanix
-material (Move blog and community write-ups). Verify against a live Move before calling them exact.
+### Observed in the live Create walk (screenshots 82-120, `text/82-*` to `text/120-*`)
+
+Plan name gate [82, 83]: modal `New Migration Plan`, `Plan Name`, `Proceed` / `Cancel`. **Proceed does NOT create a plan server-side.** The name is held client-side (shown top-left with a pencil icon, aria `rename migration plan`) and nothing is POSTed until step 3 `Next`. Header: `?` (learn more about migration plan), `X` (aria `Close`). Step line items after the current step are disabled buttons; completed steps show a check mark.
+
+Step 1 - Source & Target [84-93]: `Select a Source` (readonly dropdown, placeholder `Select a Source...`; options `Nutanix / Prism Central`, `vCenter / VMware vCenter`). `Select a Target` (readonly, placeholder `Select a Target...`, disabled until a source is chosen; with vCenter as source the only option is `Nutanix / Prism Central`). `Refresh` link (aria `refresh target list`, disabled until a target is chosen). After the target is chosen: `Target Project` (placeholder `None`; options `None`, `Testing`), `Target Cluster` (placeholder `Select a Cluster...`; option `NTNX-DC / AHV Prism Element`), then `Target Container` (placeholder `Select a Container...`, appears after the cluster; 15 options on this appliance, among them `VM_Container`, `Images_Container`, `default-container-109116`, `SelfServiceContainer`). A `Security Policy (Optional)` section link appears. Buttons: `Cancel` (aria `Cancel creating Vm migration Plan <name>`), `Next` (aria `Next to Select VMs`; disabled until source, target, cluster and container are set).
+
+Step 2 - Select VM's [94-103]: `Source: vCenter` + `Refresh`. Toolbar: `Filter` button, search box (placeholder `e.g. VM Apache`, becomes `e.g. VM Apache, 10.0.0.1` in Configuration view), pager `1 - 10 of 145` with `Show: 10 rows`. Table General view columns: [add icon] Name (sorted ascending), Datacenter, Cluster, Host, OS, Power State (`On`/`Off`), Source Network. Header add icon = `Add all VMs`. Row add icon (aria `Vm <name> add`) toggles to a green check once added; a grey `?` icon beside a name marks a VM that cannot be added (greyed add icon; e.g. CentOS, Clone-MWP-DC-WS19-001, da-sqlserver). Right-hand `Added VMs` panel (count badge, `Remove all` link) with tabs `All` and `Warnings`; empty until a VM is added. An added row shows a red minus (remove, aria `Vm <name> remove`), the VM name in warning colour and an orange warning icon. Tooltip on that icon: `This VM is powered off. Prior to migration we will temporarily power it on and install device drivers with the admin credentials you supplied.` and `This VM does not appear to have VMware Tools Installed. VMware Tools are needed to do in-guest operations otherwise you may continue with data-only migration.` The `Warnings` tab lists the same VM. `Next` is disabled until at least one VM is added.
+- Filter panel [95-97]: left drawer `Filters` with `Clear` and close X. Groups (collapsed by default, checkbox lists): `Hosts` (IP list), `Networks` (source port groups), `OS Types` (guest OS strings), `Power States` (`Off`, `On`), `Tags` (empty on this vCenter), `Migratable State` (`Migratable VMs`, `Non - Migratable VMs`), and `View Type` radio: `General` (default) or `Configuration`. Configuration view columns: Name, IP Address, Cluster, Host, vCPU(s), Memory, Storage.
+- VM chosen for the capture: `Debian-UEFI-DE` (Debian GNU/Linux 11, Off, VLAN 135, 4 vCPU, 4 GiB, 2.83 GiB).
+
+Step 3 - Network and Policy [104-114]: `Network` table, one row per source network of the added VMs (here `VLAN 135`): `Target Type` dropdown (placeholder `Select Type`; options `VLAN`, `VPC`), `Target VPC` (disabled until type VPC), `Target Subnet` (placeholder `Select Subnet`, enabled after type VLAN; options on this appliance `EXT-VPC-VLAN-135`, `VLAN130-IPAM`, `VLAN135`, `VLAN135-IPAM`, `vlan200-aws`). `Test Network (Optional)` checkbox is disabled until a mapping exists (left unchecked). `Security Policies (Optional)`: `No NSX environment found for the selected source.` / `No FNS environment found for the selected target.` + `security policy section` link. Buttons `Back`, `Cancel`, `Next` (not `Save and Continue` in the Create flow; disabled until every network is mapped). **`Next` here triggers `POST /move/v2/plans`** (the real create) after a blocking spinner `Checking capacity on the target cluster for availability of resources for migration.` [115].
+
+Error observed at step 3 Next [117, 118]: this appliance cannot resolve its vCenter, so plan creation fails with HTTP 500 code 20543 and a modal `Connection to source failed: Post "https://vcenterdc.helioslab.local/sdk": dial tcp: lookup vcenterdc.helioslab.local on 127.0.0.11:53: no such host` (`OK`) plus a red toast with the same text. The wizard stays on step 3. No plan record was created.
+
+Leave-wizard confirm [119]: `Cancel` on an unsaved plan shows `Are you sure you want to leave this page?` / `The migration plan is not saved. If you leave this page, all of your changes will be discarded.` with `Discard` and `Continue Editing` (primary). `Discard` returns to `/dashboard` [120].
+
+Steps 4-6: NOT OBSERVED (blocked). Plan creation is rejected at the end of step 3 because the appliance cannot reach the vCenter, so the wizard cannot advance, and the only other route (Edit on an existing plan) would modify a pre-existing plan, which was out of scope. The text below remains reconstructed from the owner's Stage C brief and public Nutanix material; verify against a working Move before calling it exact.
 - 4 VM Preparation (reconstructed): Preparation mode `Automatic` / `Manual` (manual offers a script
   download per OS); guest credentials per OS (Windows user/password, Linux user/password or key);
   `Retain IP` (static IP), `Retain MAC`, `Uninstall source guest tools` (for ev2ahv: the Stratus agent),
   `Install Nutanix Guest Tools`, `Bypass guest operations`. Move 6.3 notes add WINS and IPv6 retention.
+  Partial confirmation from the create payload (see api-notes.md): the plan VM object carries
+  `GuestPrepMode` (default `auto`), `RetainMacAddress` (true), `SkipIPRetention` (false),
+  `UninstallGuestTools` (true), `SkipCdrom`, `EnableMemoryOvercommit`, `VMPriority` (`Medium`),
+  `VMCustomizeType` (`static`), `VMCustomizedNicsInfo.MetaInfo.ConfigMode` (`retain`).
 - 5 VM Settings (reconstructed): per-VM table with overrides (target name, vCPU, memory, timezone) and a
   `Schedule data seeding` option (date/time + timezone); defaults kept in the Move 6.1 walkthrough.
 - 6 Summary (reconstructed): read-only review of steps 1-5, buttons `Back`, `Save`, `Save and Start`.
 
-Validation messages observed: `Next` disabled until the required field is set (step 1).
+Plan-details page of a Not Started plan and the row Actions menu / Delete confirmation: NOT CAPTURED for the new plan (it never existed). Existing Not Started plans show the `Start`, `Edit`, `Delete` actions (see Page 16). The delete confirmation dialog was not seen.
+
+Validation messages observed: `Next` disabled until the required field is set (steps 1-3); source-connection error modal on create (see above).
 
 Wizard transitions: Cancel -> dashboard. Proceed -> wizard steps (not performed). Next/Back between steps; Save and Continue advances step 3 and persists (not performed).
 

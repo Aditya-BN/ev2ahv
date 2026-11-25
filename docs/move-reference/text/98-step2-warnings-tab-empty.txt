@@ -1,0 +1,280 @@
+URL: https://10.12.135.181/migrationplan/SelectTarget
+TITLE: New VM Migration Plan - Move
+
+ev2ahv-uxref
+Source & Target
+2
+Select VM's
+3
+Network and Policy
+4
+VM Preparation
+5
+VM Settings
+6
+Summary
+Source: vCenter
+Refresh
+List of VM's
+Filter
+1 - 10 of 145
+Show:
+Add all VMs
+	
+Name
+Name
+ Sorted: Ascending
+	
+Datacenter
+Datacenter
+ Sortable
+	
+Cluster
+Cluster
+ Sortable
+	
+Host
+Host
+ Sortable
+	
+OS
+OS
+ Sortable
+	
+Power State
+Power State
+ Sortable
+	
+Source Network
+
+
+	
+AR-PClient-WS10
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Microsoft Windows Server 2022 (64-bit)
+	Off	
+VLAN 130
+
+
+	
+CentOS
+	
+DC Helios
+	
+Not Available
+	
+10.12.130.25
+	
+CentOS 7 (64-bit)
+	Off	
+VLAN 130
+
+
+	
+Clone-MWP-DC-WS19-001
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Microsoft Windows Server 2019 (64-bit)
+	On	
+AWS_vLAN_200
+
+
+	
+Core-DNS-135 [Do not touch]
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Other 2.6.x Linux (64-bit)
+	Off	
+VLAN 135
+
+
+	
+Core-NTP-135 [Do not touch]
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Other 2.6.x Linux (64-bit)
+	Off	
+VLAN 135
+
+
+	
+CPPM-6.12_Ocir
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Red Hat Enterprise Linux 8 (64-bit)
+	On	
+ISOLATED, VLAN 130
+
+
+	
+CPPM-Krisna
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Red Hat Enterprise Linux 8 (64-bit)
+	On	
+VLAN 130, VLAN 145
+
+
+	
+CPPM-VM-KW
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Red Hat Enterprise Linux 8 (64-bit)
+	On	
+VLAN 130
+
+
+	
+da-sqlserver
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Microsoft Windows Server 2022 (64-bit)
+	On	
+AWS_vLAN_200, VLAN 135
+
+
+	
+Debian-UEFI-DE
+	
+DC Helios
+	
+DC Cluster
+	
+10.12.135.91
+	
+Debian GNU/Linux 11 (64-bit)
+	Off	
+VLAN 135
+Fetching data finished
+1 - 10 of 145
+Show:
+Added VMs
+All
+Warnings
+Back
+Cancel
+Next
+
+--- FIELDS ---
+{
+ "fields": [
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-vm-search-box",
+   "label": "",
+   "value": "",
+   "checked": false,
+   "placeholder": "e.g. VM Apache",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "mini-select-125",
+   "label": "Show:",
+   "value": "10 rows",
+   "checked": false,
+   "placeholder": "select",
+   "disabled": false,
+   "readonly": true,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "mini-select-140",
+   "label": "Show:",
+   "value": "10 rows",
+   "checked": false,
+   "placeholder": "select",
+   "disabled": false,
+   "readonly": true,
+   "visible": true
+  }
+ ],
+ "buttons": [
+  " {rename migration plan}",
+  " {learn more about migration plan}",
+  " {Close}",
+  "Source & Target",
+  "2 Select VM's",
+  "3 Network and Policy [disabled]",
+  "4 VM Preparation [disabled]",
+  "5 VM Settings [disabled]",
+  "6 Summary [disabled]",
+  " {Clear filters}",
+  " {Close filters}",
+  "Refresh {refresh source inventory}",
+  "Filter {Add Filters to choose vm's}",
+  " [disabled] { Previous page}",
+  " {Next page}",
+  "Add all VMs {Add all VMs to the migration plan}",
+  "Name  Sorted: Ascending",
+  "Datacenter  Sortable",
+  "Cluster  Sortable",
+  "Host  Sortable",
+  "OS  Sortable",
+  "Power State  Sortable",
+  " {Add VM AR-PClient-WS10 to the migration plan}",
+  " [disabled] {Add VM CentOS to the migration plan}",
+  " [disabled] {Add VM Clone-MWP-DC-WS19-001 to the migration plan}",
+  " {Add VM Core-DNS-135 [Do not touch] to the migration plan}",
+  " {Add VM Core-NTP-135 [Do not touch] to the migration plan}",
+  " {Add VM CPPM-6.12_Ocir to the migration plan}",
+  " {Add VM CPPM-Krisna to the migration plan}",
+  " {Add VM CPPM-VM-KW to the migration plan}",
+  " [disabled] {Add VM da-sqlserver to the migration plan}",
+  " {Add VM Debian-UEFI-DE to the migration plan}",
+  " [disabled] { Previous page}",
+  " {Next page}",
+  "All {All}",
+  "Warnings {Warnings}",
+  "Back {Go back to Source & Target Selection}",
+  "Cancel {Cancel creating Vm migration Plan ev2ahv-uxref}",
+  "Next [disabled] {Next to Network Configuration}"
+ ]
+}

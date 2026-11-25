@@ -1,0 +1,87 @@
+URL: https://10.12.135.181/migrationplan/SelectTarget
+TITLE: New VM Migration Plan - Move
+
+1
+Source & Target
+2
+Select VM's
+3
+Network and Policy
+4
+VM Preparation
+5
+VM Settings
+6
+Summary
+Select Source
+Select a Source
+Select Target
+Select a Target
+Refresh
+Target refreshed
+Cancel
+Next
+New Migration Plan
+Plan Name
+Provide a unique name for your plan
+Cancel
+Proceed
+
+--- FIELDS ---
+{
+ "fields": [
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-select-source-element",
+   "label": "Select a Source",
+   "value": "",
+   "checked": false,
+   "placeholder": "Select a Source...",
+   "disabled": false,
+   "readonly": true,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-select-target-element",
+   "label": "Select a Target",
+   "value": "",
+   "checked": false,
+   "placeholder": "Select a Target...",
+   "disabled": true,
+   "readonly": true,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "plan-name",
+   "label": "Plan Name",
+   "value": "",
+   "checked": false,
+   "placeholder": "Enter Migration Plan Name",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  }
+ ],
+ "buttons": [
+  " {rename migration plan}",
+  " {learn more about migration plan}",
+  " {Close}",
+  "1 Source & Target",
+  "2 Select VM's [disabled]",
+  "3 Network and Policy [disabled]",
+  "4 VM Preparation [disabled]",
+  "5 VM Settings [disabled]",
+  "6 Summary [disabled]",
+  "Refresh [disabled] {Refresh is disabled until you select a Target Environment}",
+  "Cancel {Cancel creating Vm migration Plan }",
+  "Next [disabled] {Next to Select VMs}",
+  " {Cancel creating new Migration Plan}",
+  "Cancel {Cancel creating new Migration Plan}",
+  "Proceed [disabled] {Proceed to create new Migration Plan}"
+ ]
+}

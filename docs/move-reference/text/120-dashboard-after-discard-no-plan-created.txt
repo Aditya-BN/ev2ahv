@@ -1,0 +1,281 @@
+URL: https://10.12.135.181/dashboard
+TITLE: VM Migration Dashboard - Move
+
+Move
+VM
+Files
+Cluster Conversion
+Security Policy
+Events
+nutanix
+Migration Plans
+Environments
+Add Environment
+AOS
+Nutanix
+
+Prism Central
+
+10.12.135.196
+58 VMs
+ESXi
+vCenter
+
+VMware vCenter
+
+vcenterdc.helioslab.local
+145 VMs
+VM Migration dashboard
+In Progress
+0 VMs
+Ready to Cutover
+0 VMs
+Failed
+1 VMs
+Paused
+0 VMs
+Completed
+1 VMs
+List of Migration Plans
+Viewing 4 plans
+New Migration Plan
+Actions
+Viewing 4 plans
+1 - 4 of 4
+	
+Plan name
+ Sortable
+	
+Created By
+	
+Source
+	
+Target
+	
+Data Migrated
+	
+Elapsed Time
+	
+Plan Status
+	
+VMs Status
+	
+Total VMs
+	
+Actions
+
+
+	
+windows03-32
+	nutanix	
+ESXi
+	
+AOS
+	
+Not Available
+	0m	
+Not Started
+	
+0
+0
+0
+	1	
+Actions
+
+
+	
+testingingg
+	nutanix	
+ESXi
+	
+AOS
+	
+24.37 GiB
+	137d 23h 21m	
+In Progress
+	
+0
+1
+0
+	1	
+View Details
+Actions
+
+
+	
+Test-win03-32bit
+	nutanix	
+ESXi
+	
+AOS
+	
+Not Available
+	0m	
+Not Started
+	
+0
+0
+0
+	1	
+Actions
+
+
+	
+Test
+	nutanix	
+ESXi
+	
+AOS
+	
+37.22 GiB
+	2h 30m	
+Completed
+	
+0
+0
+0
+	1	
+View Details
+Actions
+Fetching data finished
+
+--- FIELDS ---
+{
+ "fields": [
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "",
+   "label": "",
+   "value": "",
+   "checked": false,
+   "placeholder": "e.g. My Migration Plan",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "select-237",
+   "label": "",
+   "value": "All Plans",
+   "checked": false,
+   "placeholder": "Select",
+   "disabled": false,
+   "readonly": true,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "select-all-81952199263878800",
+   "label": "",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "cc92aeff-600e-4e7b-a3ac-1a0ee2138c21",
+   "label": "",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "a462f03f-ed37-4064-9799-68ac9194251e",
+   "label": "",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "c6d6dd91-55ac-449c-a7f3-c68382829cb7",
+   "label": "",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "b2c5d762-fc25-4dce-8c6b-976e7298041d",
+   "label": "",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  }
+ ],
+ "buttons": [
+  "VM {View VM Dashboard}",
+  "Files {View File Dashboard}",
+  "Cluster Conversion {View Cluster Conversion Dashboard}",
+  "Security Policy {View Security Policy Dashboard}",
+  " {Help}",
+  " {Settings}",
+  "Events {Events}",
+  "nutanix {Nutanix user account options}",
+  "Add Environment {Add Environment}",
+  " {Nutanix actions}",
+  " {vCenter actions}",
+  "0 VMs {View 0 VMs migration in progress}",
+  "0 VMs {View 0 VMs ready to cutover}",
+  "1 VMs {View 1 VMs migrations failed}",
+  "0 VMs {View 0 VMs migration paused}",
+  "1 VMs {View 1 VMs migration completed}",
+  "New Migration Plan",
+  "Actions [disabled] {Actions}",
+  " [disabled] { Previous page}",
+  " [disabled] {Next page}",
+  "Sortable",
+  "windows03-32 {windows03-32 Plan Summary}",
+  "ESXi {View source ESXi}",
+  "AOS {View target AOS}",
+  "Not Available {View Data size details of migration plan windows03-32}",
+  "0 0 0",
+  "Actions {Actions}",
+  "testingingg {testingingg Plan Summary}",
+  "ESXi {View source ESXi}",
+  "AOS {View target AOS}",
+  "24.37 GiB {View Data size details of migration plan testingingg}",
+  "In Progress {In Progress, migration details of migration plan testingingg}",
+  "0 1 0",
+  "View Details {View details of migration plan testingingg}",
+  "Actions [disabled] {Actions}",
+  "Test-win03-32bit {Test-win03-32bit Plan Summary}",
+  "ESXi {View source ESXi}",
+  "AOS {View target AOS}",
+  "Not Available {View Data size details of migration plan Test-win03-32bit}",
+  "0 0 0",
+  "Actions {Actions}",
+  "Test {Test Plan Summary}",
+  "ESXi {View source ESXi}",
+  "AOS {View target AOS}",
+  "37.22 GiB {View Data size details of migration plan Test}",
+  "Completed {Completed, migration details of migration plan Test}",
+  "0 0 0",
+  "View Details {View details of migration plan Test}",
+  "Actions {Actions}"
+ ]
+}

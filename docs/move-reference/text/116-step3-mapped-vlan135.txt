@@ -1,0 +1,112 @@
+URL: https://10.12.135.181/migrationplan/SelectTarget
+TITLE: New VM Migration Plan - Move
+
+ev2ahv-uxref
+Source & Target
+Select VM's
+3
+Network and Policy
+4
+VM Preparation
+5
+VM Settings
+6
+Summary
+Network
+
+Map the source network details to respective target network details
+
+Source Network
+	
+Target Type
+	
+Target VPC
+	
+Target Subnet
+
+
+VLAN 135
+	
+	
+	
+Fetching data finished
+Test Network (Optional)
+Add a test network for crash consistent testing of your VMs prior to migration
+This network should be non-routable and isolated from the rest of your network to avoid IP and or MAC address conflicts.
+Security Policies (Optional)
+No NSX environment found for the selected source.
+No FNS environment found for the selected target.
+To add NSX or FNS environment, go to 
+security policy section
+Back
+Cancel
+Next
+
+--- FIELDS ---
+{
+ "fields": [
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-select-target-type-0",
+   "label": "",
+   "value": "",
+   "checked": false,
+   "placeholder": "VLAN",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-select-target-vlan-0",
+   "label": "",
+   "value": "",
+   "checked": false,
+   "placeholder": "Select VPC",
+   "disabled": false,
+   "readonly": true,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "text",
+   "id": "_uiauto-select-target-vlan-subnet-0",
+   "label": "",
+   "value": "",
+   "checked": false,
+   "placeholder": "VLAN135",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  },
+  {
+   "tag": "INPUT",
+   "type": "checkbox",
+   "id": "",
+   "label": "Add a test network for crash consistent testing of your VMs ",
+   "value": "on",
+   "checked": false,
+   "placeholder": "",
+   "disabled": false,
+   "readonly": false,
+   "visible": true
+  }
+ ],
+ "buttons": [
+  " {rename migration plan}",
+  " {learn more about migration plan}",
+  " {Close}",
+  "Source & Target",
+  "Select VM's",
+  "3 Network and Policy",
+  "4 VM Preparation [disabled]",
+  "5 VM Settings [disabled]",
+  "6 Summary [disabled]",
+  "security policy section",
+  "Back {Go back to Selecting VM's}",
+  "Cancel {Cancel creating Vm migration Plan ev2ahv-uxref}",
+  "Next {Next to Vm preparation}"
+ ]
+}
