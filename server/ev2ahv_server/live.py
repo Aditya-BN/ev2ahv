@@ -341,6 +341,13 @@ class Live:
                         rc = proc.wait()
                     if job["cancelled"]:
                         return
+                    if rc in (-15, -1):
+                        # stopped by a service stop or reboot, not by the user: leave the status as it is so the
+                        # worker resumes the step after restart (every step can be rerun safely)
+                        self.store.event("warning", f"{step} interrupted by a service stop; it resumes on restart",
+                                         plan=plan["name"], vm=vm["name"])
+                        job["cancelled"] = True
+                        return
                     if rc != 0:
                         error = error or f"{step} exited with {rc}. See the job log"
                         break

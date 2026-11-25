@@ -7,7 +7,8 @@ connection speaks the normal ev2ahv_helper protocol for that op.
 
 A device is accepted only if ALL hold:
   - it resolves to a whole SCSI disk /dev/sdX that AHV presents as a vdisk (by-id scsi-1NUTANIX_* link);
-  - it was NOT present at boot (`baseline` records boot disks; the appliance's own disks are never touched);
+  - it is not a system disk (any disk in use at boot, recorded by `baseline`, is refused forever), and a disk that
+    was already attached at boot is accepted only if ev2ahv claimed it (staging disks survive appliance reboots);
   - it is not mounted, has no mounted partitions and no holders (LVM, dm, md);
   - its serial is in the app's claim list (/var/lib/ev2ahv/claims: disks the app hot-added itself, after it
     verified the hot-add through the Prism API). The claim list alone grants nothing: the checks above still apply.
@@ -44,6 +45,9 @@ def baseline():
     os.chmod(BOOT, 0o755)   # the unprivileged app reads vm-uuid; the unit's umask would otherwise hide it
     with open(os.path.join(BOOT, "disks"), "w") as fh:
         fh.write("\n".join(disks()) + "\n")
+    system = [serial_of(d) or d for d in disks() if helper.in_use("/dev/" + d)]
+    with open(os.path.join(BOOT, "system-disks"), "w") as fh:   # disks in use at boot: never allowed
+        fh.write("\n".join(system) + "\n")
     try:
         with open("/sys/class/dmi/id/product_uuid") as fh:
             uuid = fh.read().strip().lower()
@@ -51,7 +55,7 @@ def baseline():
         uuid = ""
     with open(os.path.join(BOOT, "vm-uuid"), "w") as fh:
         fh.write(uuid + "\n")
-    for f in ("disks", "vm-uuid"):
+    for f in ("disks", "system-disks", "vm-uuid"):
         os.chmod(os.path.join(BOOT, f), 0o644)
 
 
@@ -65,19 +69,23 @@ def check_device(path):
     try:
         with open(os.path.join(BOOT, "disks")) as fh:
             boot = set(fh.read().split())
+        with open(os.path.join(BOOT, "system-disks")) as fh:
+            system = set(fh.read().split())
     except OSError:
         raise PermissionError("no boot baseline: ev2ahv-boot.service has not run")
-    if name in boot:
-        raise PermissionError(f"{real} was present at boot (an appliance disk)")
     serial = serial_of(name)
     if not serial:
         raise PermissionError(f"{real} is not an AHV vdisk")
+    if serial in system or name in system:
+        raise PermissionError(f"{real} is an appliance system disk")
     try:
         with open(CLAIMS) as fh:
             claimed = set(fh.read().split())
     except OSError:
         claimed = set()
     if serial not in claimed:
+        if name in boot:
+            raise PermissionError(f"{real} was present at boot (an appliance disk)")
         raise PermissionError(f"{real} (serial {serial}) was not attached by ev2ahv")
     busy = helper.in_use(real)
     if busy:
