@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, Plan, Provider } from '../api';
 import { Kebab, Menu, Modal, Pager, Spinner, useDialogs, usePager } from '../components/ui';
 import { EnvDialog, EnvView, typeLabel } from '../components/EnvDialogs';
+import { useSession } from '../App';
 import { fmtBytes, fmtDate, fmtElapsed, GROUPS, useLive } from '../util';
 
 const FILTERS = ['All Plans', 'Cancelled', 'Completed', 'Failed', 'In Progress', 'Not Started', 'Paused', 'Scheduled'];
@@ -17,6 +18,8 @@ export function StatusText({ s }: { s: string }) {
 export default function Dashboard() {
   const nav = useNavigate();
   const { showError, confirm, toast } = useDialogs();
+  const { info } = useSession();
+  const hl = useLive(() => (info.appliance ? api.health() : Promise.resolve(null)), [info.appliance]);
   const envs = useLive(() => api.providers(), []);
   const plans = useLive(() => api.plans(), []);
   const [envDlg, setEnvDlg] = useState<null | { existing?: Provider }>(null);
@@ -86,6 +89,11 @@ export default function Dashboard() {
       </aside>
 
       <section className="dash-main">
+        {info.appliance && hl.data && hl.data.selftest.status !== 'PASS' && (
+          <div className="alert warn" role="status">
+            The disk hot-add self-test has not passed yet ({hl.data.selftest.status}). <Link to="/health">Open Appliance Health</Link>
+          </div>
+        )}
         <div className="tiles">
           {tiles.map((t) => (
             <div className={'tile ' + t.slug} key={t.slug}>

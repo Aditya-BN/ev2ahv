@@ -8,7 +8,7 @@ export type VmStatus =
 export type PlanAction = 'start' | 'pause' | 'resume' | 'cutover' | 'test' | 'cancel' | 'retry' | 'discard' | 'complete' | 'rollback';
 export type CheckStatus = 'PASS' | 'WARN' | 'FAIL';
 
-export interface AppInfo { name: string; version: string; build: string; mode: 'mock' | 'live'; user: string | null }
+export interface AppInfo { name: string; version: string; build: string; mode: 'mock' | 'live'; user: string | null; must_change?: boolean; appliance?: boolean }
 export interface Named { id: string; name: string }
 export interface ProviderIn {
   name: string; type: ProviderType; address: string; username: string;
@@ -62,11 +62,18 @@ export interface EventRow { time: number; severity: 'info' | 'warning' | 'error'
 export interface BandwidthPolicy { id: string; name: string; source_id: string; source_name: string; frequency: string; limit_mbps: number }
 export interface Writer { vm?: string | null; host?: string | null; user?: string | null }
 export interface Settings { id?: string; resync_minutes: number; bandwidth_policies: BandwidthPolicy[]; timezone: string; writer?: Writer | null }
+export interface SelfTestStep { time: number | string; message: string }
+export interface SelfTest { status: 'never run' | 'running' | 'PASS' | 'FAIL'; steps?: SelfTestStep[]; error?: string | null; started?: number | null; ended?: number | null }
+export interface Health {
+  vm_uuid: string; ahv_vm: { name: string; power: string; disks: number } | null; prism: string | null; selftest: SelfTest;
+  tls: { subject: string; issuer: string; not_after: string | number; self_signed: boolean; sha256: string } | null; ssh_public_key: string | null;
+}
 export interface ListResult<T> { entities: T[]; total: number }
 
 export class ApiError extends Error {
   status: number;
   failing: string[];
+  mustChange = false;
   constructor(status: number, message: string, failing: string[] = []) {
     super(message);
     this.status = status;
@@ -103,16 +110,25 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
       else if (Array.isArray(d.detail)) msg = d.detail.map((x: { loc?: unknown[]; msg?: string }) => `${(x.loc || []).slice(1).join('.')}: ${x.msg}`).join('; ');
       if (Array.isArray(d.failing)) failing = d.failing;
     }
-    throw new ApiError(res.status, msg, failing);
+    const err = new ApiError(res.status, msg, failing);
+    if (res.status === 403 && d && typeof d === 'object' && (d as { must_change?: boolean }).must_change) {
+      err.mustChange = true;
+      authEvents.dispatchEvent(new Event('must_change'));
+    }
+    throw err;
   }
   return data as T;
 }
 
 export const api = {
   appinfo: () => req<AppInfo>('GET', '/appinfo'),
-  login: (username: string, password: string) => req<{ user: string }>('POST', '/token', { username, password }),
+  login: (username: string, password: string) => req<{ user: string; must_change?: boolean }>('POST', '/token', { username, password }),
   logout: () => req<unknown>('POST', '/logout'),
   changePassword: (current: string, next: string) => req<unknown>('POST', '/password', { current, new: next }),
+
+  health: () => req<Health>('GET', '/health'),
+  runSelftest: () => req<unknown>('POST', '/health/selftest', {}),
+  putTls: (cert: string, key: string) => req<unknown>('PUT', '/tls', { cert, key }),
 
   providers: () => req<ListResult<Provider>>('GET', '/providers'),
   provider: (id: string) => req<Provider>('GET', `/providers/${id}`),

@@ -62,6 +62,7 @@ export default function TopBar() {
       <a className="top-link" href={api.docsUrl} target="_blank" rel="noreferrer" title="REST API docs">?</a>
       <Menu kind="icon" align="right" label={<span className="gear" aria-label="Settings">&#9881;</span>} items={[
         { label: 'Appliance Settings', onClick: () => nav('/appliance-settings') },
+        { label: 'Appliance Health', onClick: () => nav('/health') },
         { label: 'Bandwidth Throttling', onClick: () => nav('/bandwidth-configuration') },
         { label: 'Download Support Bundle', href: api.supportBundleUrl() },
         { label: 'Realtime Logs', onClick: () => nav('/realtime-logs') },
