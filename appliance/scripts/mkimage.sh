@@ -133,6 +133,8 @@ cp $EFI/rocky/grub.cfg $EFI/BOOT/grub.cfg
 cat > $ROOT/etc/fstab <<B
 UUID=$ROOT_UUID / xfs defaults 0 0
 UUID=$EFI_UUID /boot/efi vfat umask=0077,shortname=winnt 0 2
+tmpfs /tmp tmpfs defaults,nodev,nosuid,size=1G 0 0
+tmpfs /dev/shm tmpfs defaults,nodev,nosuid,noexec 0 0
 B
 # --- relabel, cleanup
 chroot $ROOT bash -euxo pipefail <<'C'

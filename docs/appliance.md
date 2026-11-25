@@ -1,0 +1,127 @@
+# ev2ahv appliance image
+
+A Rocky Linux 9 minimal qcow2 that boots on Nutanix AHV and serves the ev2ahv web app (same idea as the Nutanix Move appliance).
+Output: `dist/ev2ahv-<VERSION>.qcow2` (+ `.sha256`, `MANIFEST.json`, `.sbom.spdx.json`).
+
+## Build
+
+```
+make appliance          # appliance/build.sh; needs docker, no sudo, no KVM (~6 min with a warm dnf cache)
+make appliance-smoke    # boots build/ev2ahv.raw in qemu TCG inside a container (about 12 min), prints a service/AVC report
+make appliance-scan     # trivy, pip-audit, OpenSCAP CIS L1 on build/tree -> build/scan/
+```
+
+What `build.sh` does:
+
+1. builds `web/dist` if missing or stale (`npm ci && npm run build`);
+2. builds the `ev2ahv-builder` image (rockylinux:9 + dnf, xfsprogs, grub2, checkpolicy, qemu-img);
+3. downloads wheels for `appliance/requirements.txt` with a current pip (`--only-binary=:all:`, so no compiler is needed);
+4. in a privileged container (`scripts/mkimage.sh`): partitions a sparse 20 GiB raw file (GPT: 1 MiB BIOS boot, 100 MiB ESP, root xfs),
+   loop-mounts it, `dnf --installroot` the packages in `appliance/packages.txt` (weak deps off, `nodocs`, `%_install_langs en_US`),
+   overlays `appliance/rootfs/`, creates users, builds the venv from the wheels, compiles and installs the SELinux module,
+   builds the initramfs, writes the BLS entry/grub.cfg, installs grub for BIOS and shim+grub for UEFI, relabels, cleans caches,
+   `fstrim`s and runs `qemu-img convert -c -O qcow2`;
+5. writes the checksum, `MANIFEST.json` (version, git commit, UTC date, rpm list, pip list) and an SPDX SBOM (syft on the root tree).
+
+### Why not kiwi-ng / virt-customize
+
+I went straight to `dnf --installroot` + loop devices in a privileged container instead of kiwi-ng or the GenericCloud image + virt-customize.
+kiwi needs udev-created partition nodes and its own bootloader handling inside the container, and virt-customize under TCG (no `/dev/kvm`)
+would run every `dnf install` inside an emulated appliance VM. The installroot approach is about 120 lines of shell, runs at native speed,
+and gives exact control over the package set. Trade-off: it is a custom script, not a declarative description. virt-sysprep/virt-sparsify
+are replaced by the explicit cleanup in `mkimage.sh` (machine-id emptied, ssh host keys removed, logs, dnf cache, tmp, bash history) plus `fstrim` on the loop-mounted fs
+so zeroed/free blocks are holes before `qemu-img convert -c`.
+
+## What is inside and why
+
+| Item | Why |
+| --- | --- |
+| kernel-core only (no kernel-modules-extra, no firmware) | all AHV needs (virtio_scsi/blk/net, ahci, xfs, nf_tables) is in kernel-modules-core |
+| dracut, generic initramfs with an exclusive driver list | small initramfs (~16 MB), still boots virtio-scsi, SATA/IDE and virtio-blk |
+| NetworkManager, firewalld, chrony, openssh, sudo, cloud-init, logrotate, audit, selinux-policy-targeted | standard OS services; cloud-init (datasources ConfigDrive, NoCloud, None) grows the root partition on first boot and accepts AHV custom scripts |
+| python3.9 + venv `/opt/ev2ahv/venv` from pinned wheels | no compilers in the image; cryptography uses the abi3 manylinux wheel |
+| nginx-core | see below |
+| qemu-img, xorriso | used by the app (disk conversion, ISO building) |
+| no compilers, -devel, docs/man/info, non-English locales, firmware, kdump, tuned, postfix, plymouth, cockpit, Node, Playwright | size and attack surface; dnf still works |
+
+### Why nginx in front instead of uvicorn TLS
+
+nginx serves the static UI directly, holds port 443 without giving the Python app any capability (the app runs as an unprivileged user with an empty
+capability set and listens only on a unix socket), reloads certificates without restarting the app (`ev2ahv-tls.path`) and costs about 2 MB.
+There is no port 80 listener.
+
+## Deploy on AHV
+
+1. Prism: Settings, Image Configuration, upload `ev2ahv-<VERSION>.qcow2` as a DISK image (or `acli image.create ev2ahv type=kDiskImage source_url=...`).
+2. Create a VM: 2 vCPU / 4 GiB RAM recommended (minimum 2 vCPU / 2 GiB), one NIC, one disk cloned from the image (20 GiB; the root partition and xfs grow to the disk size on first boot if you make it bigger).
+   Legacy BIOS and UEFI both boot; SCSI disk bus.
+3. Power on. The VM console (tty1) shows the `ev2ahv-config` menu and the web URL once DHCP gives an address.
+4. Open `https://<ip>/`, accept the self-signed certificate (compare the fingerprint from console menu item 7).
+
+Do not clone the powered-on appliance after first boot and expect new keys: SSH host keys, the TLS certificate and `/etc/ev2ahv/instance.key` are generated once
+(`ev2ahv-firstboot.service`, guarded by `/etc/ev2ahv/.initialized`). Deploy every instance from the pristine image.
+
+## First boot and the console menu
+
+`ev2ahv-config` runs as root on tty1 (`ev2ahv-console.service`; getty@tty1 is masked): status and URL, DHCP/static IPv4 on the primary NIC (nmcli),
+hostname, NTP servers (chrony), toggle SSH password authentication, reset the UI admin password (writes `/var/lib/ev2ahv/ui.reset`), show the TLS
+fingerprint, regenerate the self-signed certificate (also done automatically after network/hostname changes while the certificate is self-signed),
+and "Login shell" (`/bin/login`). After applying network settings it prints `Open https://<ip>/`; `/etc/issue.d/50-ev2ahv.issue` shows the URL on login prompts.
+The serial console and ssh get normal login prompts.
+
+cloud-init network rendering is disabled so it cannot overwrite the profile (`ev2ahv-primary`) the menu manages.
+
+## Default credentials (change them)
+
+| Where | User | Password | Note |
+| --- | --- | --- | --- |
+| Web UI | `nutanix` | `nutanix/4u` | forced change at first login |
+| Console / ssh | `admin` (wheel, sudo with password) | `nutanix/4u` | expired (`chage -d 0`): forced change at first login |
+| root | | locked | no root ssh login |
+
+## Ports
+
+| Port | Use |
+| --- | --- |
+| 22/tcp | ssh (firewalld public zone) |
+| 443/tcp | https UI and `/api/` (firewalld public zone) |
+
+Everything else is closed. Outbound: Prism Central/Element (9440), everRun, WinRM/ssh to sources as configured in the app.
+
+## Files
+
+| Path | Content |
+| --- | --- |
+| `/opt/ev2ahv/app` | app code (`ev2ahv`, `server`, `prep`, `VERSION`, `web/dist`), root-owned, read-only to the service |
+| `/opt/ev2ahv/venv` | python venv |
+| `/var/lib/ev2ahv` (0750 ev2ahv) | state DB, `ui.json`, staging, plans, `config/`, `tls/` |
+| `/var/lib/ev2ahv/tls/server.{crt,key}` | nginx certificate (0640 ev2ahv:ev2ahv, nginx is in group ev2ahv); `.selfsigned` marks an auto-generated one |
+| `/var/log/ev2ahv` | app logs (logrotate daily, 14 kept) |
+| `/etc/ev2ahv` (0750 root:ev2ahv) | `ev2ahv.env`, `instance.key` (0640 root:ev2ahv), `.initialized` |
+| `/run/ev2ahv/app.sock` | app unix socket (nginx proxies `/api/` to it) |
+| `/run/ev2ahv-blockd.sock`, `/run/ev2ahv-boot/` | root block helper socket, boot baseline |
+
+Services: `ev2ahv`, `ev2ahv-boot` (records boot disks/VM UUID), `ev2ahv-blockd.socket` (+ per-connection `ev2ahv-blockd@.service`, root, socket-activated),
+`ev2ahv-firstboot`, `ev2ahv-tls.path/.service`, `ev2ahv-console`, `ev2ahv-issue`, `nginx`, plus chronyd, sshd, firewalld, NetworkManager, auditd, cloud-init.
+Journal is persistent, capped at 200 MB.
+
+## OS updates
+
+Online: `sudo dnf update` (Rocky BaseOS/AppStream repos stay configured); reboot if the kernel changed. The venv/app are not managed by dnf; upgrade the appliance
+by deploying a new image and migrating the state (`/var/lib/ev2ahv`, `/etc/ev2ahv/instance.key`) or by the in-app update mechanism when it exists.
+
+Offline: put a repo mirror or the Rocky DVD contents on a transfer disk/ISO, mount it (for example `/mnt/repo`) and run
+`sudo dnf --disablerepo='*' --repofrompath=local,file:///mnt/repo/BaseOS --repofrompath=localapp,file:///mnt/repo/AppStream --enablerepo=local --enablerepo=localapp --nogpgcheck update`
+(drop `--nogpgcheck` after importing the Rocky key with `rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-Rocky-9`; the key is already installed).
+A tarball of `reposync` output works the same way.
+
+## Security model summary
+
+Details and scan results: `docs/security.md`.
+
+- SELinux enforcing with a small custom module (`appliance/selinux/ev2ahv.te/.fc`): nginx may connect to the app socket, static content, cert and socket labels.
+- The web app runs as `ev2ahv` with no capabilities, `NoNewPrivileges`, `ProtectSystem=strict`, private tmp, restricted address families.
+  Raw disk access goes through `ev2ahv-blockd` (socket-activated, root, reachable only by group `ev2ahv`).
+- TLS 1.2/1.3 only, HSTS, CSP, DENY framing; no port 80.
+- SSH: no root login, password auth configurable from the console; root password locked; firewall allows only ssh and https.
+- Every instance generates its own SSH host keys, TLS key and instance key at first boot.
