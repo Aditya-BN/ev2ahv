@@ -107,7 +107,7 @@ class Migration:
         cluster = self.prism.cluster_id(self.p["target"]["cluster"])
         container = self.prism.container_id(self.p["target"]["container"], cluster)
         disk_id, path = tgt.attach_staging(self.prism, self.writer, vm, size, container=container)
-        serial = path.rsplit("scsi-SNUTANIX_VDISK_", 1)[-1]
+        serial = tgt.serial_of(self.writer, path)
         all_staging[disk["name"]] = {"disk_id": disk_id, "path": path, "serial": serial, "size": size}
         self.state.set("staging", all_staging)
         return path

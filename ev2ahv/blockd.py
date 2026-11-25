@@ -6,7 +6,7 @@ with the connection as stdin/stdout. The client sends one JSON line {"op": ..., 
 connection speaks the normal ev2ahv_helper protocol for that op.
 
 A device is accepted only if ALL hold:
-  - it resolves to a whole SCSI disk /dev/sdX that AHV presents as a vdisk (by-id scsi-SNUTANIX_VDISK_* link);
+  - it resolves to a whole SCSI disk /dev/sdX that AHV presents as a vdisk (by-id scsi-1NUTANIX_* link);
   - it was NOT present at boot (`baseline` records boot disks; the appliance's own disks are never touched);
   - it is not mounted, has no mounted partitions and no holders (LVM, dm, md);
   - its serial is in the app's claim list (/var/lib/ev2ahv/claims: disks the app hot-added itself, after it
@@ -32,14 +32,16 @@ def disks():
 
 
 def serial_of(name):
-    for link in glob.glob("/dev/disk/by-id/scsi-SNUTANIX_VDISK_*"):
+    """The vdisk serial AHV presents (by-id scsi-1NUTANIX_<serial>; older stacks used scsi-SNUTANIX_VDISK_<id>)."""
+    for link in glob.glob("/dev/disk/by-id/scsi-*NUTANIX_*"):
         if "-part" not in link and os.path.basename(os.path.realpath(link)) == name:
-            return link.rsplit("scsi-SNUTANIX_VDISK_", 1)[1]
+            return re.split(r"NUTANIX_(?:VDISK_)?", os.path.basename(link), 1)[1]
     return None
 
 
 def baseline():
-    os.makedirs(BOOT, mode=0o755, exist_ok=True)
+    os.makedirs(BOOT, exist_ok=True)
+    os.chmod(BOOT, 0o755)   # the unprivileged app reads vm-uuid; the unit's umask would otherwise hide it
     with open(os.path.join(BOOT, "disks"), "w") as fh:
         fh.write("\n".join(disks()) + "\n")
     try:

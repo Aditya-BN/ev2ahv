@@ -20,8 +20,13 @@ def block_devices(t):
 
 
 def stable_path(t, name):
-    out = t.run(f"find /dev/disk/by-id -lname '*/{name}' -name 'scsi-SNUTANIX_VDISK_*'", check=False).split()
+    out = t.run(f"find /dev/disk/by-id -lname '*/{name}' -name 'scsi-*NUTANIX_*' ! -name '*-part*'", check=False).split()
     return out[0] if out else f"/dev/{name}"
+
+
+def serial_of(t, path):
+    name = os.path.basename(t.run(f"readlink -f {path}").strip())
+    return block_devices(t)[name].get("serial")
 
 
 def pick_new_device(before, after, size):
@@ -49,8 +54,8 @@ def attach_staging(prism, t, writer_vm, size, container=None, clone_from=None, t
         time.sleep(2)
     dev = pick_new_device(before, after, size)
     path = stable_path(t, dev["name"])
-    if "scsi-SNUTANIX_VDISK_" in path:
-        t.claim(path.rsplit("scsi-SNUTANIX_VDISK_", 1)[1])
+    if dev.get("serial"):
+        t.claim(dev["serial"])
     log.info("disk %s is %s (%s)", disk, path, dev.get("serial"))
     return disk, path
 
