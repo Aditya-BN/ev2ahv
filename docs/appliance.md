@@ -125,3 +125,31 @@ Details and scan results: `docs/security.md`.
 - TLS 1.2/1.3 only, HSTS, CSP, DENY framing; no port 80.
 - SSH: no root login, password auth configurable from the console; root password locked; firewall allows only ssh and https.
 - Every instance generates its own SSH host keys, TLS key and instance key at first boot.
+
+## Validation on AHV (2026-11-26, NTNX-DC, image 0.2.0)
+
+| Step | Result |
+|---|---|
+| Upload qcow2 as image `ev2ahv-appliance-0.2.0`, create `ev2ahv-appliance-test` (2 vCPU, 4 GiB, 20 GiB, BIOS, VLAN135-IPAM) | OK |
+| First boot | 16.6 s to multi-user (4.4 kernel + 3.5 initrd + 8.6 userspace); no failed units; SELinux Enforcing; console menu on tty1 shows the URL |
+| UI login with the default account | `must_change: true`; every other API call returns 403 until the password is changed; change OK |
+| Add Prism Central environment (API key) | Connected |
+| Health page | VM UUID found in Prism (`ev2ahv-appliance-test`), self-signed cert generated at first boot, appliance SSH key generated |
+| Disk hot-add self-test | PASS: 1 GiB disk hot-added to itself, root helper accepted it and read its size, offlined, removed via Prism |
+| Root helper negative tests | `/dev/sda` (system disk), `/dev/sr0`, `/etc/shadow` refused; the app user cannot open raw disks directly |
+| Stage A from the appliance (fake source on the lab writer VM, plan-file environment) | prep-check, seed, cutover OK (~1 min); rollback OK; re-cutover OK |
+| Reboot during a cutover | back in ~21 s; the interrupted cutover resumed automatically and completed |
+| Resources | ~460 MiB RAM used idle (app ~60 MiB, nginx ~17 MiB); 813 MiB of the 20 GiB disk used |
+
+Found and fixed during validation (in the rebuilt image): the boot-baseline directory was not readable by the
+app; AHV names vdisks `scsi-1NUTANIX_<serial>` (the code expected `scsi-SNUTANIX_VDISK_*`), so claims and
+stable paths now use the real serial; staging disks attached across a reboot are accepted when ev2ahv claimed
+them, while any disk in use at boot stays refused; a job interrupted by a service stop now resumes instead of failing.
+
+Sizing: **recommended 2 vCPU, 4 GiB RAM, 20 GiB disk; minimum 2 vCPU, 2 GiB.** Each running migration step adds one
+engine process (~60–100 MiB). The appliance only stores state and sparse staging metadata; staging disks are
+separate vdisks hot-added per migration.
+
+Not exercised on AHV: the console menu's static-IP / hostname / NTP actions (the test VM used DHCP from an
+IPAM subnet and cloud-init for the admin SSH key), UEFI boot, the upgrade bundle and a second fresh deploy
+(deferred by the owner), Stage B (everRun) from the appliance.
