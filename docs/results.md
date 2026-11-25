@@ -114,3 +114,11 @@ spanning both PVs. All mounted by UUID. Auto mode, write load on all four filesy
 
 - Ghost NIC removal on a real ghost adapter (none appeared), and the optional NGT install.
 - Windows guest cleanup in manual mode on AHV.
+
+## C4.3: Rocky 9 FT cutover through the web UI (live mode), 2026-11-25 (UTC)
+
+everRun environment registered in the UI server (discovery over ssh, read-only), plan created with automatic
+prep, seed (4 disks, 40 GiB), cutover from the API the UI uses. On AHV: sys_vendor Nutanix, load-generator
+manifests OK on /ext4 (189 files) and /span (188 files). Before it, the old CLI-test copy ev2ahv-rocky9-multi
+was discarded (owner-approved) because it held the guest's MAC; prep-check had correctly failed on that.
+The C4.2 fake-source VM ev2ahv-ui-fake and its staging disk were deleted, and the fake file removed from the writer.
