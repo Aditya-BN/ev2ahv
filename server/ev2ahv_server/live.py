@@ -20,7 +20,6 @@ from ev2ahv.prism import Prism  # noqa: E402
 
 DATA = os.path.expanduser("~/.local/share/ev2ahv/ui")
 SECRETS = os.path.expanduser("~/.config/ev2ahv/ui-secrets")
-AVCLI = os.path.expanduser(os.environ.get("EV2AHV_AVCLI", "~/everrun-lab/avcli.sh"))
 # Lab guard: only ev2ahv-* source VMs unless explicitly allowed (the lab's other VMs belong to someone else).
 ALLOW_ANY = os.environ.get("EV2AHV_ALLOW_ANY_SOURCE") == "1"
 DEFAULT_WRITER = {"vm": "ev2ahv-writer", "host": "10.12.136.211", "user": "nutanix"}
@@ -193,14 +192,14 @@ def engine_plan(plan, vm, src, wl, secret, settings):
         if not vm["name"].startswith("ev2ahv-") and not ALLOW_ANY:
             raise LiveError("Lab guard: only ev2ahv-* source VMs")
         info = everrun.discover(vm["name"], src["node_addresses"])
-        avcli = shlex.quote(AVCLI)
-        auth = f'-H {shlex.quote(src["address"])} -u {shlex.quote(src["username"])} -p "$EV2AHV_AVCLI_PASS"'
-        p = everrun.build_plan(info, vs.get("target_name") or vm["name"], subnet or "VLAN136", AVCLI,
+        p = everrun.build_plan(info, vs.get("target_name") or vm["name"], subnet or "VLAN136", "avcli",
                                writer=settings.get("writer") or DEFAULT_WRITER, disk_bus=vs.get("disk_bus") or "scsi",
                                plan_name=f"ui-{plan['name']}-{vm['name']}")
+        # everRun web API (no Java); the password reaches the command only through EV2AHV_EVERRUN_PASS
+        api = (f"{shlex.quote(sys.executable)} -I {shlex.quote(os.path.join(ROOT, 'ev2ahv', 'everrun_api.py'))} "
+               f"--host {shlex.quote(src['address'])} --user {shlex.quote(src['username'])}")
         q = shlex.quote(vm["name"])
-        p["source"]["power"].update(status=f"{avcli} {auth} vm-info {q} | awk '/-> state/{{print $NF; exit}}'",
-                                    stop=f"{avcli} {auth} vm-shutdown {q}", start=f"{avcli} {auth} vm-poweron {q}")
+        p["source"]["power"].update(status=f"{api} status {q}", stop=f"{api} stop {q}", start=f"{api} start {q}")
     t = p["target"]
     if vs.get("target_name"):
         t["vm_name"] = vs["target_name"]
@@ -284,8 +283,7 @@ class Live:
         if tgt:
             env.update(prism_env(tgt, self.store.secret))
         if src and src["type"] == "everrun":
-            pw = self.store.secret(f"provider:{src['id']}:password") or ""
-            env["EV2AHV_AVCLI_PASS"] = pw.replace("/", "\\/")   # everRun stores "/" escaped; avcli must match
+            env["EV2AHV_EVERRUN_PASS"] = self.store.secret(f"provider:{src['id']}:password") or ""
         env["PYTHONPATH"] = os.path.join(ROOT, "server") + os.pathsep + ROOT
         return env
 
