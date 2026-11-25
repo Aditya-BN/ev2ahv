@@ -43,19 +43,56 @@ def user(ev2ahv_session: Optional[str] = Cookie(None)):
     return s["user"]
 
 
+APPLIANCE = os.environ.get("EV2AHV_APPLIANCE") == "1"
+DATA = os.path.expanduser(os.environ.get("EV2AHV_DATA", "~/.local/share/ev2ahv"))
+DEFAULT_USER, DEFAULT_PASSWORD = "nutanix", "nutanix/4u"
+
+
+def ui_account():
+    """The UI login. On the appliance the default account must change its password at first login, and the console
+    tool can request a reset (it drops a ui.reset file, which only root and the app can write)."""
+    reset = os.path.join(DATA, "ui.reset")
+    if os.path.exists(reset) or not os.path.exists(oldweb.UI_FILE):
+        u = oldweb.set_ui_user(DEFAULT_USER, DEFAULT_PASSWORD)
+        u["must_change"] = APPLIANCE or os.path.exists(reset)
+        _save_account(u)
+        if os.path.exists(reset):
+            os.remove(reset)
+            store.event("warning", "UI password reset to the default from the console")
+        return u
+    return oldweb.ui_user()
+
+
+def _save_account(u):
+    fd = os.open(oldweb.UI_FILE + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump(u, fh)
+    os.replace(oldweb.UI_FILE + ".tmp", oldweb.UI_FILE)
+
+
+@app.middleware("http")
+async def force_password_change(request: Request, call_next):
+    s = sessions.get(request.cookies.get(COOKIE, ""))
+    if s and s.get("must_change") and request.url.path.startswith("/api/") and request.url.path not in (
+            "/api/v2/password", "/api/v2/logout", "/api/v2/appinfo", "/api/v2/token"):
+        return JSONResponse({"message": "Change the default password first", "must_change": True}, status_code=403)
+    return await call_next(request)
+
+
 @app.post("/api/v2/token")
 def login(body: m.Login, response: Response):
-    u = oldweb.ui_user()
+    u = ui_account()
     ok = hmac.compare_digest(body.username, u["username"]) and \
         hmac.compare_digest(oldweb._hash(body.password, u["salt"]), u["hash"])
     if not ok:
         store.event("warning", f"failed login for {body.username!r}")
         raise HTTPException(401, "Invalid username or password")
     tok = secrets.token_urlsafe(32)
-    sessions[tok] = {"user": body.username, "exp": time.time() + SESSION_SECONDS}
+    must = bool(u.get("must_change"))
+    sessions[tok] = {"user": body.username, "exp": time.time() + SESSION_SECONDS, "must_change": must}
     response.set_cookie(COOKIE, tok, httponly=True, secure=True, samesite="strict", max_age=SESSION_SECONDS)
     store.event("info", f"{body.username} logged in")
-    return {"user": body.username}
+    return {"user": body.username, "must_change": must}
 
 
 @app.post("/api/v2/logout")
@@ -67,13 +104,18 @@ def logout(response: Response, ev2ahv_session: Optional[str] = Cookie(None)):
 
 @app.post("/api/v2/password")
 def change_password(body: dict, who=Depends(user)):
-    u = oldweb.ui_user()
+    u = ui_account()
     if not hmac.compare_digest(oldweb._hash(str(body.get("current", "")), u["salt"]), u["hash"]):
         raise HTTPException(400, "Current password is incorrect")
     new = str(body.get("new", ""))
     if len(new) < 8:
         raise HTTPException(400, "New password must be at least 8 characters")
+    if new == DEFAULT_PASSWORD or hmac.compare_digest(oldweb._hash(new, u["salt"]), u["hash"]):
+        raise HTTPException(400, "Choose a password different from the current one")
     oldweb.set_ui_user(u["username"], new)
+    for s_ in sessions.values():
+        if s_["user"] == u["username"]:
+            s_["must_change"] = False
     store.event("info", f"{who} changed the password")
     return {}
 
@@ -81,7 +123,8 @@ def change_password(body: dict, who=Depends(user)):
 @app.get("/api/v2/appinfo", response_model=m.AppInfo)
 def appinfo(ev2ahv_session: Optional[str] = Cookie(None)):
     s = sessions.get(ev2ahv_session or "")
-    return m.AppInfo(version=__version__, mode=MODE, user=s["user"] if s else None)
+    return m.AppInfo(version=__version__, mode=MODE, user=s["user"] if s else None,
+                     must_change=bool(s and s.get("must_change")), appliance=APPLIANCE)
 
 
 # ---------------------------------------------------------------- environments (providers)
@@ -535,7 +578,8 @@ def events(limit: int = 500, who=Depends(user)):
 
 
 DEFAULT_SETTINGS = {"id": "settings", "resync_minutes": 60, "bandwidth_policies": [], "timezone": "Asia/Jakarta",
-                    "writer": {"vm": "ev2ahv-writer", "host": "10.12.136.211", "user": "nutanix"}}
+                    "writer": {"local": True} if os.environ.get("EV2AHV_APPLIANCE") == "1" else
+                    {"vm": "ev2ahv-writer", "host": "10.12.136.211", "user": "nutanix"}}
 
 
 @app.get("/api/v2/settings")
@@ -564,6 +608,13 @@ def supportbundle(who=Depends(user)):
         z.writestr("environments.json", json.dumps([_provider_out(p).model_dump() for p in store.all("provider")],
                                                    indent=1))
         z.writestr("appinfo.json", json.dumps({"version": __version__, "mode": MODE, "time": time.time()}))
+        known = [store.secret(o) for (o,) in store.db.execute("SELECT owner FROM secrets")]
+        import glob as _glob
+        logs = _glob.glob(os.path.join(os.path.expanduser("~/.local/share/ev2ahv/ui"), "*", "*.log"))
+        logs += _glob.glob("/var/log/ev2ahv/*.log")
+        for f in logs[-200:]:
+            with open(f, errors="replace") as fh:
+                z.writestr("logs/" + f.replace("/", "_").lstrip("_"), _appliance.redact(fh.read()[-2_000_000:], known))
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     return Response(buf.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="ev2ahv-support-{stamp}.zip"'})
@@ -589,6 +640,10 @@ async def stream(request: Request, who=Depends(user)):
                 yield ": ping\n\n"
             await asyncio.sleep(1)
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+from . import appliance as _appliance  # noqa: E402
+app.include_router(_appliance.router(store, user, bump))
 
 
 # ---------------------------------------------------------------- static UI

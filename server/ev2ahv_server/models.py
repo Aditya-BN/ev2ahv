@@ -25,6 +25,8 @@ class AppInfo(BaseModel):
     build: str = ""
     mode: Literal["mock", "live"]
     user: Optional[str] = None
+    must_change: bool = False
+    appliance: bool = False
 
 
 class Named(BaseModel):

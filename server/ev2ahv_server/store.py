@@ -1,9 +1,30 @@
 """Persistent state for the server: JSON documents in SQLite, so jobs and plans survive restarts."""
-import json, os, sqlite3, threading, time, uuid
+import base64, hashlib, json, os, sqlite3, threading, time, uuid
 
 _default = "server-mock.db" if os.environ.get("EV2AHV_SERVER_MODE", "mock") == "mock" else "server.db"
 DB = os.path.expanduser(os.environ.get("EV2AHV_SERVER_DB", "~/.local/share/ev2ahv/" + _default))
 _lock = threading.RLock()
+ETC = os.path.expanduser(os.environ.get("EV2AHV_ETC", "~/.config/ev2ahv"))
+
+
+def _fernet():
+    """Secrets are encrypted at rest with a key derived from the per-instance key (generated at first boot on the
+    appliance; created here on first use elsewhere)."""
+    from cryptography.fernet import Fernet
+    path = os.path.join(ETC, "instance.key")
+    if not os.path.exists(path):
+        os.makedirs(ETC, mode=0o700, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(base64.b64encode(os.urandom(32)).decode())
+    with open(path) as fh:
+        raw = fh.read().strip().encode()
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(b"ev2ahv-secrets\0" + raw).digest()))
+
+
+def app_secret():
+    with open(os.path.join(ETC, "instance.key")) as fh:
+        return hashlib.sha256(b"ev2ahv-app\0" + fh.read().strip().encode()).hexdigest()
 
 
 class Store:
@@ -19,6 +40,7 @@ class Store:
           CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, plan TEXT, vm TEXT, action TEXT, state TEXT,
                                           started REAL, ended REAL, detail TEXT);""")
         os.chmod(path, 0o600)
+        self.f = _fernet()
 
     @staticmethod
     def new_id():
@@ -46,11 +68,16 @@ class Store:
         with _lock, self.db:
             if value is None:
                 return
-            self.db.execute("INSERT OR REPLACE INTO secrets VALUES(?,?)", (owner, value))
+            self.db.execute("INSERT OR REPLACE INTO secrets VALUES(?,?)", (owner, "v1:" + self.f.encrypt(value.encode()).decode()))
 
     def secret(self, owner):
         row = self.db.execute("SELECT body FROM secrets WHERE owner=?", (owner,)).fetchone()
-        return row[0] if row else None
+        if not row:
+            return None
+        if row[0].startswith("v1:"):
+            return self.f.decrypt(row[0][3:].encode()).decode()
+        self.set_secret(owner, row[0])   # written before encryption existed: re-store encrypted
+        return row[0]
 
     def event(self, severity, message, plan=None, vm=None):
         with _lock, self.db:

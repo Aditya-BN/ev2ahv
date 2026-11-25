@@ -1,5 +1,5 @@
 """Runs the block helper locally or over ssh, and speaks its framed protocol."""
-import json, os, shlex, struct, subprocess, uuid
+import io, json, os, shlex, socket, struct, subprocess, uuid
 
 from .helper import ev2ahv_helper as helper
 
@@ -38,6 +38,20 @@ class Transport:
 
     def caps(self):
         return json.loads(self.run(self.helper_cmd("caps")))
+
+    # privileged steps on the writer; BlockdTransport routes them through the root helper
+    def rescan(self):
+        self.run("for h in /sys/class/scsi_host/host*/scan; do echo '- - -' > $h; done", check=False)
+
+    def offline(self, device):
+        real = self.run(f"readlink -f {shlex.quote(device)}").strip()
+        self.run(f"sync; blockdev --flushbufs {real}")
+        self.run(f"echo 1 > /sys/block/{os.path.basename(real)}/device/delete")
+        self.run("udevadm settle --timeout=20", check=False)
+
+    def claim(self, serial):
+        """Record a disk this tool attached (only the appliance's root helper uses the list)."""
+        return None
 
     def size(self, device):
         return int(self.run(self.helper_cmd("size", device)).strip())
@@ -197,3 +211,105 @@ class BlockEndpoint:
             p.stdout.close()
             p.stderr.close()
             setattr(self, attr, None)
+
+
+BLOCKD_SOCKET = os.environ.get("EV2AHV_BLOCKD_SOCKET", "/run/ev2ahv-blockd.sock")
+CLAIMS = os.environ.get("EV2AHV_CLAIMS", "/var/lib/ev2ahv/claims")
+
+
+class _Refusal(io.RawIOBase):
+    """Wraps the helper's stdout and turns a blockd refusal line into an exception."""
+
+    def __init__(self, raw):
+        self.raw, self.first = raw, True
+
+    def readable(self):
+        return True
+
+    def readinto(self, b):
+        if self.first:
+            self.first = False
+            head = self.raw.peek(15)[:15] if hasattr(self.raw, "peek") else b""
+            if head.startswith(b"EV2AHV-REFUSED"):
+                raise PermissionError("blockd refused: " + self.raw.readline().decode(errors="replace")[15:].strip())
+        data = self.raw.read(len(b))
+        n = len(data)
+        b[:n] = data
+        return n
+
+    def readline(self, *a):
+        line = self.raw.readline(*a)
+        if line.startswith(b"EV2AHV-REFUSED"):
+            raise PermissionError("blockd refused: " + line.decode(errors="replace")[15:].strip())
+        return line
+
+
+class _SockProc:
+    """Popen-like view of one blockd connection (stdin, stdout, stderr, wait, kill)."""
+
+    def __init__(self, op, args):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(BLOCKD_SOCKET)
+        self.sock.sendall((json.dumps({"op": op, "args": [str(a) for a in args]}) + "\n").encode())
+        self.stdin = self.sock.makefile("wb", buffering=0)
+        self.stdout = _Refusal(self.sock.makefile("rb"))
+        self.stderr = io.BytesIO(b"(see: journalctl -u 'ev2ahv-blockd@*')")
+        self.returncode = None
+
+    def wait(self, timeout=None):
+        self.sock.close()
+        self.returncode = 0
+        return 0
+
+    def poll(self):
+        return self.returncode
+
+    def kill(self):
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.sock.close()
+        self.returncode = -9
+
+    terminate = kill
+
+
+class BlockdTransport(LocalTransport):
+    """The appliance is its own writer: plain commands run unprivileged, raw disks go through blockd."""
+
+    def __init__(self):
+        super().__init__(sudo=False)
+
+    def _call(self, op, *args):
+        p = _SockProc(op, args)
+        try:
+            out = b"".join(iter(lambda: p.stdout.raw.read(65536), b""))
+        finally:
+            p.wait()
+        if out.startswith(b"EV2AHV-REFUSED"):
+            raise PermissionError("blockd refused: " + out.decode(errors="replace")[15:].strip())
+        return out.decode(errors="replace")
+
+    def popen(self, *args, stdin=subprocess.DEVNULL):
+        return _SockProc(args[0], args[1:])
+
+    def caps(self):
+        return json.loads(self._call("caps"))
+
+    def size(self, device):
+        return int(self._call("size", device).strip())
+
+    def rescan(self):
+        self._call("rescan")
+
+    def offline(self, device):
+        self._call("offline", device)
+
+    def uuid(self):
+        return self._call("uuid").strip()
+
+    def claim(self, serial):
+        os.makedirs(os.path.dirname(CLAIMS), exist_ok=True)
+        with open(CLAIMS, "a") as fh:
+            fh.write(serial + "\n")

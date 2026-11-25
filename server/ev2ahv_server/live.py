@@ -22,7 +22,9 @@ DATA = os.path.expanduser("~/.local/share/ev2ahv/ui")
 SECRETS = os.path.expanduser("~/.config/ev2ahv/ui-secrets")
 # Lab guard: only ev2ahv-* source VMs unless explicitly allowed (the lab's other VMs belong to someone else).
 ALLOW_ANY = os.environ.get("EV2AHV_ALLOW_ANY_SOURCE") == "1"
-DEFAULT_WRITER = {"vm": "ev2ahv-writer", "host": "10.12.136.211", "user": "nutanix"}
+# On the appliance the appliance itself is the writer; elsewhere the lab's helper VM.
+DEFAULT_WRITER = ({"local": True} if os.environ.get("EV2AHV_APPLIANCE") == "1"
+                  else {"vm": "ev2ahv-writer", "host": "10.12.136.211", "user": "nutanix"})
 log = logging.getLogger("ev2ahv.live")
 
 
@@ -188,6 +190,8 @@ def engine_plan(plan, vm, src, wl, secret, settings):
     subnet = nm[0]["target_subnet"] if nm else None
     if src["type"] == "plans":
         p = planlib.load(wl["_file"])
+        if (settings.get("writer") or DEFAULT_WRITER).get("local"):
+            p["writer"] = {"local": True}
     else:
         if not vm["name"].startswith("ev2ahv-") and not ALLOW_ANY:
             raise LiveError("Lab guard: only ev2ahv-* source VMs")

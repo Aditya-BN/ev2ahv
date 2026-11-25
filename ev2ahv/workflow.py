@@ -5,7 +5,7 @@ import base64, fcntl, logging, os, re, shlex, socket, subprocess, time
 from . import builder, engine, guest as guestlib, target as tgt
 from .readers import make_reader
 from .state import State
-from .transport import BlockEndpoint, LocalTransport, SshTransport
+from .transport import BlockdTransport, BlockEndpoint, LocalTransport, SshTransport
 
 log = logging.getLogger("ev2ahv.workflow")
 DATA_DIR = os.path.expanduser(os.environ.get("EV2AHV_DATA", "~/.local/share/ev2ahv"))
@@ -39,11 +39,19 @@ class Migration:
     def writer(self):
         if self._writer is None:
             w = self.p["writer"]
-            self._writer = tgt.writer_transport(w["host"], w.get("user", "nutanix"))
+            if w.get("local"):   # the appliance is its own writer
+                self._writer = BlockdTransport()
+            else:
+                self._writer = tgt.writer_transport(w["host"], w.get("user", "nutanix"))
             self._writer.setup()
         return self._writer
 
     def writer_vm(self):
+        if self.p["writer"].get("local"):
+            vm_id = self.writer.uuid()
+            vm = self.prism.vm(vm_id)
+            self.prism.extra_owned.add(vm["name"])   # it may add and remove disks on itself, nothing else
+            return vm_id
         vm = self.prism.vm_by_name(self.p["writer"]["vm"])
         if not vm:
             raise RuntimeError(f"writer VM {self.p['writer']['vm']} not found")
@@ -157,7 +165,7 @@ class Migration:
                     if int(d["size"]) != int(entry["size"]) or d.get("mountpoint"):
                         raise RuntimeError(f"device {name} does not match staging record")
                     return tgt.stable_path(self.writer, name)
-            self.writer.run("for h in /sys/class/scsi_host/host*/scan; do echo '- - -' > $h; done", check=False)
+            self.writer.rescan()
             time.sleep(2)
         raise RuntimeError(f"staging device with serial {entry['serial']} not found")
 

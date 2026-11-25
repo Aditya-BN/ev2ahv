@@ -23,10 +23,14 @@ def main():
     g.add_argument("--mock", action="store_true")
     g.add_argument("--live", action="store_true")
     ap.add_argument("--http", action="store_true", help="plain HTTP (local testing only)")
+    ap.add_argument("--uds", help="serve plain HTTP on this unix socket (the appliance: nginx terminates TLS)")
     a = ap.parse_args()
     if a.mock or a.live:
         os.environ["EV2AHV_SERVER_MODE"] = "live" if a.live else "mock"
     import uvicorn
+    if a.uds:
+        uvicorn.run("ev2ahv_server.api:app", uds=a.uds, log_level="info", proxy_headers=True, forwarded_allow_ips="*")
+        return
     kw = {}
     if not a.http:
         kw["ssl_certfile"], kw["ssl_keyfile"] = cert()

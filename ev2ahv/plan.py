@@ -29,8 +29,9 @@ def validate(p):
     if errors:
         raise PlanError("; ".join(errors))
     check(lambda: _need(p, "name", "plan"))
-    for key in ("vm", "host"):
-        check(lambda k=key: _need(p["writer"], k, "writer"))
+    if not p["writer"].get("local"):   # local: the appliance itself is the writer
+        for key in ("vm", "host"):
+            check(lambda k=key: _need(p["writer"], k, "writer"))
     t, s = p["target"], p["source"]
     for key in ("vm_name", "cluster", "container"):
         check(lambda k=key: _need(t, k, "target"))

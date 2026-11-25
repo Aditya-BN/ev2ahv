@@ -45,17 +45,16 @@ def attach_staging(prism, t, writer_vm, size, container=None, clone_from=None, t
             break
         if time.time() > deadline:
             raise RuntimeError(f"disk {disk} did not appear on the writer")
-        t.run("for h in /sys/class/scsi_host/host*/scan; do echo '- - -' > $h; done", check=False)
+        t.rescan()
         time.sleep(2)
     dev = pick_new_device(before, after, size)
     path = stable_path(t, dev["name"])
+    if "scsi-SNUTANIX_VDISK_" in path:
+        t.claim(path.rsplit("scsi-SNUTANIX_VDISK_", 1)[1])
     log.info("disk %s is %s (%s)", disk, path, dev.get("serial"))
     return disk, path
 
 
 def quiesce_device(t, path):
     """Flush, then drop the device from the guest so the clone is taken from settled data."""
-    real = t.run(f"readlink -f {path}").strip()
-    t.run(f"sync; blockdev --flushbufs {real}")
-    t.run(f"echo 1 > /sys/block/{os.path.basename(real)}/device/delete")
-    t.run("udevadm settle --timeout=20", check=False)
+    t.offline(path)
