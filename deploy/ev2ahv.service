@@ -1,0 +1,18 @@
+# systemd unit. User service: cp to ~/.config/systemd/user/ and `systemctl --user enable --now ev2ahv`
+# (loginctl enable-linger <user> keeps it running after logout). System service: set User= and paths.
+[Unit]
+Description=ev2ahv migration web UI and API (HTTPS 8443)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ev2ahv/server
+Environment=EV2AHV_SERVER_MODE=live
+ExecStart=%h/ev2ahv/.venv/bin/python -m ev2ahv_server --port 8443
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
