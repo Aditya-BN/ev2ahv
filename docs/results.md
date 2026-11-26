@@ -212,3 +212,20 @@ Finding: everRun undefines a stopped guest in libvirt (`virsh -r list --all` on 
 `ev2ahv-src-win22`), so a refreshed environment drops the source, and 0.2.0 rebuilds the engine plan from discovery
 before every step: rollback from the appliance would fail. Fixed on branch `root/T2-rollback-stopped-source`; not yet
 deployed to `ev2ahv-appliance-2`, so rollback and re-cutover were not run.
+
+## D1 rebuild 0.3.0 and D10 rescan, 2026-11-26 (bastion, image not yet on AHV)
+
+Built with `bash appliance/build.sh` from branch `root/D1-rebuild-0.3.0` (main + T2 fix + D13 + D5). The first build
+failed on a clean clone: `*.env` in .gitignore had kept `appliance/rootfs/etc/ev2ahv/ev2ahv.env` out of the repo; it is
+now committed (byte-identical to the copy the 0.2.0 builds used).
+
+| Measure | Result |
+|---|---|
+| Image | `dist/ev2ahv-0.3.0.qcow2`, 306,970,624 bytes, sha256 a32f842f318a490a..., MANIFEST.json and SPDX SBOM |
+| Smoke boot (qemu TCG, `appliance/scripts/smoke.sh`) | all checked units active, SELinux Enforcing, first-boot SSH host keys, TLS cert and instance key generated with the expected owners and modes, `/api/v2/appinfo` HTTP 200 through nginx (`version 0.3.0`, live, appliance), console menu shows 0.3.0. cloud-init "degraded" only because qemu has no datasource |
+| trivy (HIGH, CRITICAL) | 1 HIGH, the known pip-vendored setuptools 70.3.0 false positive (docs/security.md); both scan.sh trivy runs exit 0 |
+| pip-audit | no known vulnerabilities |
+| OpenSCAP CIS L1 | 195 pass, 61 fail (0.2.0: 187 / 69). Now passing: no_empty_passwords, sysctl_net_ipv6_conf_all_forwarding, kernel_module_{cramfs,freevxfs,hfs,hfsplus,jffs2,usb-storage}_disabled |
+
+Not done: T1 on AHV (upload as `ev2ahv-appliance-0.3.0-root` and deploy), because the Prism API key in prism.env sees
+no VMs or images.

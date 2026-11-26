@@ -18,7 +18,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 | ID | Pri | Debt | Where |
 |---|---|---|---|
-| D1 | P1 | The root-helper BrokenPipe fix (`ev2ahv/helper/ev2ahv_helper.py`, 292e839) is not in `dist/ev2ahv-0.2.0.qcow2`. It is only hot-patched on `ev2ahv-appliance-2`. Rebuild before handing out the image. | appliance |
+| D1 | P1 | 0.3.0 image is built and smoke-booted on the bastion (includes the BrokenPipe fix) but not yet uploaded to AHV or deployed (T1); `ev2ahv-appliance-2` still runs 0.2.0 with hot patches. | appliance |
 | D5 | P2 | Changed-block tracking is built and measured on a fake source but not wired in: needs an everRun check of read-write `virsh qemu-monitor-command` on an `ev2ahv-src-*` guest, then `sync.cbt: qemu-bitmap` in resync (docs/cbt.md, Next steps). Ask Stratus about bitmaps on FT guests. | engine, ev2ahv/cbt.py |
 | D7 | P2 | Upgrades are CLI only (no UI upload or apply) and not yet tried on a real appliance; backups are not pruned; bundles are checksummed but not signed. | appliance, server |
 | D8a | P2 | Prism project: the wizard's project list was hard-coded and the engine never applied the choice. Live mode now shows "None, not applied yet". To do: list projects from Prism and set the VM's project at create (v3 `metadata.project_reference`; needs a lab test). | web, ev2ahv/prism.py, builder |
@@ -26,7 +26,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D8c | P2 | Network step is VLAN only: subnets are listed without their type and overlay (VPC) subnets are untested as NIC targets. Needs a VPC subnet in the lab. | web, server/live.py, builder |
 | D8d | P2 | "Test migration" works in mock mode only; the engine has no isolated-subnet test clone. | engine, server |
 | D9 | P3 | Windows on SCSI costs downtime: the guest boots on PCI (virtio-blk) and is converted to SCSI after cutover, which added 182 s in the 2026-11-24 run. Binding `vioscsi` during guest prep, before cutover, could remove that step (not tried). | engine, ev2ahv/guest.py |
-| D10 | P3 | Security scan leftovers after triage: rebuild and rescan to confirm the three CIS fixes (ipv6 forwarding, module blacklist, no `nullok`); check sysctl and modules on a booted instance; decide whether to drop pip from the venv for a clean trivy report; `ensure_pam_wheel_group_empty` open. | appliance, docs/security.md |
+| D10 | P3 | Security scan leftovers: 61 CIS L1 fails (all explained in docs/security.md except `ensure_pam_wheel_group_empty`); sysctl/modules still to check on a booted instance; the pip-vendored trivy false positive remains (drop pip from the venv or record an exception). | appliance, docs/security.md |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
 | D13 | P3 | LDAP / AD sign-in is a stub (design in docs/security.md). The default certificate is self-signed (the Health page can replace it). | server |
 | D14 | P3 | The image fallback (`target.transfer: image`) still needs the total disk size plus the largest disk free on the writer, and the upload adds to downtime. Going lower needs uploading straight from the raw file (no qcow2 copy). | engine |
@@ -55,6 +55,9 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
   state and env, installs, health-checks and restores automatically on failure; `rollback` and `status`. Schema
   migrations via `PRAGMA user_version`. 7 unit tests on a fake appliance tree (success, failed health check restores
   app, venv and database, tampered bundle, downgrade, busy, rollback, newer schema refused).
+- 2026-11-26: D1 build and D10 rescan. `dist/ev2ahv-0.3.0.qcow2` built from a clean clone (after committing the env
+  template that `*.env` had kept out of git) and smoke-booted: units active, SELinux enforcing, API 200. CIS L1 187/69 ->
+  195/61, with all 8 targeted rules now passing; trivy 1 HIGH (known false positive); pip-audit clean.
 - 2026-11-26: D5 design and prototype (docs/cbt.md). QEMU dirty bitmaps, rotated atomically and read over NBD, plus
   `engine.sync_dirty`. Fake source, same writes: 2 GiB / 2 % dirty, 10.07 s full vs 0.86 s (11.7x); 8 GiB / 1 %,
   38.33 s vs 1.57 s (24.4x); target identical to source in every run. 7 unit tests. Not on everRun yet.

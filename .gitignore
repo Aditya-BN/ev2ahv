@@ -11,3 +11,4 @@ logs/
 credentials.json
 build/
 dist/
+!appliance/rootfs/etc/ev2ahv/ev2ahv.env
