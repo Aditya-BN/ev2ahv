@@ -155,6 +155,18 @@ class Check(BaseModel):
     detail: str = ""
 
 
+class CutoverResult(BaseModel):
+    """What the last successful cutover measured, kept on the plan VM (engine timings, in seconds)."""
+    completed_at: float
+    target_vm_id: Optional[str] = None
+    downtime_seconds: Optional[float] = Field(None, description="source shutdown requested to target verified")
+    final_sync_seconds: Optional[float] = None
+    image_upload_seconds: Optional[float] = None
+    conversion_seconds: Optional[float] = None
+    last_resync_seconds: Optional[float] = None
+    verify: Dict[str, object] = Field(default_factory=dict, description="power state and reachability seen by verify")
+
+
 class PlanVm(BaseModel):
     id: str
     name: str
@@ -172,6 +184,7 @@ class PlanVm(BaseModel):
     error: Optional[str] = None
     phase: Optional[str] = Field(None, description="engine step running now, e.g. guest-prep, seed, resync, cutover")
     sync_progress: Optional[float] = Field(None, description="percent of the running sync pass (resync, cutover)")
+    cutover_result: Optional[CutoverResult] = Field(None, description="set when a cutover completes, cleared on rollback")
     actions: List[PlanAction] = Field(default_factory=list)
 
 

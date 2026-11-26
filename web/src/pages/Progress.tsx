@@ -103,6 +103,9 @@ export default function Progress() {
                       <td><ChecksBadge vm={v} /></td>
                       <td>
                         {v.target_vm_url && <a href={v.target_vm_url} target="_blank" rel="noreferrer">View Target VM</a>}
+                        {v.status === 'Completed' && v.cutover_result?.downtime_seconds != null && (
+                          <div className="muted">Downtime {fmtDuration(v.cutover_result.downtime_seconds)}, final sync {fmtDuration(v.cutover_result.final_sync_seconds)}</div>
+                        )}
                         {v.test_vm_id && v.status === 'Tested' && <div className="muted">Test VM: {v.test_vm_id}</div>}
                         {v.error && <div className="vm-error" title={v.error}>{v.error}</div>}
                         {!v.target_vm_url && !v.error && !(v.test_vm_id && v.status === 'Tested') && '-'}

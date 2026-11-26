@@ -162,3 +162,21 @@ self-test rerun PASS. The patch is not in the shipped py312 qcow2; rebuild to in
 
 Not verified: the UI itself was not clicked through (API only), rollback and re-cutover from this appliance, and a Windows
 source from the appliance.
+
+## D4: cutover result kept on the plan VM, 2026-11-26 (code and unit tests only)
+
+Cause: live mode already wrote `cutover_result` into the plan in SQLite (`Live._cut`), but `models.PlanVm` had no such field,
+so pydantic dropped it from every `/api/v2` response. That is why the Stage B numbers above had to be worked out from events.
+Now `PlanVm.cutover_result` (`models.CutoverResult`) holds `completed_at`, `target_vm_id`, `downtime_seconds`,
+`final_sync_seconds`, `image_upload_seconds`, `conversion_seconds`, `last_resync_seconds` and the short `verify` fields (power,
+reachable; command output is left out). Rollback clears it. Mock mode fills it. The Progress page shows downtime and final sync
+under "View Target VM".
+
+| Measure | Result |
+|---|---|
+| Unit tests (`python -m unittest discover -s tests`, Python 3.9.25, pydantic 2.13.5; pytest is not installed) | 44 run, 44 pass (4 new in `tests/test_server.py`) |
+| New tests against the old `models.py` | 3 of 4 fail (the field is missing), so they catch the bug |
+| `tsc --noEmit` on `web/` | no errors |
+
+Not verified: a real cutover on the appliance showing the stored numbers (needs the D1 rebuild, or a redeploy of `server/`
+onto `ev2ahv-appliance-2`, which adit holds), `npm run build`, and a browser view of the Progress page.

@@ -258,6 +258,21 @@ def _write(plan, vm, p):
     return path
 
 
+TIMINGS = ("downtime_seconds", "final_sync_seconds", "image_upload_seconds", "conversion_seconds", "last_resync_seconds")
+
+
+def cutover_summary(r, now=None):
+    """Reduce the engine's cutover result to what the plan keeps (models.CutoverResult).
+
+    The engine returns {"vm", "timings", "verify", "conversion"}; verify may hold command output, so only its
+    short scalar fields (power, reachable) are kept."""
+    t = r.get("timings") or {}
+    verify = {k: val for k, val in (r.get("verify") or {}).items() if isinstance(val, (str, int, float, bool))}
+    out = {"completed_at": now or time.time(), "target_vm_id": r.get("vm"), "verify": verify}
+    out.update({k: t[k] for k in TIMINGS if t.get(k) is not None})
+    return out
+
+
 # ------------------------------------------------------------------ jobs and the worker loop
 
 class Live:
@@ -449,7 +464,7 @@ class Live:
 
     def _cut(self, p, v, r):
         r = r or {}
-        v.update(status="Completed", rolled_back=None, force=None, cutover_result=r)
+        v.update(status="Completed", rolled_back=None, force=None, cutover_result=cutover_summary(r))
         tgt = self.store.get("provider", (p.get("target") or {}).get("id")) or {}
         if r.get("vm"):
             v["target_vm_id"] = r["vm"]
@@ -457,4 +472,4 @@ class Live:
 
     @staticmethod
     def _rolled_back(p, v, r):
-        v.update(status="Ready to Cutover", rolled_back=True, last_sync_at=0)
+        v.update(status="Ready to Cutover", rolled_back=True, last_sync_at=0, cutover_result=None)

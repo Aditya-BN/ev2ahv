@@ -141,11 +141,14 @@ def simulate(store, lock, finish, bump):
                     elif s == "Cutover in Progress" and age > 15:
                         v["status"], v["target_vm_id"] = "Completed", f"tvm-{v['id']}"
                         v["target_vm_url"] = "https://10.12.135.196:9440/"
+                        v["cutover_result"] = {"completed_at": time.time(), "target_vm_id": v["target_vm_id"],
+                                               "downtime_seconds": 451.0, "final_sync_seconds": 364.0,
+                                               "verify": {"power": "ON"}}
                         store.event("info", "Cutover complete, downtime 7m 31s (mock)", plan=p["name"],
                                     vm=v["name"])
                         dirty = True
                     elif s == "Rolling Back" and age > 10:
-                        v["status"], v["rolled_back"] = "Ready to Cutover", True
+                        v["status"], v["rolled_back"], v["cutover_result"] = "Ready to Cutover", True, None
                         store.event("warning", "Rolled back: AHV VM off, source VM on (mock)", plan=p["name"],
                                     vm=v["name"])
                         dirty = True
