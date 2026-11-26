@@ -1901,6 +1901,93 @@
                 ],
                 "title": "Check"
             },
+            "CutoverResult": {
+                "properties": {
+                    "completed_at": {
+                        "type": "number",
+                        "title": "Completed At"
+                    },
+                    "target_vm_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Target Vm Id"
+                    },
+                    "downtime_seconds": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Downtime Seconds",
+                        "description": "source shutdown requested to target verified"
+                    },
+                    "final_sync_seconds": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Final Sync Seconds"
+                    },
+                    "image_upload_seconds": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Image Upload Seconds"
+                    },
+                    "conversion_seconds": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Conversion Seconds"
+                    },
+                    "last_resync_seconds": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Resync Seconds"
+                    },
+                    "verify": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Verify",
+                        "description": "power state and reachability seen by verify"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "completed_at"
+                ],
+                "title": "CutoverResult",
+                "description": "What the last successful cutover measured, kept on the plan VM (engine timings, in seconds)."
+            },
             "HTTPValidationError": {
                 "properties": {
                     "detail": {
@@ -2385,6 +2472,17 @@
                         ],
                         "title": "Sync Progress",
                         "description": "percent of the running sync pass (resync, cutover)"
+                    },
+                    "cutover_result": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/CutoverResult"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "set when a cutover completes, cleared on rollback"
                     },
                     "actions": {
                         "items": {
