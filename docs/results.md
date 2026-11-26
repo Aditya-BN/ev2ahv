@@ -303,3 +303,28 @@ when found and was left running. Nothing was written to the guest disks except t
 
 Left on the lab afterwards: no bitmaps, no NBD server or socket, no exports, test files removed from the guest. The
 temporary helper scripts the engine copies to the node's `/tmp` are the usual ones. Unit tests: see commit.
+
+## Release 0.3.3 (2026-11-27 WIB; logs UTC): D16, D17, D7 notes, flaky test, both appliances upgraded
+
+Real, run from the bastion on the lab. No migration, rollback or cutover was run; the everRun and AHV Rocky guests were not touched.
+
+### Build
+
+`bash appliance/build.sh`: 7 min 35 s, `ev2ahv-0.3.3.qcow2` 307,625,984 B, sha256 7f150b3f...e5b8. `tools/make_bundle.py`: `ev2ahv-upgrade-0.3.3.tar.gz` 18,582,690 B, 73 files. Unit tests 162 of 162 pass (3.9 and 3.12).
+
+### Upgrades with `ev2ahv-upgrade apply` over ssh as admin (sudo), 0.3.2 -> 0.3.3
+
+| Appliance | Apply (UTC / WIB 27 Nov) | Backup | Verified after |
+|---|---|---|---|
+| `ev2ahv-appliance-2` 10.12.135.154 | 19:47:35 to 19:47:37 UTC (02:47 WIB), 2 s, venv unchanged | `20261126T194735Z-0.3.2` | version 0.3.3, Python 3.12.16, ev2ahv/nginx/blockd.socket/chronyd/sshd/firewalld/auditd active, SELinux Enforcing, 0 AVC since boot, UI login 200, both environments Connected, `/api/v2/plans` 200 with `app-rocky-stageB` Completed (downtime 422.1 s, completed_at unchanged), plans/vms, events, settings 200, self-test PASS (5 s) |
+| `ev2ahv-appliance-3` 10.12.135.160 | 19:48:15 to 19:48:17 UTC (02:48 WIB), 2 s | `20261126T194815Z-0.3.2` | same list: AOS environment Connected, no plans (none created), no failed units, 0 AVC, self-test PASS |
+
+- The upgrade ran with the installed 0.3.2 tool, so its health check was the old one (appinfo only) and it still printed the tarfile `RuntimeWarning` (the 0.3.2 tool predates the safety audit's `filter="data"`). I ran the new `data_check` from the installed 0.3.3 tool against both live apps afterwards: OK (all five list endpoints 200 with the app's health session).
+- `/usr/sbin/ev2ahv-upgrade` was not created by these upgrades (the old tool does not link). I created the symlink by hand on both; `sudo ev2ahv-upgrade status` then works. New images have the link from `mkimage.sh`, and `ev2ahv-upgrade apply` from 0.3.3 on creates it.
+- appliance-2 shows 7 failed `ev2ahv-blockd@...` per-connection units (PIDs 2807-3007, UID 996) from before the upgrade (state `degraded` also before). They are leftovers of earlier resync and rollback jobs on that appliance; not investigated, not caused by 0.3.3. appliance-3 has none.
+- The automatic restore on a failing health check was exercised only in unit tests (a plans 500 after upgrade restores), not on the lab.
+
+### Flaky unit test found
+
+About 10 percent of full-suite runs in `python:3.12-slim` (3 failures in about 30 runs, plain and shuffled order) failed in `test_script_safety.RunDev.test_stale_pidfile_never_kills_an_unrelated_process` with `OSError: [Errno 26] Text file busy`: the test rewrote its fake `py` script while the previous run's background process was still executing it. Fix: `Sandbox.write` writes beside the file and renames it. After the fix: see BACKLOG (T11).
+

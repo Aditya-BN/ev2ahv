@@ -156,7 +156,7 @@ and starts the old version. Database schema changes run at startup from `MIGRATI
 `server/ev2ahv_server/store.py` (`PRAGMA user_version`); a newer database than the app knows is refused.
 Backups are not pruned; delete old ones by hand.
 
-Tried for real on 2026-11-27 (appliance-2, 0.2.0 -> 0.3.1 in 23 s, 0.3.1 -> 0.3.2 in 2 s; see docs/results.md). Call it by its full path, `sudo /usr/local/sbin/ev2ahv-upgrade ...`, because sudo's `secure_path` does not include it. After an upgrade, also check `/api/v2/plans`: the health check only reads `/api/v2/appinfo`.
+Tried for real on 2026-11-27 (appliance-2, 0.2.0 -> 0.3.1 in 23 s, 0.3.1 -> 0.3.2 in 2 s; see docs/results.md). From 0.3.3 the image links the tool into `/usr/sbin`, so `sudo ev2ahv-upgrade ...` works; an appliance deployed from 0.3.2 or older gets the link only from the second upgrade on, so until then use `sudo /usr/local/sbin/ev2ahv-upgrade ...` or add it once with `sudo ln -s /usr/local/sbin/ev2ahv-upgrade /usr/sbin/ev2ahv-upgrade`. Since 0.3.3 the health check also reads `/api/v2/plans`, `plans/vms`, `providers`, `events` and `settings` and restores the old version if any is not 200. A 0.3.2 or older tool only checks `/api/v2/appinfo`, so check `/api/v2/plans` yourself after that upgrade.
 
 Appliances older than 0.3.1 do not have `ev2ahv-upgrade` yet: extract it from the bundle and run it with
 `sudo python3 ./ev2ahv-upgrade apply <bundle>`; it installs itself to `/usr/local/sbin`.

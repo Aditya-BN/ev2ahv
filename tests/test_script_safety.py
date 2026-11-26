@@ -82,10 +82,14 @@ class Sandbox(unittest.TestCase):
 
     def write(self, path, text, mode=None):
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as fh:
+        # write beside the target and rename over it: opening a script for writing while an earlier run of it is
+        # still executing (run-dev.sh leaves its fake python running) fails with ETXTBSY, which made this suite flaky
+        tmp = path + ".tmp"
+        with open(tmp, "w") as fh:
             fh.write(text)
         if mode:
-            os.chmod(path, mode)
+            os.chmod(tmp, mode)
+        os.replace(tmp, path)
         return path
 
     def rm_shim(self):
