@@ -69,7 +69,7 @@ tar -c --exclude=__pycache__ --exclude='*.pyc' --exclude=tests --exclude=node_mo
 mkdir -p $ROOT/opt/ev2ahv/app/web; cp -a /src/web/dist $ROOT/opt/ev2ahv/app/web/dist
 mkdir -p $ROOT/tmp/wheels; cp /out/wheels/* $ROOT/tmp/wheels/; cp $APPL/requirements.txt $ROOT/tmp/
 chroot $ROOT bash -euxo pipefail <<'C'
-python3 -m venv /opt/ev2ahv/venv
+python3.12 -m venv /opt/ev2ahv/venv
 /opt/ev2ahv/venv/bin/pip install --no-cache-dir --no-index --find-links /tmp/wheels -r /tmp/requirements.txt
 /opt/ev2ahv/venv/bin/python -m compileall -q /opt/ev2ahv/app || true
 chown -R root:root /opt/ev2ahv; chmod -R go-w /opt/ev2ahv

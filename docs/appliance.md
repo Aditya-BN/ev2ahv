@@ -1,7 +1,7 @@
 # ev2ahv appliance image
 
 A Rocky Linux 9 minimal qcow2 that boots on Nutanix AHV and serves the ev2ahv web app (same idea as the Nutanix Move appliance).
-Output: `dist/ev2ahv-<VERSION>.qcow2` (+ `.sha256`, `MANIFEST.json`, `.sbom.spdx.json`).
+Output: `dist/ev2ahv-<VERSION>.qcow2` (0.2.0 with the Python 3.12 venv: 307,232,768 bytes = 293 MiB compressed, sha256 a13c5b01...b995; was 271-284 MB) (+ `.sha256`, `MANIFEST.json`, `.sbom.spdx.json`).
 
 ## Build
 
@@ -14,8 +14,8 @@ make appliance-scan     # trivy, pip-audit, OpenSCAP CIS L1 on build/tree -> bui
 What `build.sh` does:
 
 1. builds `web/dist` if missing or stale (`npm ci && npm run build`);
-2. builds the `ev2ahv-builder` image (rockylinux:9 + dnf, xfsprogs, grub2, checkpolicy, qemu-img);
-3. downloads wheels for `appliance/requirements.txt` with a current pip (`--only-binary=:all:`, so no compiler is needed);
+2. builds the `ev2ahv-builder` image (rockylinux:9 + python3.12 + dnf, xfsprogs, grub2, checkpolicy, qemu-img);
+3. downloads cp312 wheels for `appliance/requirements.txt` with a current python3.12 pip (`--only-binary=:all:`, so no compiler is needed);
 4. in a privileged container (`scripts/mkimage.sh`): partitions a sparse 20 GiB raw file (GPT: 1 MiB BIOS boot, 100 MiB ESP, root xfs),
    loop-mounts it, `dnf --installroot` the packages in `appliance/packages.txt` (weak deps off, `nodocs`, `%_install_langs en_US`),
    overlays `appliance/rootfs/`, creates users, builds the venv from the wheels, compiles and installs the SELinux module,
@@ -39,7 +39,7 @@ so zeroed/free blocks are holes before `qemu-img convert -c`.
 | kernel-core only (no kernel-modules-extra, no firmware) | all AHV needs (virtio_scsi/blk/net, ahci, xfs, nf_tables) is in kernel-modules-core |
 | dracut, generic initramfs with an exclusive driver list | small initramfs (~16 MB), still boots virtio-scsi, SATA/IDE and virtio-blk |
 | NetworkManager, firewalld, chrony, openssh, sudo, cloud-init, logrotate, audit, selinux-policy-targeted | standard OS services; cloud-init (datasources ConfigDrive, NoCloud, None) grows the root partition on first boot and accepts AHV custom scripts |
-| python3.9 + venv `/opt/ev2ahv/venv` from pinned wheels | no compilers in the image; cryptography uses the abi3 manylinux wheel |
+| python3.12 (AppStream) + venv `/opt/ev2ahv/venv` from pinned cp312 wheels (system python3.9 stays for dnf/cloud-init) | no compilers in the image; cryptography uses the abi3 manylinux wheel |
 | nginx-core | see below |
 | qemu-img, xorriso | used by the app (disk conversion, ISO building) |
 | no compilers, -devel, docs/man/info, non-English locales, firmware, kdump, tuned, postfix, plymouth, cockpit, Node, Playwright | size and attack surface; dnf still works |

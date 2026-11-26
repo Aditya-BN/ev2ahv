@@ -5,7 +5,7 @@ cd "$(dirname "$0")/../.."
 REPO=$PWD; mkdir -p build/scan
 docker run --rm -v $REPO/build/tree:/t:ro -v $REPO/build/scan:/o aquasec/trivy:latest rootfs --scanners vuln --severity HIGH,CRITICAL --format json -o /o/trivy.json /t >/dev/null 2>&1
 docker run --rm -v $REPO/build/tree:/t:ro aquasec/trivy:latest rootfs --scanners vuln --severity HIGH,CRITICAL --skip-db-update /t 2>&1 | tail -40 > build/scan/trivy.txt
-docker run --rm -v $REPO/appliance:/a:ro ev2ahv-builder bash -c 'python3 -m pip install -q -U pip pip-audit >/dev/null 2>&1; python3 -m pip_audit -r /a/requirements.txt --no-deps --disable-pip 2>&1 | tail -30' > build/scan/pip-audit.txt
+docker run --rm -v $REPO/appliance:/a:ro ev2ahv-builder bash -c 'python3.12 -m pip install -q -U pip pip-audit >/dev/null 2>&1; python3.12 -m pip_audit -r /a/requirements.txt --no-deps --disable-pip 2>&1 | tail -30' > build/scan/pip-audit.txt
 docker run --rm --privileged -v $REPO/build/tree:/t -v $REPO/build/scan:/o ev2ahv-builder bash -c '
  dnf -y -q install openscap-scanner scap-security-guide >/dev/null 2>&1
  ls /usr/share/xml/scap/ssg/content/ | head -20

@@ -21,7 +21,7 @@ gzip
 less
 vim-minimal
 python3
-python3-pip-wheel
+python3.12
 nginx-core
 qemu-img
 xorriso

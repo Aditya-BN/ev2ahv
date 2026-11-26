@@ -17,7 +17,7 @@ Scans run against the root tree of `dist/ev2ahv-0.2.0.qcow2` (`make appliance-sc
 
 Profile `xccdf_org.ssgproject.content_profile_cis_server_l1` from scap-security-guide (`ssg-rl9-ds.xml`, the Rocky 9 datastream shipped in Rocky's own repos, so no RHEL CPE workaround was needed), evaluated with `oscap-chroot` on the image tree.
 
-Result: 187 pass, 69 fail, 34 not applicable (about 73 % of applicable rules pass; first run before the hardening pass above: 172 pass / 81 fail).
+Result (re-run on the Python 3.12 image, unchanged): 187 pass, 69 fail, 34 not applicable, OpenSCAP score 83.7 (about 73 % of applicable rules pass; first run before the hardening pass above: 172 pass / 81 fail).
 
 Important caveat: the sysctl and kernel-module rules (about 20 of the failures) are false negatives. `oscap-chroot` reads the running kernel of the build container, not the image; the values are set in `/etc/sysctl.d/90-ev2ahv.conf` and `/etc/modprobe.d/ev2ahv-blacklist.conf`. They are not verified on a booted instance by this scan.
 
@@ -41,17 +41,9 @@ Accepted exceptions (real failures):
 
 OS packages (Rocky 9.9): 0 HIGH/CRITICAL (with fixes available) at build time.
 
-Python venv: 1 CRITICAL, 6 HIGH, all in pinned runtime dependencies whose fixed versions do not support Python 3.9 (the system Python on Rocky 9):
+Python venv (Python 3.12 from Rocky AppStream, venv `/opt/ev2ahv/venv`): 0 CRITICAL, 1 HIGH reported by trivy. The remaining one is `setuptools 70.3.0` (CVE-2025-47273, fixed in 78.1.1). The venv ships setuptools 84.2.1 and the image holds no 70.3.0 metadata I could locate (the SBOM lists only 53.0.0 for the system python3.9 and 84.2.1 for the venv), so this is most likely a trivy false positive on a vendored copy; unconfirmed.
 
-| Package | Installed | Fixed in | Note |
-| --- | --- | --- | --- |
-| anyio | 4.12.1 | 4.14.2 (CVE-2026-63374) | 4.12.1 is the last release for Python 3.9 |
-| starlette | 0.49.3 | 1.1.0, 1.3.1 (2 HIGH) | 0.49.3 is the last 3.9-compatible release; fastapi 0.128.8 constrains it |
-| urllib3 | 2.6.3 | 2.7.0, 2.8 (4 HIGH) | 2.6.3 is the last 3.9-compatible release |
-
-pip-audit on `appliance/requirements.txt` reports 19 known vulnerabilities in 6 packages (the three above, pip 26.0.1 whose fixes need Python 3.10+, and others without a 3.9-compatible fix). setuptools and pip in the venv were upgraded to 82.0.1 / 26.0.1, which removed the three setuptools HIGH findings that the ensurepip-bundled 53.0 had.
-
-Exposure assessment: the API is behind nginx on an unprivileged socket and reachable only by authenticated UI users; urllib3 is used for outbound calls to operator-chosen Prism/everRun endpoints. To clear these findings the app needs a newer Python (a python3.11/3.12 AppStream module can be installed with `dnf install python3.12`; the venv would then be rebuilt) and newer pins. Tracked as an open item.
+pip-audit on `appliance/requirements.txt`: 0 known vulnerabilities (was 19 on Python 3.9). The venv moved from python3.9 to python3.12 and the pins were bumped to the latest releases (fastapi 0.165.0, starlette 1.10.0, anyio 4.16.0, urllib3 2.8.0, requests 2.34.2, pip 26.3, setuptools 84.2.1, uvicorn 0.54.0, pydantic 2.14.4, PyYAML 6.0.4, xxhash 4.1.0, among others). The system python3.9 stays installed because dnf and cloud-init need it; `ev2ahv-config` and the root helper `blockd.py` unit run from the venv python. Rocky's python3.9 rpm packages carry setuptools 53.0.0 (trivy reports no HIGH for it with fixes available).
 
 ## Not verified / limits
 

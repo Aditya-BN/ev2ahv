@@ -8,12 +8,13 @@ docs/security.md, docs/side-by-side.md.
 - Appliance test VM `ev2ahv-appliance-test` (b10a98c6-...), https://10.12.135.88/ (VLAN135-IPAM, DHCP).
   UI password: ~/.config/ev2ahv/appliance-ui.pw; ssh admin (key ~/.config/ev2ahv/id_ed25519, sudo password
   ~/.config/ev2ahv/appliance-admin.pw). It runs image 0.2.0 build 1 with the 4 validation fixes hot-patched.
-- dist/ev2ahv-0.2.0.qcow2 = rebuild from 973f78f (includes the fixes), NOT yet booted on AHV.
+- dist/ev2ahv-0.2.0.qcow2 = rebuild with the Python 3.12 venv (sha256 a13c5b01...b995), NOT yet booted on AHV.
   Prism image `ev2ahv-appliance-0.2.0` is the OLD build.
 - Build: `bash appliance/build.sh` (no make on the bastion). Docker-based, no sudo needed.
 
 ## Open
-1. Owner OK needed: Python 3.12 venv to clear 19 pip-audit / trivy findings (py3.9 has no fixes).
+1. DONE: venv on Python 3.12, pins bumped. pip-audit 0 (was 19); trivy OS 0, venv 1 HIGH (setuptools 70.3.0 CVE-2025-47273, probable
+   false positive, venv has 84.2.1); CIS L1 187/69/34 (83.7). Image 293 MiB. Smoke boot (TCG) passed, 0 AVC. New image NOT yet booted on AHV.
 2. Deferred by owner: upgrade bundle (UI/CLI, DB migrations w/ backup+rollback), second fresh-deploy test.
 3. Not tested: console static-IP/hostname/NTP on AHV, UEFI, Stage B from the appliance, OVA, ConfigDrive network.
 4. Final cleanup (owner said later): AHV VMs ev2ahv-appliance-test, ev2ahv-appl-fake, ev2ahv-src-rocky9 (Rocky's

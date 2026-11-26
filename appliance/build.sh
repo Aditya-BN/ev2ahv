@@ -11,7 +11,7 @@ docker build -q -t ev2ahv-builder appliance/builder >/dev/null
 if [ ! -f build/wheels/.ok ] || [ appliance/requirements.txt -nt build/wheels/.ok ]; then
   rm -f build/wheels/*
   docker run --rm -v $REPO/appliance:/a:ro -v $REPO/build/wheels:/w ev2ahv-builder bash -c \
-    'python3 -m pip install -q -U pip && python3 -m pip download -q --only-binary=:all: -r /a/requirements.txt -d /w'
+    'python3.12 -m pip install -q -U pip && python3.12 -m pip download -q --only-binary=:all: -r /a/requirements.txt -d /w'
   touch build/wheels/.ok
 fi
 docker run --rm --privileged -v $REPO:/src:ro -v $REPO/build:/out ev2ahv-builder /src/appliance/scripts/mkimage.sh
