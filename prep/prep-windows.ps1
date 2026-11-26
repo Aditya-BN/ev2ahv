@@ -11,6 +11,7 @@
                  installs Nutanix Guest Tools with -InstallNgt when the NGT ISO is attached.
                  Writes C:\ev2ahv\cleanup.json.
   -Mode Remove   Removes the startup task and saved network config.
+  -DryRun        With Cleanup or Remove: print what would be removed or uninstalled and change nothing.
 
   The startup task does nothing unless the machine is a Nutanix VM, so booting the source again after a
   rollback is safe. The last output line is "EV2AHV-JSON:" followed by the facts as JSON.
@@ -21,7 +22,8 @@ param(
     [ValidateSet('Check', 'Prep', 'Cleanup', 'Remove')][string]$Mode = 'Check',
     [string]$VirtioPath = '',
     [ValidateSet('scsi', 'pci')][string]$Bus = 'scsi',
-    [switch]$InstallNgt
+    [switch]$InstallNgt,
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,6 +35,17 @@ $Facts = [ordered]@{ version = 2; mode = $Mode; time = (Get-Date).ToUniversalTim
                      computer = $env:COMPUTERNAME; bus = $Bus; changes = @(); problems = @() }
 
 function Say($m) { Write-Host $m }
+# Remove-Item -Recurse only through this guard: the path must be a real directory (not a junction or symlink) whose
+# full path ends in the expected leaf, and must not be a drive root, the Windows directory or a profile root.
+function Invoke-OwnedTreeDelete([string]$Path, [string]$Leaf) {
+    if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($Leaf)) { throw "refusing to delete: empty path or leaf" }
+    $full = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    if ($full.Length -lt 6 -or $full -match '^[A-Za-z]:$' -or (Split-Path $full -Leaf) -ne $Leaf) { throw "refusing to delete '$full': not an ev2ahv directory" }
+    if ($full -ieq $env:SystemRoot -or $full -ieq $env:USERPROFILE -or $full -ieq $env:ProgramData -or $full -ieq $env:ProgramFiles) { throw "refusing to delete '$full'" }
+    if (-not (Test-Path -LiteralPath $full -PathType Container)) { return }
+    if ((Get-Item -LiteralPath $full -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "refusing to delete '$full': it is a junction or symlink" }
+    Remove-Item -LiteralPath $full -Recurse -Force
+}
 function Change($m) { $script:Facts.changes += $m; Write-Host "[CHG ] $m" }
 function Problem($m) { $script:Facts.problems += $m; Write-Host "[PROB] $m" }
 function Emit {
@@ -104,7 +117,8 @@ function InstallDriver($name, [bool]$bootStart) {
     if (-not $bootStart) { return }
     $svc = "HKLM:\SYSTEM\CurrentControlSet\Services\$name"
     if ((Test-Path $svc) -and (Get-ItemProperty $svc).Start -ne 0 -and (DriverState $name).bound) { Set-ItemProperty $svc -Name Start -Value 0; Change "set $name to boot-start" }
-    if (Test-Path "$svc\StartOverride") { Remove-Item "$svc\StartOverride" -Recurse -Force; Change "removed $name StartOverride" }
+    if ($name -notmatch '^[A-Za-z0-9]+$') { throw "bad driver service name '$name'" }
+    if (Test-Path -LiteralPath "$svc\StartOverride") { Remove-Item -LiteralPath "$svc\StartOverride" -Recurse -Force; Change "removed $name StartOverride" }
 }
 
 # ---------------------------------------------------------------- SAN policy
@@ -202,8 +216,9 @@ function TaskState {
 # ---------------------------------------------------------------- modes
 switch ($Mode) {
     'Remove' {
+        if ($DryRun) { Say "[dry-run] would unregister task $TaskName and delete $NetFile and $ApplyScript"; Emit; exit 0 }
         Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-        Remove-Item $NetFile, $ApplyScript -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $NetFile, $ApplyScript -Force -ErrorAction SilentlyContinue
         Change 'removed the ev2ahv startup task and saved network config'
         Emit; exit 0
     }
@@ -211,12 +226,14 @@ switch ($Mode) {
         if (-not $Facts.on_ahv) { Problem 'refusing: this is not the migrated VM on AHV'; Emit; exit 2 }
         $ghosts = @(Get-PnpDevice -Class Net -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Unknown' -and $_.InstanceId -like 'PCI\*' })
         foreach ($g in $ghosts) {
+            if ($DryRun) { Say "[dry-run] would remove ghost NIC $($g.FriendlyName) ($($g.InstanceId))"; continue }
             $out = & pnputil.exe /remove-device "$($g.InstanceId)" 2>&1 | Out-String
             if ($LASTEXITCODE -eq 0) { Change "removed ghost NIC $($g.FriendlyName)" } else { Problem "could not remove $($g.FriendlyName): $($out.Trim())" }
         }
         $apps = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
             Where-Object { $_.DisplayName -match 'Stratus|everRun' })
         foreach ($app in $apps) {
+            if ($DryRun) { Say "[dry-run] would uninstall $($app.DisplayName) ($($app.PSChildName))"; continue }
             if ($app.PSChildName -match '^\{[0-9A-Fa-f-]+\}$') {
                 $p = Start-Process msiexec.exe -ArgumentList "/x $($app.PSChildName) /qn /norestart" -Wait -PassThru
                 if ($p.ExitCode -in 0, 3010) { Change "uninstalled $($app.DisplayName)" } else { Problem "msiexec exit $($p.ExitCode) for $($app.DisplayName)" }
@@ -225,6 +242,7 @@ switch ($Mode) {
         if ($InstallNgt) {
             $cd = Get-Volume | Where-Object { $_.DriveType -eq 'CD-ROM' -and $_.DriveLetter -and (Test-Path "$($_.DriveLetter):\setup.exe") -and $_.FileSystemLabel -match 'NUTANIX' } | Select-Object -First 1
             if (-not $cd) { Problem 'NGT ISO is not attached' }
+            elseif ($DryRun) { Say "[dry-run] would install Nutanix Guest Tools from $($cd.DriveLetter):" }
             else {
                 $p = Start-Process "$($cd.DriveLetter):\setup.exe" -ArgumentList '/quiet ACCEPTEULA=yes /norestart' -Wait -PassThru
                 if ($p.ExitCode -in 0, 3010) { Change "installed Nutanix Guest Tools (exit $($p.ExitCode))" } else { Problem "NGT setup exit $($p.ExitCode)" }
@@ -233,6 +251,7 @@ switch ($Mode) {
         $Facts.ghost_nics_left = @(Get-PnpDevice -Class Net -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Unknown' -and $_.InstanceId -like 'PCI\*' }).Count
         $Facts.stratus = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match 'Stratus|everRun' } | ForEach-Object { $_.DisplayName })
         $Facts.ngt = [bool](Get-Service -Name 'Nutanix Guest Tools Agent' -ErrorAction SilentlyContinue)
+        if ($DryRun) { Emit; exit 0 }
         $Facts | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $Root 'cleanup.json') -Encoding UTF8
         Emit; if ($Facts.problems.Count) { exit 1 }; exit 0
     }
@@ -245,8 +264,9 @@ switch ($Mode) {
         $net = CaptureNetwork
         ConvertTo-Json -InputObject @($net) -Depth 5 | Set-Content -Path $NetFile -Encoding UTF8
         Set-Content -Path $ApplyScript -Value $ApplyBody -Encoding UTF8
+        if ([string]::IsNullOrWhiteSpace($env:ProgramData)) { throw 'ProgramData is not set; not touching the old task files' }
         $old = Join-Path $env:ProgramData 'ev2ahv'
-        if (Test-Path $old) { Remove-Item $old -Recurse -Force; Change 'removed the old ProgramData\ev2ahv task files' }
+        if (Test-Path -LiteralPath $old) { Invoke-OwnedTreeDelete $old 'ev2ahv'; Change 'removed the old ProgramData\ev2ahv task files' }
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ApplyScript`""
         $trigger = New-ScheduledTaskTrigger -AtStartup
         $who = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest

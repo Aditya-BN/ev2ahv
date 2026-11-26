@@ -30,7 +30,7 @@ switch ($Mode) {
   }
   'stop' {
     Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
-    Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -match '-Mode loop' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+    Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -match 'guest-load\.ps1' -and $_.CommandLine -match '-Mode loop' -and $_.ProcessId -ne $PID } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
     Unregister-ScheduledTask -TaskName $Task -Confirm:$false -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
     foreach ($d in $Dirs) {

@@ -7,23 +7,28 @@
 #                            LVM devices file aside. Writes /root/ev2ahv/prep.json. Backups: /root/ev2ahv/backup
 #   prep-linux.sh --cleanup  on the migrated VM on AHV: removes Stratus packages and rebuilds the
 #                            initramfs if prep changed it. Writes /root/ev2ahv/cleanup.json
+#   --dry-run                with --apply or --cleanup: print what would be changed or removed, change nothing
 #
 # Every change also works on the source, so booting it again after a rollback is safe.
 # The last output line is "EV2AHV-JSON:" followed by the facts as JSON.
 # Exit: 0 done, 1 something needs attention, 2 refused.
 set -u
 export LC_ALL=C
-MODE=check
-case "${1:-}" in
-  --apply) MODE=prep ;;
-  --cleanup) MODE=cleanup ;;
-  "") ;;
-  *) echo "usage: $0 [--apply|--cleanup]"; exit 2 ;;
-esac
+MODE=check; DRY=false
+for arg in "$@"; do
+  case "$arg" in
+    --apply) MODE=prep ;;
+    --cleanup) MODE=cleanup ;;
+    --dry-run) DRY=true ;;
+    *) echo "usage: $0 [--apply|--cleanup] [--dry-run]"; exit 2 ;;
+  esac
+done
+if [ "$DRY" = true ] && [ "$MODE" = check ]; then echo "--dry-run needs --apply or --cleanup"; exit 2; fi
 [ "$(id -u)" -eq 0 ] || { echo "Run as root."; exit 2; }
 
-D=/root/ev2ahv; BK=$D/backup
-mkdir -p "$BK"; chmod 700 "$D"
+D=${EV2AHV_PREP_DIR:-/root/ev2ahv}; BK=$D/backup
+[ -n "$D" ] && [ "$D" != / ] || { echo "refusing: bad work dir '$D'"; exit 2; }
+if [ "$DRY" = true ]; then BK=/nonexistent-dry-run; else mkdir -p "$BK"; chmod 700 "$D"; fi
 CHANGES=(); PROBLEMS=()
 change()  { CHANGES+=("$1"); echo "[CHG ] $1"; }
 problem() { PROBLEMS+=("$1"); echo "[PROB] $1"; }
@@ -32,7 +37,7 @@ jarr() { local out="" x; for x in "$@"; do out+="${out:+,}$(js "$x")"; done; pri
 jbool() { [ "$1" = true ] && printf true || printf false; }
 backup() { [ -e "$1" ] && [ ! -e "$BK$1" ] && mkdir -p "$BK$(dirname "$1")" && cp -a "$1" "$BK$1"; }
 
-VENDOR=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null)
+VENDOR=$(cat "${EV2AHV_DMI_VENDOR:-/sys/class/dmi/id/sys_vendor}" 2>/dev/null)   # the override is for tests
 ON_AHV=false; [[ "$VENDOR" == *Nutanix* ]] && ON_AHV=true
 . /etc/os-release 2>/dev/null
 FIRMWARE=bios; [ -d /sys/firmware/efi ] && FIRMWARE=uefi
@@ -45,6 +50,13 @@ fi
 if [ "$MODE" = cleanup ] && [ "$ON_AHV" != true ]; then
   problem "refusing: --cleanup runs on the migrated VM on AHV"
   printf 'EV2AHV-JSON:{"version":2,"mode":"cleanup","problems":%s}\n' "$(jarr "${PROBLEMS[@]}")"; exit 2
+fi
+
+if [ "$DRY" = true ] && [ "$MODE" = prep ]; then
+  echo "[dry-run] --apply would: add virtio drivers to the initramfs and rebuild it, pin NIC names to MACs in"
+  echo "[dry-run] /etc/systemd/network/70-ev2ahv-*.link, make NetworkManager profiles match by MAC, and move"
+  echo "[dry-run] /etc/lvm/devices/system.devices to $D/backup. Run --apply without --dry-run to do it."
+  exit 0
 fi
 
 # ------------------------------------------------------------------ initramfs
@@ -154,6 +166,16 @@ DNS=(); while read -r a; do DNS+=("$a"); done < <(awk '/^nameserver/{print $2}' 
 # ------------------------------------------------------------------ Stratus software
 STRATUS=(); while read -r p; do [ -n "$p" ] && STRATUS+=("$p"); done < <( { rpm -qa 2>/dev/null; dpkg-query -W -f '${Package}\n' 2>/dev/null; } | grep -iE 'stratus|everrun')
 if [ "$MODE" = cleanup ]; then
+  # Never let the name match take a system package with it (the match is a case-insensitive grep, not an exact list).
+  SAFE=(); for p in "${STRATUS[@]}"; do
+    case "$p" in kernel*|glibc*|systemd*|bash*|openssh*|dracut*|grub*|nutanix*|qemu*|virtio*|lvm2*|sudo*|NetworkManager*) problem "not removing $p: system package matched the Stratus pattern" ;; *) SAFE+=("$p") ;; esac
+  done
+  STRATUS=("${SAFE[@]}")
+  if [ "$DRY" = true ]; then
+    echo "[dry-run] --cleanup would remove: ${STRATUS[*]:-nothing}"
+    [ ${#PROBLEMS[@]} -gt 0 ] && exit 1
+    exit 0
+  fi
   if [ ${#STRATUS[@]} -gt 0 ]; then
     rc=1
     if command -v dnf >/dev/null; then dnf -y remove "${STRATUS[@]}" >/dev/null 2>&1; rc=$?
