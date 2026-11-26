@@ -71,6 +71,33 @@ The serial console and ssh get normal login prompts.
 
 cloud-init network rendering is disabled so it cannot overwrite the profile (`ev2ahv-primary`) the menu manages.
 
+## Authorize the appliance SSH key
+
+Each appliance makes its own ed25519 key on first use (`/var/lib/ev2ahv/config/id_ed25519`, owner ev2ahv, 0600; comment
+`ev2ahv-appliance`). Nothing else is shipped or shared. ev2ahv uses it to log in as **root** to:
+
+- every everRun node of a source environment: `virsh -r` (read-only discovery), `stat` and reading the guest's raw disk files,
+  and the plan's `avcli` power commands to stop the source at cutover and start it on rollback;
+- Linux guests whose plan uses automatic prep over SSH (`guest.prep: auto`).
+
+Steps, once per appliance:
+
+1. Open **Health** and find **Appliance SSH key**. The page shows a one-line command with the key, restricted with
+   `from="<appliance address>",no-agent-forwarding,no-port-forwarding,no-X11-forwarding`. Check that the address is the
+   appliance IP (the page uses the address you opened it with).
+2. Run that line as root on **each** everRun node (both nodes of the pair), and in each Linux guest that will use automatic
+   prep. It appends to `/root/.ssh/authorized_keys`, so nothing already there is changed.
+3. Add (or refresh) the everRun environment in the UI. Validation runs `virsh -r list` on every node and fails, naming the
+   node, if a node refuses the key. Node host keys are pinned on first contact (`StrictHostKeyChecking=accept-new`,
+   `/var/lib/ev2ahv/config/known_hosts`).
+
+To rotate the key: stop `ev2ahv`, move `id_ed25519` and `id_ed25519.pub` out of `/var/lib/ev2ahv/config/`, start it, open
+Health (a new key is made), repeat steps 1 to 3, then delete the old line from `authorized_keys` on the nodes and guests. To
+revoke an appliance, delete its line (comment `ev2ahv-appliance`, `from=` its IP) on the nodes and guests.
+
+Do not copy another machine's key into the appliance (the lab shortcut on `ev2ahv-appliance-2`, see below); it ties the
+appliance's access to that machine's key and makes revocation per appliance impossible.
+
 ## Default credentials (change them)
 
 | Where | User | Password | Note |
@@ -176,6 +203,6 @@ Notes:
   device on the lab VLAN (the pool overlaps non-IPAM hosts), so the VM answered nothing useful; it was deleted and recreated with the free
   static address 10.12.135.154 on the same subnet. The image is not at fault.
 - Lab shortcut: the bastion's ssh keypair was installed as the app key (`/var/lib/ev2ahv/config/id_ed25519`, owner ev2ahv, 0600) so the
-  appliance could use the key already authorized on the everRun nodes and in the guest. Production: authorize the key shown on the Health page instead.
+  appliance could use the key already authorized on the everRun nodes and in the guest. Production: authorize the key shown on the Health page instead (see Authorize the appliance SSH key).
 - Bug found: failed `ev2ahv-blockd@` instances after each write (BrokenPipeError on the last "ok" line). Fixed in the repo,
   hot-patched here; needs an image rebuild to ship.

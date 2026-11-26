@@ -96,7 +96,9 @@ def probe(body):
         except Exception as e:
             errs.append(f"{n}: {e}")
     if errs:
-        raise LiveError("everRun node(s) not reachable over SSH with the ev2ahv key: " + "; ".join(errs))
+        raise LiveError("everRun node(s) not reachable over SSH with the ev2ahv key: " + "; ".join(errs)
+                        + ". Add the key shown on the Health page (Appliance SSH key) to root's authorized_keys on "
+                        "every node; see docs/appliance.md, Authorize the appliance SSH key")
     return {"version": "everRun"}
 
 

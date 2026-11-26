@@ -6,6 +6,10 @@ import { fmtDateSec, tzLabel, useLive } from '../util';
 
 const stepTime = (t: number | string) => (typeof t === 'number' ? fmtDateSec(t) : t);
 
+// One line to paste on an everRun node: append the key to root's authorized_keys, limited to this appliance's address.
+export const authLine = (key: string, from = window.location.hostname) =>
+  `install -d -m 700 /root/.ssh && echo 'from="${from}",no-agent-forwarding,no-port-forwarding,no-X11-forwarding ${key}' >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys`;
+
 export default function Health() {
   const { showError, toast } = useDialogs();
   const { data, loading, reload } = useLive(() => api.health(), []);
@@ -79,7 +83,12 @@ export default function Health() {
             <div style={{ ...mono, background: '#f4f6f9', border: '1px solid var(--line)', borderRadius: 3, padding: 10, wordBreak: 'break-all' }}>{data.ssh_public_key}</div>
             <div style={{ marginTop: 8 }}><button className="btn" onClick={copy}>Copy</button></div>
           </>) : <p className="muted">No SSH key generated yet.</p>}
-          <p className="muted">Add this key to root's authorized_keys on each everRun node so ev2ahv can read guest disks.</p>
+          <p className="muted">ev2ahv logs in as root with this key to every everRun node (read-only <code>virsh -r</code>, reading guest disk files, and avcli to stop and start the source) and to Linux guests for automatic prep.</p>
+          {data.ssh_public_key && (<>
+            <p className="muted" style={{ marginBottom: 4 }}>On each everRun node (and each Linux guest that uses automatic prep), as root:</p>
+            <div style={{ ...mono, background: '#f4f6f9', border: '1px solid var(--line)', borderRadius: 3, padding: 10, wordBreak: 'break-all' }}>{authLine(data.ssh_public_key)}</div>
+            <p className="muted">The <code>from=</code> option limits the key to this appliance's address ({window.location.hostname}); replace it with the appliance IP if you opened this page through a DNS name or a proxy. Then add or refresh the everRun environment: it fails if any node refuses the key.</p>
+          </>)}
         </div>
       </>)}
       {certDlg && (

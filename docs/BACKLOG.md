@@ -19,7 +19,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | ID | Pri | Debt | Where |
 |---|---|---|---|
 | D1 | P1 | The root-helper BrokenPipe fix (`ev2ahv/helper/ev2ahv_helper.py`, 292e839) is not in `dist/ev2ahv-0.2.0.qcow2`. It is only hot-patched on `ev2ahv-appliance-2`. Rebuild before handing out the image. | appliance |
-| D2 | P1 | Lab shortcut: `ev2ahv-appliance-2` uses the bastion's SSH keypair as its app key. In a real deployment the user authorizes the appliance's own key (shown on the Health page) on the everRun nodes; this needs a documented step or a UI flow. | appliance, docs |
 | D5 | P2 | No changed-block tracking: every resync and final sync reads the whole disk (about 110 MiB/s). Downtime grows with disk size. | engine |
 | D6 | P2 | Discovery uses `virsh -r` over SSH and cannot tell FT from HA (availability is blank). The everRun DOH API has it. | server/live.py, ev2ahv/everrun_api.py |
 | D7 | P2 | Upgrade path is not built: a versioned bundle, DB migrations with backup and rollback, and UI/CLI apply. Deferred by the owner. | appliance, server |
@@ -48,6 +47,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-26: D2. Documented step "Authorize the appliance SSH key" in docs/appliance.md (what root access is used for,
+  per-node steps, rotation, revocation). The Health page shows a ready-to-paste `authorized_keys` line limited with `from=`
+  and no forwarding, and the everRun validation error points there. `ev2ahv-appliance-2` still runs the lab shortcut (the
+  bastion's key); switching it is for its holder (adit). Not clicked through in a browser.
 - 2026-11-26: D3. The source name guard is a setting: Appliance Settings, "Source VM name prefix" (`source_name_prefix`,
   default `ev2ahv-`, empty allows any VM after a confirm). A change is logged as a warning event. Older databases get the
   default. `EV2AHV_ALLOW_ANY_SOURCE=1` still overrides it (deprecated). 6 new unit tests; not clicked through in a browser.
