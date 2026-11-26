@@ -21,7 +21,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D1 | P1 | The root-helper BrokenPipe fix (`ev2ahv/helper/ev2ahv_helper.py`, 292e839) is not in `dist/ev2ahv-0.2.0.qcow2`. It is only hot-patched on `ev2ahv-appliance-2`. Rebuild before handing out the image. | appliance |
 | D2 | P1 | Lab shortcut: `ev2ahv-appliance-2` uses the bastion's SSH keypair as its app key. In a real deployment the user authorizes the appliance's own key (shown on the Health page) on the everRun nodes; this needs a documented step or a UI flow. | appliance, docs |
 | D3 | P1 | Live-mode lab guard: only `ev2ahv-*` source VMs unless `EV2AHV_ALLOW_ANY_SOURCE=1`. A product needs a real setting, not an env var. | server/live.py |
-| D4 | P2 | On the appliance, the cutover result (downtime, final sync) is not stored in the plan. It was worked out from events. | server/live.py `_cut` |
 | D5 | P2 | No changed-block tracking: every resync and final sync reads the whole disk (about 110 MiB/s). Downtime grows with disk size. | engine |
 | D6 | P2 | Discovery uses `virsh -r` over SSH and cannot tell FT from HA (availability is blank). The everRun DOH API has it. | server/live.py, ev2ahv/everrun_api.py |
 | D7 | P2 | Upgrade path is not built: a versioned bundle, DB migrations with backup and rollback, and UI/CLI apply. Deferred by the owner. | appliance, server |
@@ -29,7 +28,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D9 | P3 | Windows guests need `disk_bus: pci` (virtio-blk); virtio-scsi boot did not work. | engine, docs |
 | D10 | P3 | Security scan leftovers: trivy reports 1 HIGH, setuptools 70.3.0 (probably a false positive, since the venv has 84.2.1). CIS L1 has 69 fails, not triaged. `scan.sh`'s second trivy run fails on a cold DB cache. | appliance/scripts/scan.sh, docs/security.md |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
-| D12 | P3 | No CI. `pytest` and `make` are not installed on the bastion. The unit tests in `tests/` have not been run since Stage C. | repo |
+| D12 | P3 | No CI. `pytest` and `make` are not installed on the bastion. The unit tests do run with plain `python -m unittest discover -s tests` (44 pass on 2026-11-26), but nothing runs them automatically. | repo |
 | D13 | P3 | UI has a single local user; no RBAC, no LDAP. The default certificate is self-signed (the Health page can replace it). | server |
 | D14 | P3 | The image fallback (`target.transfer: image`) needs up to twice the disk size free on the writer. | engine |
 
@@ -51,6 +50,9 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-26: D4. The cutover result (downtime, final sync, verify) is now kept on the plan VM and returned by `/api/v2`
+  (`PlanVm.cutover_result`) and shown on the Progress page. It was already saved in SQLite, but the response model dropped it.
+  Rollback clears it. Unit tests: 44 of 44 pass, 4 new. Not yet seen on a real appliance cutover (see docs/results.md, D4).
 - 2026-11-26: the venv moved to Python 3.12 and pip-audit went from 19 findings to 0 (eacdbdc). The py312 image was booted on AHV, and Stage B
   (Rocky FT, 40 GiB) ran from the appliance: downtime about 448 s, checksums match (292e839).
 - 2026-11-25: Stage D appliance, first iteration, tagged v0.2.0. Stage C: UI and live mode.
