@@ -30,6 +30,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
 | D13 | P3 | LDAP / AD sign-in is a stub (design in docs/security.md). The default certificate is self-signed (the Health page can replace it). | server |
 | D14 | P3 | The image fallback (`target.transfer: image`) still needs the total disk size plus the largest disk free on the writer, and the upload adds to downtime. Going lower needs uploading straight from the raw file (no qcow2 copy). | engine |
+| D15 | P2 | Production impact and backups are untested. ev2ahv takes no snapshots and does not use VSS, but: (a) seeds and full-disk resyncs add read I/O and about one CPU core per disk on the everRun node, and that load has never been measured; (b) reading while an everRun snapshot exists is unverified; (c) D5 dirty bitmaps may clash with any QEMU-level backup on the same VM; (d) after cutover the everRun-side backup job fails, and in-guest agents usually need one full backup because disk IDs change; (e) running scripts as root on the nodes may not be covered by Stratus support. There is no runbook section on backups or throttling. | docs/runbook.md, engine |
 
 ## What to test
 
@@ -47,6 +48,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | T10 | Prism username/password auth (D11) | Environment with a user and password | Validate, refresh and migrate work |
 | T11 | Unit tests (D12) | `tools/check.sh` or the GitHub `ci` workflow | All pass |
 | T12 | FT/HA in discovery (D6) against the real everRun DOH API | `EV2AHV_EVERRUN_PASS=... python3 ev2ahv/everrun_api.py --host <portal> list`, then refresh the everRun environment in the UI | `ev2ahv-src-rocky9` shows FT and `ev2ahv-src-win22` HA; if the raw text is something else, extend `availability_level` |
+| T13 | Production impact and backups (D15) | On lab everRun: seed and resync a production-sized disk while watching node I/O latency and CPU at several bandwidth limits; run an in-guest backup agent during a seed; seed while an everRun snapshot exists; cutover, then back up the AHV VM | Node latency acceptable at a documented bandwidth limit; backup job and ev2ahv both succeed; data read under a snapshot is correct; runbook has a Backups and throttling section |
 
 ## Done (recent)
 
