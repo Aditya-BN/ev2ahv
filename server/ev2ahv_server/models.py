@@ -158,7 +158,7 @@ class Check(BaseModel):
 
 class CutoverResult(BaseModel):
     """What the last successful cutover measured, kept on the plan VM (engine timings, in seconds)."""
-    completed_at: float
+    completed_at: Optional[float] = Field(None, description="epoch seconds; null when unknown (plans stored before 0.3.x)")
     target_vm_id: Optional[str] = None
     downtime_seconds: Optional[float] = Field(None, description="source shutdown requested to target verified")
     final_sync_seconds: Optional[float] = None
@@ -198,7 +198,9 @@ class PlanVm(BaseModel):
             ver = {k: x for k, x in (v.get("verify") or {}).items() if isinstance(x, (str, int, float, bool))}
             keep = {k: t[k] for k in ("downtime_seconds", "final_sync_seconds", "image_upload_seconds",
                                       "conversion_seconds", "last_resync_seconds") if t.get(k) is not None}
-            return {"completed_at": 0.0, "target_vm_id": v.get("vm"), "verify": ver, **keep}
+            return {"completed_at": None, "target_vm_id": v.get("vm"), "verify": ver, **keep}
+        if isinstance(v, dict) and not v.get("completed_at"):
+            return {**v, "completed_at": None}   # 0.3.2 stored 0 for unknown; never render 1970 (D17)
         return v
 
 

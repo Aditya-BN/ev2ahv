@@ -298,6 +298,10 @@ def _write(plan, vm, p):
 # Steps that run while the source is (or may be) stopped. everRun undefines a stopped guest in libvirt, so discovery
 # cannot see it; these steps reuse the engine plan written when the VM was seeded (same disks, same source).
 REUSE_PLAN_STEPS = {"rollback", "cutover", "discard-target", "guest-cleanup", "cleanup", "status"}
+# After a rollback the source is stopped or still booting, so its first resyncs also reuse the seeded plan (D16),
+# and a failed one is retried a few times (the source may not answer yet) instead of marking the VM Failed.
+ROLLBACK_RESYNC_RETRIES = 20
+ROLLBACK_RESYNC_RETRY_SECONDS = 60
 
 
 TIMINGS = ("downtime_seconds", "final_sync_seconds", "image_upload_seconds", "conversion_seconds", "last_resync_seconds")
@@ -359,7 +363,8 @@ class Live:
                 raise LiveError(f"{vm['name']} is no longer in {src['name']}. Refresh the environment")
             return engine_plan(plan, vm, src, wl, self.store.secret, self.settings())
         except Exception as e:
-            if step in REUSE_PLAN_STEPS and os.path.exists(existing):
+            reuse = step in REUSE_PLAN_STEPS or (step == "resync" and vm.get("rolled_back"))
+            if reuse and os.path.exists(existing):
                 log.warning("%s: %s; using the engine plan from the seed (%s)", vm["name"], e, existing)
                 return existing
             raise
@@ -425,6 +430,8 @@ class Live:
                 self.jobs.pop(key, None)
             if job["cancelled"]:
                 return
+            if error and job["action"] == "resync" and self._retry_resync(plan, vm, error):
+                return
             if error:
                 self.store.event("error", f"{job['action']} failed: {error}", plan=plan["name"], vm=vm["name"])
                 self._update(plan["id"], vm["id"],
@@ -435,6 +442,27 @@ class Live:
                 self._update(plan["id"], vm["id"], lambda p, v: (on_done(p, v, result), v.update(phase=None)))
 
         threading.Thread(target=run, daemon=True, name=f"job-{vm['name']}").start()
+
+    def _retry_resync(self, plan, vm, error):
+        """After a rollback the source may take minutes to boot. Keep the VM Ready to Cutover and let the worker try
+        the resync again in a minute, up to ROLLBACK_RESYNC_RETRIES times. Returns True when a retry was scheduled."""
+        if not vm.get("rolled_back"):
+            return False
+        resync = 60 * int((plan.get("schedule") or {}).get("resync_minutes") or 60)
+        left = []
+
+        def fn(p, v):
+            n = v.get("resync_retries", 0)
+            if v.get("rolled_back") and v.get("status") == "Ready to Cutover" and n < ROLLBACK_RESYNC_RETRIES:
+                v.update(resync_retries=n + 1, phase=None,
+                         last_sync_at=time.time() - resync + ROLLBACK_RESYNC_RETRY_SECONDS)
+                left.append(n + 1)
+        self._update(plan["id"], vm["id"], fn)
+        if left:
+            self.store.event("warning", f"resync after rollback failed ({error}); retry {left[0]} of "
+                             f"{ROLLBACK_RESYNC_RETRIES} in {ROLLBACK_RESYNC_RETRY_SECONDS} s",
+                             plan=plan["name"], vm=vm["name"])
+        return bool(left)
 
     def _progress(self, pid, vid, step, pr, job):
         frac = pr["done"] / max(pr["total"], 1)
@@ -510,6 +538,7 @@ class Live:
 
     @staticmethod
     def _seeded(p, v, r):
+        v.pop("resync_retries", None)
         v.update(status="Ready to Cutover", seed_percent=100.0, last_sync_at=time.time(), eta_seconds=None,
                  data_transferred_bytes=v.get("total_bytes") or v.get("data_transferred_bytes", 0))
 

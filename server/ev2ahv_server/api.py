@@ -752,8 +752,32 @@ if MODE == "live":
     worker = live.Live(store, lock, finish, bump)
 
 
+HEALTH_USER = "ev2ahv-health"
+
+
+def _health_session():
+    """ev2ahv-upgrade must read the stored data (plans, environments) through the real API to know that a new
+    version can use it. It has no password, so at start the app creates a read-only session and writes its token to
+    a file only the app user and root can read (mode 0600, in the app's runtime directory)."""
+    path = os.environ.get("EV2AHV_HEALTH_COOKIE") or ("/run/ev2ahv/health.cookie" if APPLIANCE else "")
+    if not path:
+        return
+    tok = secrets.token_urlsafe(32)
+    try:
+        fd = os.open(path + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(tok)
+        os.replace(path + ".tmp", path)
+    except OSError as e:
+        print(f"ev2ahv: health session not written: {e}", file=sys.stderr)
+        return
+    sessions[tok] = {"user": HEALTH_USER, "role": "viewer", "exp": time.time() + 10 * 365 * 86400,
+                     "must_change": False}
+
+
 @app.on_event("startup")
 def _startup():
+    _health_session()
     if MODE == "mock":
         from . import mock
         mock.seed(store)

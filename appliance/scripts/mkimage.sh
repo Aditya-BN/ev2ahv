@@ -60,6 +60,7 @@ install -d -m 0750 -o root -g ev2ahv /etc/ev2ahv
 chown root:ev2ahv /etc/ev2ahv/ev2ahv.env; chmod 0640 /etc/ev2ahv/ev2ahv.env
 install -d -m 0755 /var/log/journal
 chmod 0755 /usr/local/sbin/ev2ahv-*
+ln -sf /usr/local/sbin/ev2ahv-upgrade /usr/sbin/ev2ahv-upgrade   # in sudo secure_path: `sudo ev2ahv-upgrade`
 ln -sf /dev/null /etc/systemd/system/getty@tty1.service
 ln -sf /usr/lib/systemd/system/ev2ahv-tls.path /etc/systemd/system/multi-user.target.wants/ev2ahv-tls.path 2>/dev/null || true
 for u in chronyd sshd firewalld NetworkManager nginx auditd cloud-init-local cloud-init cloud-config cloud-final \

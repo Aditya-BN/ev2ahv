@@ -16,7 +16,12 @@ P = {  # paths; tests point them at a temporary tree
     "app": "/opt/ev2ahv/app", "venv": "/opt/ev2ahv/venv", "data": "/var/lib/ev2ahv",
     "state": "/var/lib/ev2ahv/.local/share/ev2ahv", "env": "/etc/ev2ahv/ev2ahv.env",
     "sock": "/run/ev2ahv/app.sock", "self": "/usr/local/sbin/ev2ahv-upgrade",
+    "link": "/usr/sbin/ev2ahv-upgrade",             # in sudo's secure_path, so `sudo ev2ahv-upgrade` works
+    "cookie": "/run/ev2ahv/health.cookie",          # read-only session the app writes at start (0.3.3+)
 }
+# read endpoints that load stored data through the data model; all must answer 200 after an upgrade (D7)
+HEALTH_PATHS = ("/api/v2/plans", "/api/v2/plans/vms", "/api/v2/providers", "/api/v2/events", "/api/v2/settings")
+HEALTH_DATA_FROM = (0, 3, 3)   # first version that writes the health cookie
 SERVICE = "ev2ahv"
 
 
@@ -89,7 +94,10 @@ def unpack(bundle, into):
         for m in tf.getmembers():
             if m.name.startswith("/") or ".." in m.name.split("/") or not (m.isfile() or m.isdir()):
                 raise UpgradeError(f"unsafe member in bundle: {m.name}")
-        if hasattr(tarfile, "data_filter"):   # Python 3.12+ (and security backports): refuse anything outside `into`
+        # The member checks above always run. Where the tarfile module has extraction filters (3.12+ and the security
+        # backports in 3.9 and later) also use filter="data", which refuses links and paths outside `into` and keeps
+        # the 3.12 DeprecationWarning (and its 3.14 default change) away; older Pythons have no filter to pass.
+        if hasattr(tarfile, "data_filter"):
             tf.extractall(into, filter="data")
         else:
             tf.extractall(into)
@@ -117,15 +125,43 @@ def busy():
     return any("ev2ahv_server.runner" in line and "ps -eo" not in line for line in out.splitlines())
 
 
+def fetch(path, cookie=None):
+    """GET path over the app's unix socket; returns (HTTP status, body). Status 0 when curl got no answer."""
+    cmd = ["curl", "-s", "-m", "30", "--unix-socket", P["sock"], "-w", "\n%{http_code}"]
+    if cookie:
+        cmd += ["-H", f"Cookie: ev2ahv_session={cookie}"]
+    out = sh(*cmd, "http://app" + path, check=False).stdout
+    body, _, code = out.rpartition("\n")
+    return (int(code) if code.strip().isdigit() else 0), body
+
+
+def data_check(want):
+    """The app must be able to read what it stored: every list endpoint in HEALTH_PATHS has to answer 200.
+    appinfo alone passed while /api/v2/plans was a 500 after a real upgrade (a plan stored by an older version)."""
+    if vtuple(want) < HEALTH_DATA_FROM:
+        log(f"{want} predates the stored-data health check; only appinfo was checked")
+        return
+    try:
+        with open(P["cookie"]) as fh:
+            cookie = fh.read().strip()
+    except OSError as e:
+        raise UpgradeError(f"the new version wrote no health session ({e})")
+    for path in HEALTH_PATHS:
+        code, body = fetch(path, cookie)
+        if code != 200:
+            raise UpgradeError(f"health check: GET {path} returned {code or 'no answer'} ({body.strip()[:120]!r})")
+
+
 def health(want, timeout=60):
-    """GET /api/v2/appinfo over the app's unix socket until it reports the wanted version."""
+    """GET /api/v2/appinfo over the app's unix socket until it reports the wanted version, then read the stored
+    data through the list endpoints (plans, environments, events, settings)."""
     deadline = time.time() + timeout
     last = ""
     while time.time() < deadline:
-        r = sh("curl", "-s", "--unix-socket", P["sock"], "http://app/api/v2/appinfo", check=False)
-        last = r.stdout.strip()
+        last = fetch("/api/v2/appinfo")[1].strip()
         try:
             if json.loads(last).get("version") == want:
+                data_check(want)
                 return True
         except ValueError:
             pass
@@ -173,6 +209,7 @@ def apply(bundle, force=False, ops=None):
                 ops["install_venv"](os.path.join(work, "wheels"), os.path.join(work, "app", "requirements.txt"))
             if os.path.exists(os.path.join(work, "ev2ahv-upgrade")):
                 shutil.copy2(os.path.join(work, "ev2ahv-upgrade"), P["self"])
+                link_self()
             sh("chown", "-R", "root:root", P["app"], check=False)
             if shutil.which("restorecon"):   # absent off-appliance (CI runners)
                 sh("restorecon", "-R", P["app"], check=False)
@@ -186,6 +223,16 @@ def apply(bundle, force=False, ops=None):
         return bdir
     finally:
         rm_tree(work)
+
+
+def link_self():
+    """Link the tool into /usr/sbin so `sudo ev2ahv-upgrade ...` finds it (sudo's secure_path has no /usr/local/sbin).
+    Never replaces an existing file."""
+    try:
+        if not os.path.lexists(P["link"]):
+            os.symlink(P["self"], P["link"])
+    except OSError as e:
+        log(f"could not link {P['link']}: {e}")
 
 
 def _req_sha(app_dir):

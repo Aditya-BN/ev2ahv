@@ -1,5 +1,5 @@
 """D4: the cutover result is kept on the plan VM and survives the /api/v2 response model."""
-import os, sys, unittest
+import os, sys, threading, time, unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [ROOT, os.path.join(ROOT, "server")]
 from ev2ahv_server import models as m  # noqa: E402
@@ -55,6 +55,16 @@ class CutoverResultTest(unittest.TestCase):
         self.assertEqual(v.cutover_result.target_vm_id, "uuid")
         self.assertEqual(v.cutover_result.downtime_seconds, 448.0)
         self.assertEqual(v.cutover_result.verify, {"power": "ON"})
+        self.assertIsNone(v.cutover_result.completed_at)   # D17: unknown, not 1970
+
+    def test_completed_at_zero_is_normalised_to_null(self):
+        """D17: 0.3.2 stored completed_at 0 for legacy results; the API now returns null, a real time is kept."""
+        v = m.PlanVm(id="a", name="a", cutover_result={"completed_at": 0, "target_vm_id": "u", "downtime_seconds": 1.0})
+        self.assertIsNone(v.cutover_result.completed_at)
+        self.assertIsNone(v.model_dump()["cutover_result"]["completed_at"])
+        self.assertEqual(v.cutover_result.downtime_seconds, 1.0)
+        v = m.PlanVm(id="a", name="a", cutover_result={"completed_at": 1700000000.5})
+        self.assertEqual(v.cutover_result.completed_at, 1700000000.5)
 
 
 class NameGuardTest(unittest.TestCase):
@@ -120,6 +130,16 @@ class StoppedSourceTest(unittest.TestCase):
         with self.assertLogs("ev2ahv.live", "WARNING"):
             self.assertEqual(self.live.ensure_plan(self.plan, self.vm, "cutover"), self.path)
 
+    def test_resync_after_rollback_uses_the_seeded_plan(self):
+        """D16: the first resync after a rollback runs while the source boots and is absent from discovery."""
+        vm = dict(self.vm, rolled_back=True)
+        with self.assertLogs("ev2ahv.live", "WARNING"):
+            self.assertEqual(self.live.ensure_plan(self.plan, vm, "resync"), self.path)
+
+    def test_resync_without_rollback_still_needs_discovery(self):
+        with self.assertRaises(live.LiveError):
+            self.live.ensure_plan(self.plan, self.vm, "resync")
+
     def test_seed_still_needs_discovery(self):
         with self.assertRaises(live.LiveError):
             self.live.ensure_plan(self.plan, self.vm, "seed")
@@ -128,6 +148,47 @@ class StoppedSourceTest(unittest.TestCase):
         os.remove(self.path)
         with self.assertRaises(live.LiveError):
             self.live.ensure_plan(self.plan, self.vm, "cutover")
+
+
+class RetryResyncTest(unittest.TestCase):
+    """D16: a resync that fails while the rolled-back source boots is retried, not marked Failed."""
+    def make(self, vm):
+        plan = {"id": "p1", "name": "p", "schedule": {"resync_minutes": 60}, "vms": [vm]}
+        events = []
+
+        class Store:
+            def get(_, kind, id_):
+                return plan
+
+            def put(_, kind, p):
+                pass
+
+            def event(_, *a, **k):
+                events.append(a)
+        lv = Live(Store(), threading.Lock(), lambda p: p, lambda: None)
+        return lv, plan, events
+
+    def test_retry_is_scheduled_for_a_minute_ahead(self):
+        vm = {"id": "v", "name": "v", "status": "Ready to Cutover", "rolled_back": True}
+        lv, plan, events = self.make(vm)
+        before = time.time()
+        self.assertTrue(lv._retry_resync(plan, vm, "ssh refused"))
+        self.assertEqual(vm["resync_retries"], 1)
+        self.assertEqual(vm["status"], "Ready to Cutover")
+        self.assertAlmostEqual(vm["last_sync_at"] + 3600 - 60, before, delta=5)
+        self.assertEqual(events[0][0], "warning")
+
+    def test_gives_up_after_the_limit(self):
+        vm = {"id": "v", "name": "v", "status": "Ready to Cutover", "rolled_back": True,
+              "resync_retries": live.ROLLBACK_RESYNC_RETRIES}
+        lv, plan, _ = self.make(vm)
+        self.assertFalse(lv._retry_resync(plan, vm, "x"))
+
+    def test_no_retry_without_rollback_or_during_cutover(self):
+        for vm in ({"id": "v", "name": "v", "status": "Ready to Cutover"},
+                   {"id": "v", "name": "v", "status": "Cutover in Progress", "rolled_back": True}):
+            lv, plan, _ = self.make(vm)
+            self.assertFalse(lv._retry_resync(plan, vm, "x"))
 
 
 if __name__ == "__main__":

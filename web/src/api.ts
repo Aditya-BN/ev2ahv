@@ -47,7 +47,7 @@ export interface PlanVm {
   phase?: string | null; sync_progress?: number | null; cutover_result?: CutoverResult | null;
 }
 export interface CutoverResult {
-  completed_at: number; target_vm_id?: string | null; downtime_seconds?: number | null; final_sync_seconds?: number | null;
+  completed_at?: number | null; target_vm_id?: string | null; downtime_seconds?: number | null; final_sync_seconds?: number | null;
   image_upload_seconds?: number | null; conversion_seconds?: number | null; last_resync_seconds?: number | null;
   verify: Record<string, unknown>;
 }

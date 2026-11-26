@@ -2,7 +2,7 @@
     "openapi": "3.1.0",
     "info": {
         "title": "ev2ahv API",
-        "version": "0.3.2"
+        "version": "0.3.3"
     },
     "paths": {
         "/api/v2/token": {
@@ -2188,8 +2188,16 @@
             "CutoverResult": {
                 "properties": {
                     "completed_at": {
-                        "type": "number",
-                        "title": "Completed At"
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Completed At",
+                        "description": "epoch seconds; null when unknown (plans stored before 0.3.x)"
                     },
                     "target_vm_id": {
                         "anyOf": [
@@ -2266,9 +2274,6 @@
                     }
                 },
                 "type": "object",
-                "required": [
-                    "completed_at"
-                ],
                 "title": "CutoverResult",
                 "description": "What the last successful cutover measured, kept on the plan VM (engine timings, in seconds)."
             },
