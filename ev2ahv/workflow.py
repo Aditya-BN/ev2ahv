@@ -2,7 +2,7 @@
 The source is only ever read, stopped and started. It is never modified or deleted."""
 import base64, fcntl, logging, os, re, shlex, socket, subprocess, time
 
-from . import builder, engine, guest as guestlib, target as tgt
+from . import builder, cbt, engine, guest as guestlib, target as tgt
 from .readers import make_reader
 from .state import State
 from .transport import BlockdTransport, BlockEndpoint, LocalTransport, SshTransport
@@ -310,6 +310,61 @@ class Migration:
         self.state.set("guest_cleanup", {"time": facts.get("time"), "changes": facts.get("changes"), "problems": facts.get("problems")})
         return {"mode": "auto", "changes": facts.get("changes"), "problems": facts.get("problems")}
 
+    def _cbt_for(self, disk):
+        """A dirty-bitmap tracker for this disk, or None (sync.cbt off, not a direct everRun source, no domain named)."""
+        s = self.p["source"]
+        if self.p["sync"].get("cbt", "off") != "auto" or s.get("type") != "direct" or not s.get("qemu_domain"):
+            return None
+        shell = self.source_shell()
+        qmp = cbt.VirshQmp(shell, s["qemu_domain"])
+        node = cbt.find_node(qmp, disk["path"])
+        run = lambda argv: shell.run(" ".join(shlex.quote(a) for a in argv))
+        return cbt.QemuBitmap(qmp, node, f"/var/tmp/ev2ahv-cbt-{self.p['name']}.sock", map_cmd=run, start_server=True)
+
+    def _sync_disk(self, disk, reader, writer, algo, kw, verify, final):
+        """One disk. Dirty-bitmap pass when tracking has been gap-free since the last full pass started, else a full
+        pass (starting tracking first). Any doubt or error means a full pass: the bitmap is only an accelerator."""
+        name, flag = disk["name"], "cbt:" + disk["name"]
+        if final:
+            rounds, stats = engine.final_sync(reader, writer, self.state, name, algo, **kw)
+            return dict(stats, verified_rounds=rounds)
+        bm = None
+        if not verify:
+            try:
+                bm = self._cbt_for(disk)
+            except Exception as e:
+                log.warning("%s: changed-block tracking unavailable (%s), using a full pass", name, e)
+        if bm is None and not verify:
+            return dict(engine.sync(reader, writer, self.state, name, algo, verify_target=False, **kw))
+        if bm is not None and self.state.get(flag) == "tracking":
+            self.state.set(flag, "off")   # stays off unless this pass completes
+            try:
+                frozen = bm.rotate()
+                chunks = cbt.ranges_to_chunks(bm.dirty(frozen), self.chunk)
+                stats = engine.sync_dirty(reader, writer, self.state, name, algo, chunks, batch=kw["batch"],
+                                          progress=kw.get("progress"))
+                bm.drop(frozen)
+                self.state.set(flag, "tracking")
+                return dict(stats, cbt=True)
+            except InterruptedError:
+                raise
+            except Exception as e:
+                log.warning("%s: dirty-bitmap pass failed (%s), full pass instead", name, e)
+        safe = False
+        d = self.state.disk(name)
+        if bm is not None and not (d and d["pass_active"]):   # a resumed pass has a gap, so it cannot start tracking
+            try:
+                bm.start()
+                safe = True
+            except Exception as e:
+                log.warning("%s: cannot start tracking (%s)", name, e)
+        stats = engine.sync(reader, writer, self.state, name, algo, verify_target=verify, **kw)
+        if bm is not None:
+            self.state.set(flag, "tracking" if safe else "off")
+        elif verify:
+            self.state.set(flag, "off")
+        return dict(stats)
+
     def _sync_all(self, verify=False, final=False):
         results = {}
         for disk in self.p["disks"]:
@@ -326,11 +381,7 @@ class Migration:
                     algo = self.state.get("algo") or engine.negotiate(reader, writer, self.p["sync"]["algo"])
                     self.state.set("algo", algo)
                     kw = {"batch": int(self.p["sync"]["batch"]), "progress": self.progress}
-                    if final:
-                        rounds, stats = engine.final_sync(reader, writer, self.state, disk["name"], algo, **kw)
-                        stats = dict(stats, verified_rounds=rounds)
-                    else:
-                        stats = engine.sync(reader, writer, self.state, disk["name"], algo, verify_target=verify, **kw)
+                    stats = self._sync_disk(disk, reader, writer, algo, kw, verify, final)
                     results[disk["name"]] = dict(stats)
                 finally:
                     writer.close()

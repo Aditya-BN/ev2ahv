@@ -70,7 +70,7 @@ def build_plan(info, target_name, subnet, avcli, writer=None, container="VM_Cont
     return {
         "name": plan_name or re.sub(r"[^\w.-]", "-", target_name),
         "writer": writer or {"vm": "ev2ahv-writer", "host": "10.12.136.211", "user": "nutanix"},
-        "source": {"type": "direct", "host": info["active_host"], "user": "root", "max_mbps": max_mbps,
+        "source": {"type": "direct", "qemu_domain": info["name"], "host": info["active_host"], "user": "root", "max_mbps": max_mbps,
                    "stop_timeout": 600,
                    "power": {"local": True,
                              "status": f"{cli} vm-info {vm} | awk '/-> state/{{print $NF; exit}}'",

@@ -11,7 +11,7 @@ If a bitmap is missing (guest restarted, FT failover, QEMU replaced), BitmapLost
 pass after start() again.
 
 QMP transports: UnixQmp (qemu-storage-daemon or a test QEMU) and VirshQmp (virsh qemu-monitor-command over ssh;
-not lab-tested, and it changes the running guest's QEMU state, so it stays off unless a plan asks for it).
+lab-tested on everRun 8.1.1, see docs/cbt.md; it changes the running guest's QEMU state, so it stays off unless a plan asks for it).
 """
 import json, shlex, socket, subprocess
 
@@ -60,6 +60,14 @@ class VirshQmp:
         return r.get("return")
 
 
+def find_node(qmp, path):
+    """The format-layer block node of the guest disk backed by file `path` (everRun: libvirt-N-format)."""
+    for nd in qmp("query-named-block-nodes") or []:
+        if nd.get("file") == path and nd.get("drv") != "file":
+            return nd["node-name"]
+    raise BitmapLost(f"no block node serves {path}")
+
+
 def ranges_to_chunks(ranges, chunk):
     """Byte ranges [(start, length)] to the sorted chunk indexes they touch."""
     out = set()
@@ -75,7 +83,8 @@ def parse_map(entries):
 
 
 class QemuBitmap:
-    def __init__(self, qmp, node, nbd_socket, prefix="ev2ahv-cbt-", map_cmd=None):
+    def __init__(self, qmp, node, nbd_socket, prefix="ev2ahv-cbt-", map_cmd=None, start_server=False):
+        self.start_server = start_server  # everRun: the guest QEMU has no NBD server yet; start it on a unix socket
         self.qmp, self.node, self.sock, self.prefix = qmp, node, nbd_socket, prefix
         self.map_cmd = map_cmd or (lambda argv: subprocess.run(argv, check=True, capture_output=True, text=True).stdout)
 
@@ -110,6 +119,10 @@ class QemuBitmap:
 
     def dirty(self, frozen):
         export = "ev2ahv-cbt-export"
+        started = False
+        if self.start_server:
+            self.qmp("nbd-server-start", {"addr": {"type": "unix", "data": {"path": self.sock}}})
+            started = True
         self.qmp("block-export-add", {"type": "nbd", "id": export, "node-name": self.node, "name": export,
                                       "bitmaps": [frozen]})
         try:
@@ -118,6 +131,8 @@ class QemuBitmap:
                                 f"x-dirty-bitmap=qemu:dirty-bitmap:{frozen}"])
         finally:
             self.qmp("block-export-del", {"id": export})
+            if started:
+                self.qmp("nbd-server-stop")
         return parse_map(json.loads(out))
 
     def drop(self, frozen):

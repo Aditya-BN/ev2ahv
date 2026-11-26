@@ -5,7 +5,7 @@ import yaml
 
 SAFE_NAME = re.compile(r"^\w[\w.-]*$")   # plan and disk names end up in file names on the writer
 MAC = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
-DEFAULTS = {"sync": {"chunk_mib": 4, "algo": "auto", "batch": 32}, "verify": {}}
+DEFAULTS = {"sync": {"chunk_mib": 4, "algo": "auto", "batch": 32, "cbt": "off"}, "verify": {}}
 
 
 class PlanError(ValueError):
@@ -102,6 +102,10 @@ def validate(p):
             p[section].setdefault(k, v)
     if p["sync"]["algo"] not in ("auto", "xxh64", "blake2b", "sha256"):
         errors.append("sync.algo must be auto, xxh64, blake2b or sha256")
+    if p["sync"]["cbt"] not in ("auto", "off"):
+        errors.append("sync.cbt must be auto or off")
+    if p["sync"]["cbt"] == "auto" and not (p["source"].get("qemu_domain") and p["source"].get("type") == "direct"):
+        errors.append("sync.cbt: auto needs source.type direct and source.qemu_domain (the libvirt domain name)")
     if errors:
         raise PlanError("; ".join(errors))
     return p
