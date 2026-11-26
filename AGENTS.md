@@ -7,7 +7,7 @@ ev2ahv migrates Stratus everRun VMs (KVM, FT/HA) to Nutanix AHV, the way Nutanix
 
 Rollback is powering the source back on. The source is only ever read, stopped and started.
 
-Read these first: this file, then [docs/BACKLOG.md](docs/BACKLOG.md) (debt and what to test), then
+Read these first: this file, [docs/architecture.md](docs/architecture.md) (how it works, diagrams), then [docs/BACKLOG.md](docs/BACKLOG.md) (debt and what to test), then
 [docs/STATUS.md](docs/STATUS.md) (what is running in the lab right now).
 
 ## Layout
