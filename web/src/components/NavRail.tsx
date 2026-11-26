@@ -57,7 +57,7 @@ export default function NavRail() {
   return (
     <aside className="rail">
       <Link to="/dashboard" className="brand" aria-label="ev2ahv home"><span className="mark">ev2ahv</span></Link>
-      <button className="fab" id="new-plan" onClick={() => nav('/migrationplan')} title="New migration plan"><Icon n="add" /><span className="lbl">New migration plan</span></button>
+{info.role !== 'viewer' && (<button className="fab" id="new-plan" onClick={() => nav('/migrationplan')} title="New migration plan"><Icon n="add" /><span className="lbl">New migration plan</span></button>)}
       <nav className="rail-nav" aria-label="Main">
         {item('/dashboard', 'plans', 'Migration plans')}
         {item('/events', 'events', 'Events')}
@@ -66,16 +66,17 @@ export default function NavRail() {
         {item('/bandwidth-configuration', 'bandwidth', 'Bandwidth')}
         {item('/realtime-logs', 'logs', 'Realtime logs')}
         {item('/appliance-settings', 'settings', 'Settings')}
+        {info.role === 'admin' && item('/users', 'users', 'Users')}
       </nav>
       <div className="rail-foot">
         {info.mode === 'mock' && <span className="mock-badge" title="Simulated data; no real systems are contacted">MOCK MODE</span>}
-        <a className="rail-item mini" href={api.supportBundleUrl()}><Icon n="bundle" /><span className="lbl">Support bundle</span></a>
+        {info.role === 'admin' && <a className="rail-item mini" href={api.supportBundleUrl()}><Icon n="bundle" /><span className="lbl">Support bundle</span></a>}
         <a className="rail-item mini" href={api.docsUrl} target="_blank" rel="noreferrer"><Icon n="help" /><span className="lbl">REST API docs</span></a>
         <button className="rail-item mini" onClick={() => setDlg('about')}><Icon n="info" /><span className="lbl">About ev2ahv</span></button>
         <button className="rail-item mini" onClick={() => setDlg('pw')}><Icon n="key" /><span className="lbl">Change password</span></button>
         <div className="rail-user">
           <span className="avatar" aria-hidden="true">{(info.user || '?')[0]}</span>
-          <span className="who" id="user-menu">{info.user}</span>
+          <span className="who" id="user-menu">{info.user}{info.role === 'viewer' && <span className="muted small"> (viewer)</span>}</span>
           <button className="icon-btn" aria-label="Log out" title="Log out" onClick={logout}><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M17 7l-1.4 1.4 2.6 2.6H9v2h9.2l-2.6 2.6L17 17l5-5-5-5zM4 5h8V3H4a2 2 0 00-2 2v14a2 2 0 002 2h8v-2H4V5z" /></svg></button>
         </div>
       </div>

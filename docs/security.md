@@ -74,3 +74,28 @@ pip-audit on `appliance/requirements.txt`: 0 known vulnerabilities (was 19 on Py
 
 - Smoke boot used qemu TCG, SeaBIOS (BIOS path) only; UEFI boot of the image was not exercised (`SMOKE_UEFI=1` is wired in `smoke.sh` but was not run) and neither was a real AHV boot. The orchestrator validates on AHV.
 - The console menu was exercised through `--status` and the unit start; the network/hostname/NTP actions were not run against a live NM in the smoke boot.
+
+## UI users and roles (D13, 2026-11-26)
+
+Local accounts are stored in the app database (`/var/lib/ev2ahv`, kind `user`), with a PBKDF2-SHA256 hash
+(200,000 rounds, per-user salt), a role and a must-change flag. On first start after an upgrade the 0.2.0 login
+(`ui.json`) is imported as an admin with its password, so nobody is locked out.
+
+| Role | Can |
+| --- | --- |
+| admin | everything, including Users, Settings, TLS, support bundle |
+| viewer | read every page and API (plans, events, logs, health, settings); change only their own password |
+
+- Enforcement is one middleware: every non-GET `/api/` call from a viewer gets 403, except login, logout and their own
+  password change. A new route is admin-only by default. The support bundle (a GET) is admin-only.
+- New users and admin password resets must change the password at first login. A reset ends that user's sessions;
+  a role change applies to their open sessions at once.
+- The last admin cannot be demoted or deleted, and nobody can delete their own account.
+- Console "reset UI password" (`ui.reset`) restores the default account (`nutanix`) as an admin with the default
+  password and a forced change; other accounts are left alone.
+- Every add, change, reset and delete is an event (who and what), so it is in the audit trail.
+
+LDAP / Active Directory: **not implemented** (`users.ldap_login` is a stub that returns no user). Planned shape:
+settings `ldap: {url, bind_dn, bind_password (secret store), user_base, user_filter, admin_group, viewer_group}`;
+login tries the local account first, then an LDAPS simple bind as the user, and maps group membership to the role
+at every login (no local copy of the password). Needs a directory in the lab to build and test against.

@@ -8,7 +8,8 @@ export type VmStatus =
 export type PlanAction = 'start' | 'pause' | 'resume' | 'cutover' | 'test' | 'cancel' | 'retry' | 'discard' | 'complete' | 'rollback';
 export type CheckStatus = 'PASS' | 'WARN' | 'FAIL';
 
-export interface AppInfo { name: string; version: string; build: string; mode: 'mock' | 'live'; user: string | null; must_change?: boolean; appliance?: boolean }
+export interface AppInfo { name: string; version: string; build: string; mode: 'mock' | 'live'; user: string | null; role?: 'admin' | 'viewer' | null; must_change?: boolean; appliance?: boolean }
+export interface UiUser { username: string; role: 'admin' | 'viewer'; must_change: boolean; source: string; created_at?: number | null }
 export interface Named { id: string; name: string }
 export interface ProviderIn {
   name: string; type: ProviderType; address: string; username: string;
@@ -130,6 +131,10 @@ export const api = {
   login: (username: string, password: string) => req<{ user: string; must_change?: boolean }>('POST', '/token', { username, password }),
   logout: () => req<unknown>('POST', '/logout'),
   changePassword: (current: string, next: string) => req<unknown>('POST', '/password', { current, new: next }),
+  users: () => req<{ entities: UiUser[] }>('GET', '/users'),
+  addUser: (username: string, password: string, role: 'admin' | 'viewer') => req<UiUser>('POST', '/users', { username, password, role }),
+  updateUser: (username: string, b: { role?: 'admin' | 'viewer'; password?: string }) => req<UiUser>('PUT', `/users/${encodeURIComponent(username)}`, b),
+  deleteUser: (username: string) => req<unknown>('DELETE', `/users/${encodeURIComponent(username)}`),
 
   health: () => req<Health>('GET', '/health'),
   runSelftest: () => req<unknown>('POST', '/health/selftest', {}),

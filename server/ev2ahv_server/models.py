@@ -25,6 +25,7 @@ class AppInfo(BaseModel):
     build: str = ""
     mode: Literal["mock", "live"]
     user: Optional[str] = None
+    role: Optional[Literal["admin", "viewer"]] = None
     must_change: bool = False
     appliance: bool = False
 

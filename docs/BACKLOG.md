@@ -28,7 +28,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D9 | P3 | Windows on SCSI costs downtime: the guest boots on PCI (virtio-blk) and is converted to SCSI after cutover, which added 182 s in the 2026-11-24 run. Binding `vioscsi` during guest prep, before cutover, could remove that step (not tried). | engine, ev2ahv/guest.py |
 | D10 | P3 | Security scan leftovers after triage: rebuild and rescan to confirm the three CIS fixes (ipv6 forwarding, module blacklist, no `nullok`); check sysctl and modules on a booted instance; decide whether to drop pip from the venv for a clean trivy report; `ensure_pam_wheel_group_empty` open. | appliance, docs/security.md |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
-| D13 | P3 | UI has a single local user; no RBAC, no LDAP. The default certificate is self-signed (the Health page can replace it). | server |
+| D13 | P3 | LDAP / AD sign-in is a stub (design in docs/security.md). The default certificate is self-signed (the Health page can replace it). | server |
 | D14 | P3 | The image fallback (`target.transfer: image`) still needs the total disk size plus the largest disk free on the writer, and the upload adds to downtime. Going lower needs uploading straight from the raw file (no qcow2 copy). | engine |
 
 ## What to test
@@ -50,6 +50,9 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-26: D13 (local part). Local users with admin and viewer roles; viewers are read only (one middleware refuses
+  every non-GET call). Users page for admins; the 0.2.0 login is imported as admin. 11 unit tests, 26 end-to-end checks
+  on a mock server, UI build and headless-browser check (admin sees Users, viewer does not, no page errors).
 - 2026-11-26: D9 reviewed; the boot failure itself is handled. The wizard picks PCI for Windows guests with virtio-blk disks,
   prep-check FAILs SCSI for them (`api.py` boot driver check), and the engine converts PCI to SCSI after cutover
   (verified 2026-11-24, docs/results.md). The row now tracks only the extra downtime.

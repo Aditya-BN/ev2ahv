@@ -4,6 +4,7 @@ import { api, authEvents, AppInfo } from './api';
 import { Spinner } from './components/ui';
 import { setDisplayTz, useLive } from './util';
 import Login from './pages/Login';
+import Users from './pages/Users';
 import NavRail from './components/NavRail';
 import Dashboard from './pages/Dashboard';
 import Wizard from './pages/Wizard';
@@ -65,6 +66,7 @@ export default function App() {
         <Route path="/realtime-logs" element={<Shell><Logs /></Shell>} />
         <Route path="/appliance-settings" element={<Shell><ApplianceSettings /></Shell>} />
         <Route path="/health" element={<Shell><Health /></Shell>} />
+        <Route path="/users" element={<Shell><Users /></Shell>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </SessionCtx.Provider>

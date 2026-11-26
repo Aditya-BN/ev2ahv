@@ -141,6 +141,220 @@
                 }
             }
         },
+        "/api/v2/users": {
+            "get": {
+                "summary": "List Users",
+                "operationId": "list_users_api_v2_users_get",
+                "parameters": [
+                    {
+                        "name": "ev2ahv_session",
+                        "in": "cookie",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Ev2Ahv Session"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "summary": "Add User",
+                "operationId": "add_user_api_v2_users_post",
+                "parameters": [
+                    {
+                        "name": "ev2ahv_session",
+                        "in": "cookie",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Ev2Ahv Session"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true,
+                                "title": "Body"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/users/{name}": {
+            "put": {
+                "summary": "Edit User",
+                "operationId": "edit_user_api_v2_users__name__put",
+                "parameters": [
+                    {
+                        "name": "name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Name"
+                        }
+                    },
+                    {
+                        "name": "ev2ahv_session",
+                        "in": "cookie",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Ev2Ahv Session"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true,
+                                "title": "Body"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "summary": "Remove User",
+                "operationId": "remove_user_api_v2_users__name__delete",
+                "parameters": [
+                    {
+                        "name": "name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Name"
+                        }
+                    },
+                    {
+                        "name": "ev2ahv_session",
+                        "in": "cookie",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Ev2Ahv Session"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v2/appinfo": {
             "get": {
                 "summary": "Appinfo",
@@ -1909,6 +2123,21 @@
                             }
                         ],
                         "title": "User"
+                    },
+                    "role": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "admin",
+                                    "viewer"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Role"
                     },
                     "must_change": {
                         "type": "boolean",

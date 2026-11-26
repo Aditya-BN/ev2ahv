@@ -15,6 +15,7 @@ from ev2ahv import __version__, web as oldweb  # noqa: E402  (login file + hashi
 
 from . import models as m  # noqa: E402
 from .store import Store  # noqa: E402
+from .users import UserError, Users, ldap_login, public as users_public, write_allowed  # noqa: E402
 
 MODE = os.environ.get("EV2AHV_SERVER_MODE", "mock")
 DIST = os.path.join(ROOT, "web", "dist")
@@ -48,26 +49,28 @@ DATA = os.path.expanduser(os.environ.get("EV2AHV_DATA", "~/.local/share/ev2ahv")
 DEFAULT_USER, DEFAULT_PASSWORD = "nutanix", "nutanix/4u"
 
 
-def ui_account():
-    """The UI login. On the appliance the default account must change its password at first login, and the console
-    tool can request a reset (it drops a ui.reset file, which only root and the app can write)."""
+users = Users(store)
+
+
+def _ensure_users():
+    """First start imports the 0.2.0 login (ui.json) as an admin. The console tool can request a reset (it drops a
+    ui.reset file, which only root and the app can write): the default account gets the default password back."""
     reset = os.path.join(DATA, "ui.reset")
-    if os.path.exists(reset) or not os.path.exists(oldweb.UI_FILE):
-        u = oldweb.set_ui_user(DEFAULT_USER, DEFAULT_PASSWORD)
-        u["must_change"] = APPLIANCE or os.path.exists(reset)
-        _save_account(u)
-        if os.path.exists(reset):
-            os.remove(reset)
-            store.event("warning", "UI password reset to the default from the console")
-        return u
-    return oldweb.ui_user()
+    users.ensure(DEFAULT_USER, DEFAULT_PASSWORD, must_change_default=APPLIANCE, reset=os.path.exists(reset))
+    if os.path.exists(reset):
+        os.remove(reset)
+        for t in [t for t, s_ in sessions.items() if s_["user"] == DEFAULT_USER]:
+            sessions.pop(t)
+        store.event("warning", "UI password of the default account reset from the console")
 
 
-def _save_account(u):
-    fd = os.open(oldweb.UI_FILE + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        json.dump(u, fh)
-    os.replace(oldweb.UI_FILE + ".tmp", oldweb.UI_FILE)
+def admin(ev2ahv_session: Optional[str] = Cookie(None)):
+    s = sessions.get(ev2ahv_session or "")
+    if not s or s["exp"] < time.time():
+        raise HTTPException(401, "login required")
+    if s.get("role") != "admin":
+        raise HTTPException(403, "admin role required")
+    return s["user"]
 
 
 @app.middleware("http")
@@ -76,23 +79,26 @@ async def force_password_change(request: Request, call_next):
     if s and s.get("must_change") and request.url.path.startswith("/api/") and request.url.path not in (
             "/api/v2/password", "/api/v2/logout", "/api/v2/appinfo", "/api/v2/token"):
         return JSONResponse({"message": "Change the default password first", "must_change": True}, status_code=403)
+    if s and not write_allowed(s.get("role"), request.method, request.url.path):
+        return JSONResponse({"message": "Your role (viewer) is read only"}, status_code=403)
     return await call_next(request)
 
 
 @app.post("/api/v2/token")
 def login(body: m.Login, response: Response):
-    u = ui_account()
-    ok = hmac.compare_digest(body.username, u["username"]) and \
-        hmac.compare_digest(oldweb._hash(body.password, u["salt"]), u["hash"])
-    if not ok:
+    _ensure_users()
+    u = users.check(body.username, body.password) or ldap_login(store.get("settings", "settings"), body.username,
+                                                               body.password)
+    if not u:
         store.event("warning", f"failed login for {body.username!r}")
         raise HTTPException(401, "Invalid username or password")
     tok = secrets.token_urlsafe(32)
     must = bool(u.get("must_change"))
-    sessions[tok] = {"user": body.username, "exp": time.time() + SESSION_SECONDS, "must_change": must}
+    sessions[tok] = {"user": u["username"], "role": u["role"], "exp": time.time() + SESSION_SECONDS,
+                     "must_change": must}
     response.set_cookie(COOKIE, tok, httponly=True, secure=True, samesite="strict", max_age=SESSION_SECONDS)
-    store.event("info", f"{body.username} logged in")
-    return {"user": body.username, "must_change": must}
+    store.event("info", f"{u['username']} logged in")
+    return {"user": u["username"], "role": u["role"], "must_change": must}
 
 
 @app.post("/api/v2/logout")
@@ -104,26 +110,70 @@ def logout(response: Response, ev2ahv_session: Optional[str] = Cookie(None)):
 
 @app.post("/api/v2/password")
 def change_password(body: dict, who=Depends(user)):
-    u = ui_account()
-    if not hmac.compare_digest(oldweb._hash(str(body.get("current", "")), u["salt"]), u["hash"]):
-        raise HTTPException(400, "Current password is incorrect")
-    new = str(body.get("new", ""))
-    if len(new) < 8:
-        raise HTTPException(400, "New password must be at least 8 characters")
-    if new == DEFAULT_PASSWORD or hmac.compare_digest(oldweb._hash(new, u["salt"]), u["hash"]):
-        raise HTTPException(400, "Choose a password different from the current one")
-    oldweb.set_ui_user(u["username"], new)
+    try:
+        users.change_own(who, str(body.get("current", "")), str(body.get("new", "")), banned=(DEFAULT_PASSWORD,))
+    except UserError as e:
+        raise HTTPException(400, str(e))
     for s_ in sessions.values():
-        if s_["user"] == u["username"]:
+        if s_["user"] == who:
             s_["must_change"] = False
-    store.event("info", f"{who} changed the password")
+    store.event("info", f"{who} changed their password")
+    return {}
+
+
+# ---------------------------------------------------------------- users (admin)
+
+def _drop_sessions(username, keep=None):
+    for t in [t for t, s_ in sessions.items() if s_["user"] == username and t != keep]:
+        sessions.pop(t)
+
+
+@app.get("/api/v2/users")
+def list_users(who=Depends(admin)):
+    return {"entities": [users_public(u) for u in users.all()]}
+
+
+@app.post("/api/v2/users")
+def add_user(body: dict, who=Depends(admin)):
+    try:
+        u = users.create(str(body.get("username", "")), body.get("password"), str(body.get("role", "viewer")))
+    except UserError as e:
+        raise HTTPException(400, str(e))
+    store.event("info", f"{who} added user {u['username']} ({u['role']})")
+    return users_public(u)
+
+
+@app.put("/api/v2/users/{name}")
+def edit_user(name: str, body: dict, who=Depends(admin)):
+    try:
+        u = users.update(name, role=body.get("role"), password=body.get("password"), actor=who)
+    except UserError as e:
+        raise HTTPException(400, str(e))
+    for s_ in sessions.values():
+        if s_["user"] == name:
+            s_["role"] = u["role"]
+    if body.get("password") is not None and name != who:
+        _drop_sessions(name)
+    store.event("info", f"{who} changed user {name}" + (f" (role {u['role']})" if body.get("role") else "")
+                + (" (password reset)" if body.get("password") is not None else ""))
+    return users_public(u)
+
+
+@app.delete("/api/v2/users/{name}")
+def remove_user(name: str, who=Depends(admin)):
+    try:
+        users.delete(name, actor=who)
+    except UserError as e:
+        raise HTTPException(400, str(e))
+    _drop_sessions(name)
+    store.event("warning", f"{who} deleted user {name}")
     return {}
 
 
 @app.get("/api/v2/appinfo", response_model=m.AppInfo)
 def appinfo(ev2ahv_session: Optional[str] = Cookie(None)):
     s = sessions.get(ev2ahv_session or "")
-    return m.AppInfo(version=__version__, mode=MODE, user=s["user"] if s else None,
+    return m.AppInfo(version=__version__, mode=MODE, user=s["user"] if s else None, role=s.get("role") if s else None,
                      must_change=bool(s and s.get("must_change")), appliance=APPLIANCE)
 
 
@@ -625,7 +675,7 @@ def put_settings(body: dict, who=Depends(user)):
 
 
 @app.get("/api/v2/supportbundle")
-def supportbundle(who=Depends(user)):
+def supportbundle(who=Depends(admin)):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("events.json", json.dumps(store.events(5000), indent=1))
