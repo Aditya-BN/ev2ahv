@@ -35,7 +35,8 @@ Read these first: this file, then [docs/BACKLOG.md](docs/BACKLOG.md) (debt and w
 
 - **Lab objects:** touch only objects named `ev2ahv-*` (VMs, images, disks).
   - Never touch `everrun-*` VMs or anyone else's VMs.
-  - The live server enforces this. `EV2AHV_ALLOW_ANY_SOURCE=1` turns the guard off; do not set it in the lab.
+  - The live server enforces this with the **Source VM name prefix** setting (default `ev2ahv-`). In the lab, never clear
+    or change it, and never set `EV2AHV_ALLOW_ANY_SOURCE=1` (the old switch, which still turns the guard off).
 - **Claim before you touch:** claim a lab object in the shared board (see below) before you power, migrate or delete it, and release it when done.
 - **Shared IP and MAC:** a migrated AHV VM keeps the source's IP and MAC.
   - Never run the everRun source and its AHV copy at the same time.

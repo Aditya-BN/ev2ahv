@@ -189,7 +189,7 @@ def _new_provider(pid, body, version):
 
 def _live_refresh(doc):
     try:
-        live.refresh(doc, store.secret)
+        live.refresh(doc, store.secret, current_settings())
     except Exception as e:
         doc["status"], doc["error"] = "Error", str(e)
 
@@ -578,13 +578,19 @@ def events(limit: int = 500, who=Depends(user)):
 
 
 DEFAULT_SETTINGS = {"id": "settings", "resync_minutes": 60, "bandwidth_policies": [], "timezone": "Asia/Jakarta",
+                    "source_name_prefix": "ev2ahv-",   # name guard; "" allows any VM (live.name_allowed)
                     "writer": {"local": True} if os.environ.get("EV2AHV_APPLIANCE") == "1" else
                     {"vm": "ev2ahv-writer", "host": "10.12.136.211", "user": "nutanix"}}
 
 
+def current_settings():
+    """Stored settings over the defaults, so a key added later (source_name_prefix) has its default on old databases."""
+    return {**DEFAULT_SETTINGS, **(store.get("settings", "settings") or {})}
+
+
 @app.get("/api/v2/settings")
 def get_settings(who=Depends(user)):
-    return store.get("settings", "settings") or DEFAULT_SETTINGS
+    return current_settings()
 
 
 @app.put("/api/v2/settings")
@@ -593,6 +599,15 @@ def put_settings(body: dict, who=Depends(user)):
     for k in ("resync_minutes", "bandwidth_policies", "timezone", "writer"):
         if k in body:
             doc[k] = body[k]
+    if "source_name_prefix" in body:
+        new = body["source_name_prefix"]
+        if not isinstance(new, str) or len(new) > 64:
+            raise HTTPException(422, "source_name_prefix must be a string of at most 64 characters")
+        new = new.strip()
+        if new != doc.get("source_name_prefix"):
+            store.event("warning", f"{who} changed the VM name guard from {doc.get('source_name_prefix')!r}* to "
+                        + (f"{new!r}*" if new else "any VM"))
+        doc["source_name_prefix"] = new
     store.put("settings", doc)
     store.event("info", f"{who} changed settings")
     bump()

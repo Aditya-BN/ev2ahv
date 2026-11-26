@@ -3,6 +3,7 @@ import os, sys, unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [ROOT, os.path.join(ROOT, "server")]
 from ev2ahv_server import models as m  # noqa: E402
+from ev2ahv_server import live  # noqa: E402
 from ev2ahv_server.live import Live, cutover_summary  # noqa: E402
 
 ENGINE_RESULT = {  # shape of Migration.cutover()'s return value
@@ -46,6 +47,41 @@ class CutoverResultTest(unittest.TestCase):
         v = {"id": "vm1", "name": "x", "status": "Rolling Back", "cutover_result": cutover_summary(ENGINE_RESULT)}
         Live._rolled_back({}, v, None)
         self.assertIsNone(m.PlanVm(**v).cutover_result)
+
+
+class NameGuardTest(unittest.TestCase):
+    """D3: the source name guard is a setting (default ev2ahv-), not only an env var."""
+    def setUp(self):
+        self.allow_any = live.ALLOW_ANY
+        live.ALLOW_ANY = False
+
+    def tearDown(self):
+        live.ALLOW_ANY = self.allow_any
+
+    def test_default_is_the_lab_prefix(self):
+        self.assertTrue(live.name_allowed("ev2ahv-src-rocky9", {}))
+        self.assertFalse(live.name_allowed("everrun-db01", {}))
+        self.assertFalse(live.name_allowed("everrun-db01", None))
+
+    def test_setting_changes_the_prefix(self):
+        self.assertTrue(live.name_allowed("prod-db01", {"source_name_prefix": "prod-"}))
+        self.assertFalse(live.name_allowed("ev2ahv-x", {"source_name_prefix": "prod-"}))
+
+    def test_empty_prefix_allows_any(self):
+        self.assertTrue(live.name_allowed("anything", {"source_name_prefix": ""}))
+
+    def test_bad_value_falls_back_to_default(self):
+        self.assertFalse(live.name_allowed("everrun-db01", {"source_name_prefix": None}))
+
+    def test_env_override_still_works(self):
+        live.ALLOW_ANY = True
+        self.assertTrue(live.name_allowed("everrun-db01", {"source_name_prefix": "ev2ahv-"}))
+
+    def test_engine_plan_refuses_a_guarded_name_before_touching_the_source(self):
+        plan = {"vm_settings": {}, "prep": {}, "network_map": []}
+        with self.assertRaises(live.LiveError):
+            live.engine_plan(plan, {"id": "x", "name": "everrun-db01"}, {"type": "everrun", "node_addresses": []},
+                             {}, None, {})
 
 
 if __name__ == "__main__":

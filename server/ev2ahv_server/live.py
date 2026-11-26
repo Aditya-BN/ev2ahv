@@ -20,8 +20,22 @@ from ev2ahv.prism import Prism  # noqa: E402
 
 DATA = os.path.expanduser("~/.local/share/ev2ahv/ui")
 SECRETS = os.path.expanduser("~/.config/ev2ahv/ui-secrets")
-# Lab guard: only ev2ahv-* source VMs unless explicitly allowed (the lab's other VMs belong to someone else).
+# Name guard: only VMs whose name starts with settings["source_name_prefix"] can be migrated (default "ev2ahv-",
+# because the lab's other VMs belong to someone else). An empty prefix allows any VM; Appliance Settings changes it.
+# EV2AHV_ALLOW_ANY_SOURCE=1 is the old switch and still overrides the setting (deprecated).
+GUARD_PREFIX = "ev2ahv-"
 ALLOW_ANY = os.environ.get("EV2AHV_ALLOW_ANY_SOURCE") == "1"
+
+
+def guard_prefix(settings=None):
+    if ALLOW_ANY:
+        return ""
+    p = (settings or {}).get("source_name_prefix", GUARD_PREFIX)
+    return p if isinstance(p, str) else GUARD_PREFIX
+
+
+def name_allowed(name, settings=None):
+    return name.startswith(guard_prefix(settings))
 # On the appliance the appliance itself is the writer; elsewhere the lab's helper VM.
 DEFAULT_WRITER = ({"local": True} if os.environ.get("EV2AHV_APPLIANCE") == "1"
                   else {"vm": "ev2ahv-writer", "host": "10.12.136.211", "user": "nutanix"})
@@ -86,7 +100,7 @@ def probe(body):
     return {"version": "everRun"}
 
 
-def refresh(doc, secret):
+def refresh(doc, secret, settings=None):
     t = doc["type"]
     if t == "aos":
         pr = prism_for(doc, secret)
@@ -98,15 +112,15 @@ def refresh(doc, secret):
         doc["subnets"] = [{"id": s["extId"], "name": s["name"]} for s in pr._all("/networking/v4.0/config/subnets")]
         doc["vm_count"] = len(pr.list_vms(select="name"))
     elif t == "plans":
-        doc["workloads"] = _plan_file_workloads(os.path.expanduser(doc["address"]))
+        doc["workloads"] = _plan_file_workloads(os.path.expanduser(doc["address"]), settings)
     else:
-        doc["workloads"] = _everrun_workloads(doc["node_addresses"])
+        doc["workloads"] = _everrun_workloads(doc["node_addresses"], settings)
     doc["vm_count"] = len(doc.get("workloads", [])) if t != "aos" else doc["vm_count"]
     doc["status"], doc["error"], doc["last_refreshed"] = "Connected", None, time.time()
     return doc
 
 
-def _everrun_workloads(nodes):
+def _everrun_workloads(nodes, settings=None):
     states = {}
     for n in nodes:
         out = _ssh(n, "for d in $(virsh -r list --all --name); do echo \"$d $(virsh -r domstate $d | head -1)\"; done")
@@ -122,8 +136,8 @@ def _everrun_workloads(nodes):
         info = everrun.parse_domain(xml)
         windows = "<hyperv" in xml
         warn = []
-        if not name.startswith("ev2ahv-") and not ALLOW_ANY:
-            warn.append("Lab guard: only ev2ahv-* VMs can be migrated from this server")
+        if not name_allowed(name, settings):
+            warn.append(f"Name guard: only {guard_prefix(settings)}* VMs can be migrated (Appliance Settings)")
         if windows and all(d["dev"].startswith("vd") for d in info["disks"]):
             warn.append("virtio-blk only: boot disk must stay PCI until conversion")
         if len(running) != 1:
@@ -144,7 +158,7 @@ def _everrun_workloads(nodes):
     return out
 
 
-def _plan_file_workloads(d):
+def _plan_file_workloads(d, settings=None):
     out = []
     for f in sorted(glob.glob(os.path.join(d, "*.yaml"))):
         try:
@@ -155,7 +169,8 @@ def _plan_file_workloads(d):
             continue
         g = p.get("guest") or {}
         t = p["target"]
-        warn = [] if t["vm_name"].startswith("ev2ahv-") or ALLOW_ANY else ["Lab guard: target must be ev2ahv-*"]
+        warn = ([] if name_allowed(t["vm_name"], settings)
+                else [f"Name guard: target must be {guard_prefix(settings)}* (Appliance Settings)"])
         out.append({"id": os.path.basename(f), "name": p["name"], "os_type": g.get("os", "other"),
                     "os_name": f"{g.get('os', 'unknown')} ({os.path.basename(f)})", "power_state": "On",
                     "availability": "", "active_node": p["source"].get("host", ""),
@@ -193,8 +208,9 @@ def engine_plan(plan, vm, src, wl, secret, settings):
         if (settings.get("writer") or DEFAULT_WRITER).get("local"):
             p["writer"] = {"local": True}
     else:
-        if not vm["name"].startswith("ev2ahv-") and not ALLOW_ANY:
-            raise LiveError("Lab guard: only ev2ahv-* source VMs")
+        if not name_allowed(vm["name"], settings):
+            raise LiveError(f"Name guard: only {guard_prefix(settings)}* source VMs can be migrated. "
+                            "Change it in Appliance Settings")
         info = everrun.discover(vm["name"], src["node_addresses"])
         p = everrun.build_plan(info, vs.get("target_name") or vm["name"], subnet or "VLAN136", "avcli",
                                writer=settings.get("writer") or DEFAULT_WRITER, disk_bus=vs.get("disk_bus") or "scsi",
