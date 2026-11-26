@@ -20,7 +20,7 @@ Read these first: this file, [docs/architecture.md](docs/architecture.md) (how i
 | `appliance/` | Rocky 9 appliance qcow2: `bash appliance/build.sh` (docker, no sudo), smoke boot and scans in `appliance/scripts/` |
 | `plans/`, `examples/` | Plan YAMLs for the CLI |
 | `tests/` | Unit tests (`python3 -m pytest tests`) and e2e rigs (`tests/e2e/`) |
-| `docs/` | design, runbook, results, appliance, security, Move side-by-side |
+| `docs/` | design, runbook, results, appliance, security, Move side-by-side, [script safety](docs/script-safety.md) |
 
 ## Run it
 
@@ -28,6 +28,7 @@ Read these first: this file, [docs/architecture.md](docs/architecture.md) (how i
     server/run-dev.sh mock     # https://<host>:8443, demo data; login nutanix / nutanix/4u
     server/run-dev.sh live     # https://<host>:8444, real lab (needs your own Prism/everRun credentials)
     bash appliance/build.sh    # dist/ev2ahv-<ver>.qcow2 + sha256 + MANIFEST.json + SBOM
+    tools/lint.sh              # shellcheck on every shell script (+ PSScriptAnalyzer if pwsh is there)
     tools/check.sh             # what CI runs: unit tests, openapi.json drift, web tsc (no pytest needed)
     python3 tools/gen_openapi.py   # after changing server/ev2ahv_server/models.py
 

@@ -18,6 +18,19 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: web/openapi.json matches the server models
         run: python tools/gen_openapi.py --check
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck (every shell script, warnings and above)
+        run: tools/lint.sh
+      - name: PSScriptAnalyzer (PowerShell scripts)
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          $r = Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Settings tools/PSScriptAnalyzerSettings.psd1 }
+          $r | Format-Table -AutoSize
+          if ($r) { exit 1 }
   web:
     runs-on: ubuntu-24.04
     defaults:

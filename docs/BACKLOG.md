@@ -86,6 +86,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
   per-node steps, rotation, revocation). The Health page shows a ready-to-paste `authorized_keys` line limited with `from=`
   and no forwarding, and the everRun validation error points there. `ev2ahv-appliance-2` still runs the lab shortcut (the
   bastion's key); switching it is for its holder (adit). Not clicked through in a browser.
+- 2026-11-27: script safety audit (docs/script-safety.md, tests/test_script_safety.py, tools/lint.sh). Guards on every rm/rmtree, kill, loop/mkfs and Prism delete; `--dry-run` for guest cleanup; shellcheck and PSScriptAnalyzer in CI. Branch adit/script-safety, not merged; image build not re-run.
 - 2026-11-26: D3. The source name guard is a setting: Appliance Settings, "Source VM name prefix" (`source_name_prefix`,
   default `ev2ahv-`, empty allows any VM after a confirm). A change is logged as a warning event. Older databases get the
   default. `EV2AHV_ALLOW_ANY_SOURCE=1` still overrides it (deprecated). 6 new unit tests; not clicked through in a browser.
