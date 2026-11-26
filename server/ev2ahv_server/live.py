@@ -283,13 +283,21 @@ def engine_plan(plan, vm, src, wl, secret, settings):
     return _write(plan, vm, p)
 
 
+def plan_path(plan, vm):
+    return os.path.join(DATA, plan["id"], re.sub(r"[^\w.-]", "_", vm["id"]) + ".yaml")
+
+
 def _write(plan, vm, p):
     planlib.validate(p)
-    d = os.path.join(DATA, plan["id"])
-    os.makedirs(d, exist_ok=True)
-    path = os.path.join(d, re.sub(r"[^\w.-]", "_", vm["id"]) + ".yaml")
+    path = plan_path(plan, vm)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     planlib.dump(p, path)
     return path
+
+
+# Steps that run while the source is (or may be) stopped. everRun undefines a stopped guest in libvirt, so discovery
+# cannot see it; these steps reuse the engine plan written when the VM was seeded (same disks, same source).
+REUSE_PLAN_STEPS = {"rollback", "cutover", "discard-target", "guest-cleanup", "cleanup", "status"}
 
 
 TIMINGS = ("downtime_seconds", "final_sync_seconds", "image_upload_seconds", "conversion_seconds", "last_resync_seconds")
@@ -340,12 +348,21 @@ class Live:
         env["PYTHONPATH"] = os.path.join(ROOT, "server") + os.pathsep + ROOT
         return env
 
-    def ensure_plan(self, plan, vm):
+    def ensure_plan(self, plan, vm, step=None):
+        existing = plan_path(plan, vm)
+        if step == "rollback" and os.path.exists(existing):
+            return existing   # the source is stopped after a cutover: never rediscover it
         src = self.store.get("provider", plan["source"]["id"])
         wl = next((w for w in src.get("workloads", []) if w["id"] == vm["id"]), None)
-        if not wl:
-            raise LiveError(f"{vm['name']} is no longer in {src['name']}. Refresh the environment")
-        return engine_plan(plan, vm, src, wl, self.store.secret, self.settings())
+        try:
+            if not wl:
+                raise LiveError(f"{vm['name']} is no longer in {src['name']}. Refresh the environment")
+            return engine_plan(plan, vm, src, wl, self.store.secret, self.settings())
+        except Exception as e:
+            if step in REUSE_PLAN_STEPS and os.path.exists(existing):
+                log.warning("%s: %s; using the engine plan from the seed (%s)", vm["name"], e, existing)
+                return existing
+            raise
 
     def launch(self, plan, vm, steps, on_done, force=False):
         """Run engine steps for one VM in sequence in a background thread."""
@@ -360,7 +377,7 @@ class Live:
             logf = os.path.join(DATA, plan["id"], re.sub(r"[^\w.-]", "_", vm["id"]) + ".log")
             result, error = None, None
             try:
-                path = self.ensure_plan(plan, vm)
+                path = self.ensure_plan(plan, vm, steps[0])
                 guest = planlib.load(path).get("guest") or {}
                 ran = []
                 for step in steps:

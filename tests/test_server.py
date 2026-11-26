@@ -84,5 +84,43 @@ class NameGuardTest(unittest.TestCase):
                              {}, None, {})
 
 
+class StoppedSourceTest(unittest.TestCase):
+    """T2 finding: everRun undefines a stopped guest in libvirt, so steps after the stop reuse the seeded plan."""
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data, live.DATA = live.DATA, self.tmp.name
+        self.plan, self.vm = {"id": "p1", "source": {"id": "s1"}}, {"id": "ev2ahv-src-x", "name": "ev2ahv-src-x"}
+        path = live.plan_path(self.plan, self.vm)
+        os.makedirs(os.path.dirname(path))
+        open(path, "w").write("seeded")
+        self.path = path
+
+        class Store:
+            def get(_, kind, id_):
+                return {"name": "everrun-lab", "workloads": []} if kind == "provider" else {}
+        self.live = Live(Store(), None, None, None)
+
+    def tearDown(self):
+        live.DATA = self.data
+        self.tmp.cleanup()
+
+    def test_rollback_uses_the_seeded_plan(self):
+        self.assertEqual(self.live.ensure_plan(self.plan, self.vm, "rollback"), self.path)
+
+    def test_cutover_falls_back_when_the_source_is_gone(self):
+        with self.assertLogs("ev2ahv.live", "WARNING"):
+            self.assertEqual(self.live.ensure_plan(self.plan, self.vm, "cutover"), self.path)
+
+    def test_seed_still_needs_discovery(self):
+        with self.assertRaises(live.LiveError):
+            self.live.ensure_plan(self.plan, self.vm, "seed")
+
+    def test_no_seeded_plan_still_raises(self):
+        os.remove(self.path)
+        with self.assertRaises(live.LiveError):
+            self.live.ensure_plan(self.plan, self.vm, "cutover")
+
+
 if __name__ == "__main__":
     unittest.main()
