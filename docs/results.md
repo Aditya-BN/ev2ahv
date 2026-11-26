@@ -326,5 +326,16 @@ Real, run from the bastion on the lab. No migration, rollback or cutover was run
 
 ### Flaky unit test found
 
-About 10 percent of full-suite runs in `python:3.12-slim` (3 failures in about 30 runs, plain and shuffled order) failed in `test_script_safety.RunDev.test_stale_pidfile_never_kills_an_unrelated_process` with `OSError: [Errno 26] Text file busy`: the test rewrote its fake `py` script while the previous run's background process was still executing it. Fix: `Sandbox.write` writes beside the file and renames it. After the fix: see BACKLOG (T11).
+About 10 percent of full-suite runs in `python:3.12-slim` (3 failures in about 30 runs, plain and shuffled order) failed in `test_script_safety.RunDev.test_stale_pidfile_never_kills_an_unrelated_process` with `OSError: [Errno 26] Text file busy`: the test rewrote its fake `py` script while the previous run's background process was still executing it. Fix: `Sandbox.write` writes beside the file and renames it. After the fix (repo state of 0.3.3, py3.12-slim container): 25 plain runs and 15 shuffled-order runs, 40 of 40 passed, 0 failures.
 
+
+### 0.3.4: the same plus the D5 merge (main 87250d9), upgraded the same night
+
+0.3.3 was built before the D5 CBT merge (`sync.cbt`, default off), so main was rebased and a second release built: `ev2ahv-0.3.4.qcow2` 307,494,912 B (sha256 5b77586d...325d, build 6 min 47 s), `ev2ahv-upgrade-0.3.4.tar.gz` 18,583,972 B. 170 unit tests pass. The 0.3.3 image was not deployed anywhere; only its bundle was applied.
+
+| Appliance | Apply 0.3.3 -> 0.3.4 | Verified |
+|---|---|---|
+| `ev2ahv-appliance-2` | 20:10:21 to 20:10:24 UTC (03:10 WIB), 3 s, backup `20261126T201021Z-0.3.3` | version 0.3.4, 7 units active, SELinux Enforcing, 0 AVC, login 200, both environments Connected, `/api/v2/plans` 200 (`app-rocky-stageB` Completed), self-test PASS |
+| `ev2ahv-appliance-3` | 20:10:26 to 20:10:28 UTC, 2 s, backup `20261126T201026Z-0.3.3` | same; AOS environment Connected, self-test PASS, no failed units |
+
+This was the first upgrade run by the 0.3.3 tool on the lab: `sudo ev2ahv-upgrade apply` worked (symlink), no tarfile warning, and the new health check (appinfo plus plans, plans/vms, providers, events, settings with the app's health session) passed on the real apps. The 7 old `ev2ahv-blockd@` failed units on appliance-2 are unchanged. Nothing migrated, rolled back or cut over; D5 is off by default and was not exercised on the appliances.

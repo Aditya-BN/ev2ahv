@@ -1,6 +1,6 @@
 # Backlog: debt and what to test
 
-Updated 2026-11-27 WIB. Version 0.3.3: still a first iteration. It works end to end in the lab, but it is not a product yet.
+Updated 2026-11-27 WIB. Version 0.3.4: still a first iteration. It works end to end in the lab, but it is not a product yet.
 
 Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md)). When you finish one, move it to
 "Done" with the date, the commit and the numbers.
@@ -50,11 +50,11 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 ## Done (recent)
 
 - 2026-11-27: D5 on real everRun and the load part of T13/D15 (branch adit/d5-everrun, numbers in docs/cbt.md, docs/runbook.md section 7, docs/results.md). Bitmap, NBD export and dirty extents all work on win22; boot disk 149.9 s full vs about 10 s dirty. `sync.cbt: auto|off` added to plans. T13 stays open for backup agents, snapshots and cutover-then-backup.
-- 2026-11-27: 0.3.3 (details in docs/results.md, "Release 0.3.3"). Both appliances upgraded 0.3.2 -> 0.3.3 (2 s each).
+- 2026-11-27: 0.3.3 and 0.3.4 (details in docs/results.md). Both appliances upgraded 0.3.2 -> 0.3.3 -> 0.3.4 (0.3.4 adds the D5 merge, off by default; 2-3 s each). The sudo link is now present on both; the health check ran for real in the 0.3.4 upgrade.
   - D16: the resync of a rolled-back VM reuses the seeded engine plan when the source is not in discovery, and a failed one is retried every 60 s up to 20 times (VM stays Ready to Cutover, warning events) instead of going to Failed. 6 unit tests. The first real use is the next rollback; not run on the lab.
   - D17: `cutover_result.completed_at` is now optional; legacy results and stored 0 are returned as null (never 1970). The OpenAPI file and `web/src/api.ts` follow. 2 unit tests.
   - D7 notes: the upgrade health check now also GETs `/api/v2/plans`, `plans/vms`, `providers`, `events`, `settings` (the app writes a read-only health session token to `/run/ev2ahv/health.cookie`, mode 0600), and any non-200 restores the old version (unit test: plans 500 after upgrade restores). `ev2ahv-upgrade` is linked into `/usr/sbin` (image build and `apply`), so `sudo ev2ahv-upgrade` works; the 0.3.2 tool still needed the full path and was linked by hand on both appliances. The Python 3.9 tarfile warning was already fixed by the audit (`filter="data"` kept with the member checks); the 0.3.2 tool predates it. Unit test runs unpack with warnings as errors.
-  - Flaky unit test (T11): `test_stale_pidfile_never_kills_an_unrelated_process` failed with `Text file busy` in about 10 percent of runs (it rewrote a script that a background process still executed). Fixed in `tests/test_script_safety.py` (write and rename). FLAKYRESULT
+  - Flaky unit test (T11): `test_stale_pidfile_never_kills_an_unrelated_process` failed with `Text file busy` in about 10 percent of runs (it rewrote a script that a background process still executed). Fixed in `tests/test_script_safety.py` (write and rename). After the fix: 40 of 40 runs pass (25 plain, 15 shuffled, py3.12-slim).
 - 2026-11-27: D1, D7 (real upgrade), T1, T2, overnight lab run (details and numbers in docs/results.md, commit 80b0f71 and the docs commit after it).
   - D1/T1: 0.3.2 image (307,298,304 B) uploaded as `ev2ahv-appliance-0.3.2` and deployed as `ev2ahv-appliance-3` at 10.12.135.160: boot 19.8 s, no failed units, SELinux Enforcing, forced password change, self-test PASS.
   - D7: appliance-2 upgraded 0.2.0 -> 0.3.1 (23 s) -> 0.3.2 (2 s). It broke `/api/v2/plans` (legacy cutover result without `completed_at`); fixed in 0.3.2 with a test. New debt D16, D17 and the D7 notes.
