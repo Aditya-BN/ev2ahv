@@ -1,5 +1,7 @@
 # ev2ahv
 
+> Working on this? Start with [AGENTS.md](AGENTS.md) (rules, layout, shared board) and [docs/BACKLOG.md](docs/BACKLOG.md) (debt, what to test).
+
 Migrates VMs from Stratus everRun (KVM, 2-node HA/FT) to Nutanix AHV. Seeds while the VM runs,
 resyncs only changed chunks, and cuts over with a verified final sync. The source VM is only ever
 read, stopped and started. Rollback is powering it back on.
