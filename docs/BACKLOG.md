@@ -25,7 +25,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D8b | P2 | No "Edit Cutover Settings" (Move's button was never clicked in the reference, so its fields are unknown; see docs/move-reference). Needs a look at a real Move first. | web, server |
 | D8c | P2 | Network step is VLAN only: subnets are listed without their type and overlay (VPC) subnets are untested as NIC targets. Needs a VPC subnet in the lab. | web, server/live.py, builder |
 | D8d | P2 | "Test migration" works in mock mode only; the engine has no isolated-subnet test clone. | engine, server |
-| D9 | P3 | Windows guests need `disk_bus: pci` (virtio-blk); virtio-scsi boot did not work. | engine, docs |
+| D9 | P3 | Windows on SCSI costs downtime: the guest boots on PCI (virtio-blk) and is converted to SCSI after cutover, which added 182 s in the 2026-11-24 run. Binding `vioscsi` during guest prep, before cutover, could remove that step (not tried). | engine, ev2ahv/guest.py |
 | D10 | P3 | Security scan leftovers after triage: rebuild and rescan to confirm the three CIS fixes (ipv6 forwarding, module blacklist, no `nullok`); check sysctl and modules on a booted instance; decide whether to drop pip from the venv for a clean trivy report; `ensure_pam_wheel_group_empty` open. | appliance, docs/security.md |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
 | D13 | P3 | UI has a single local user; no RBAC, no LDAP. The default certificate is self-signed (the Health page can replace it). | server |
@@ -50,6 +50,9 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-26: D9 reviewed; the boot failure itself is handled. The wizard picks PCI for Windows guests with virtio-blk disks,
+  prep-check FAILs SCSI for them (`api.py` boot driver check), and the engine converts PCI to SCSI after cutover
+  (verified 2026-11-24, docs/results.md). The row now tracks only the extra downtime.
 - 2026-11-26: D14 (partly). The image-mode prep-check asked for twice the total disk size; the real worst case is the total
   plus the largest disk (one qcow2 at a time), for example 100 GiB instead of 120 GiB for 40+10+10 GiB. A failed upload no longer
   leaves its qcow2 on the writer (a retry needed room for two copies). 4 new unit tests; not run on the lab writer.
