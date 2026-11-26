@@ -1,6 +1,6 @@
 #!/bin/bash
 # Static checks for every shell script and PowerShell script (what the CI "lint" job runs).
-# shellcheck: native binary, else the koalaman/shellcheck container. PSScriptAnalyzer: only when pwsh is available
+# ShellCheck runs as a native binary, else the koalaman/shellcheck container. PSScriptAnalyzer: only when pwsh is available
 # (CI has it; on the bastion run it with: docker run --rm -v "$PWD:/w:ro" mcr.microsoft.com/powershell pwsh ...).
 set -euo pipefail
 cd "$(dirname "$0")/.."
