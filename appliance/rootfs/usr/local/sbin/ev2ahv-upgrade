@@ -1,0 +1,232 @@
+#!/usr/bin/python3
+"""ev2ahv appliance upgrade (D7). Run as root on the appliance.
+
+  ev2ahv-upgrade status
+  ev2ahv-upgrade apply  /path/ev2ahv-upgrade-<ver>.tar.gz [--force]   verify, back up, install, start, health check
+  ev2ahv-upgrade rollback                                               back to the previous app, venv and database
+
+apply refuses a bundle whose files do not match its manifest, a downgrade (unless --force) and an upgrade while a
+migration step is running. Before it touches anything it stops the app and saves the app, the venv (when the
+requirements change), the state directory (database, engine plans and chunk records) and /etc/ev2ahv/ev2ahv.env under /var/lib/ev2ahv/backups/<time>-<old version>/. If the new version does not answer
+its health check, it restores all of that and starts the old version again. Stdlib only.
+"""
+import argparse, hashlib, json, os, shutil, subprocess, sys, tarfile, tempfile, time
+
+P = {  # paths; tests point them at a temporary tree
+    "app": "/opt/ev2ahv/app", "venv": "/opt/ev2ahv/venv", "data": "/var/lib/ev2ahv",
+    "state": "/var/lib/ev2ahv/.local/share/ev2ahv", "env": "/etc/ev2ahv/ev2ahv.env",
+    "sock": "/run/ev2ahv/app.sock", "self": "/usr/local/sbin/ev2ahv-upgrade",
+}
+SERVICE = "ev2ahv"
+
+
+class UpgradeError(RuntimeError):
+    pass
+
+
+def log(msg):
+    print(time.strftime("%H:%M:%S"), msg, flush=True)
+
+
+def sh(*argv, check=True):
+    return subprocess.run(argv, check=check, capture_output=True, text=True)
+
+
+def vtuple(v):
+    return tuple(int(x) for x in v.strip().split(".")[:3])
+
+
+def current_version():
+    try:
+        with open(os.path.join(P["app"], "VERSION")) as fh:
+            return fh.read().strip()
+    except OSError:
+        return "0.0.0"
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for b in iter(lambda: fh.read(1 << 20), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
+def unpack(bundle, into):
+    with tarfile.open(bundle) as tf:
+        for m in tf.getmembers():
+            if m.name.startswith("/") or ".." in m.name.split("/") or m.issym() or m.islnk() or m.isdev():
+                raise UpgradeError(f"unsafe member in bundle: {m.name}")
+        tf.extractall(into)
+    man_path = os.path.join(into, "manifest.json")
+    if not os.path.exists(man_path):
+        raise UpgradeError("bundle has no manifest.json")
+    with open(man_path) as fh:
+        man = json.load(fh)
+    for rel, digest in man["files"].items():
+        f = os.path.join(into, rel)
+        if not os.path.isfile(f) or sha256(f) != digest:
+            raise UpgradeError(f"bundle file {rel} is missing or does not match the manifest")
+    extra = {os.path.relpath(os.path.join(d, n), into) for d, _, ns in os.walk(into) for n in ns} - set(man["files"]) \
+        - {"manifest.json"}
+    if extra:
+        raise UpgradeError(f"bundle has files not in the manifest: {sorted(extra)[:5]}")
+    return man
+
+
+def busy():
+    """True while a migration step runs (runner subprocesses of the app)."""
+    out = sh("ps", "-eo", "args=", check=False).stdout
+    return any("ev2ahv_server.runner" in line and "ps -eo" not in line for line in out.splitlines())
+
+
+def health(want, timeout=60):
+    """GET /api/v2/appinfo over the app's unix socket until it reports the wanted version."""
+    deadline = time.time() + timeout
+    last = ""
+    while time.time() < deadline:
+        r = sh("curl", "-s", "--unix-socket", P["sock"], "http://app/api/v2/appinfo", check=False)
+        last = r.stdout.strip()
+        try:
+            if json.loads(last).get("version") == want:
+                return True
+        except ValueError:
+            pass
+        time.sleep(2)
+    raise UpgradeError(f"new version did not answer its health check (last reply: {last[:200]!r})")
+
+
+def systemctl(action):
+    sh("systemctl", action, SERVICE)
+
+
+def apply(bundle, force=False, ops=None):
+    ops = ops or {"systemctl": systemctl, "health": health, "busy": busy, "install_venv": install_venv}
+    old = current_version()
+    work = tempfile.mkdtemp(prefix="ev2ahv-upgrade-", dir=P["data"])
+    try:
+        man = unpack(bundle, work)
+        new = man["version"]
+        log(f"bundle {new} verified ({len(man['files'])} files); installed {old}")
+        if vtuple(new) < vtuple(old) and not force:
+            raise UpgradeError(f"{new} is older than the installed {old}; pass --force to downgrade")
+        if vtuple(old) < vtuple(man.get("min_from", "0.0.0")):
+            raise UpgradeError(f"{new} needs at least {man['min_from']} installed first")
+        if ops["busy"]():
+            raise UpgradeError("a migration step is running; wait for it or pause the plan, then try again")
+
+        bdir = os.path.join(P["data"], "backups", time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + old)
+        os.makedirs(bdir, mode=0o700)
+        log(f"stopping {SERVICE}; backup in {bdir}")
+        ops["systemctl"]("stop")
+        if os.path.isdir(P["state"]):
+            shutil.copytree(P["state"], os.path.join(bdir, "state"), symlinks=True)
+        if os.path.exists(P["env"]):
+            shutil.copy2(P["env"], os.path.join(bdir, "ev2ahv.env"))
+        shutil.move(P["app"], os.path.join(bdir, "app"))
+        venv_changed = man.get("requirements_sha256") != _req_sha(os.path.join(bdir, "app"))
+        if venv_changed:
+            shutil.copytree(P["venv"], os.path.join(bdir, "venv"), symlinks=True)
+        with open(os.path.join(bdir, "backup.json"), "w") as fh:
+            json.dump({"from": old, "to": new, "venv": venv_changed, "time": time.time()}, fh)
+        try:
+            shutil.copytree(os.path.join(work, "app"), P["app"], symlinks=True)
+            if venv_changed:
+                log("requirements changed: rebuilding the venv from the bundled wheels")
+                ops["install_venv"](os.path.join(work, "wheels"), os.path.join(work, "app", "requirements.txt"))
+            if os.path.exists(os.path.join(work, "ev2ahv-upgrade")):
+                shutil.copy2(os.path.join(work, "ev2ahv-upgrade"), P["self"])
+            sh("chown", "-R", "root:root", P["app"], check=False)
+            sh("restorecon", "-R", P["app"], check=False)
+            ops["systemctl"]("start")
+            ops["health"](new)
+        except Exception as e:
+            log(f"upgrade failed ({e}); restoring {old}")
+            _restore(bdir, ops)
+            raise UpgradeError(f"upgrade to {new} failed and {old} was restored: {e}")
+        log(f"upgraded {old} -> {new}")
+        return bdir
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def _req_sha(app_dir):
+    f = os.path.join(app_dir, "requirements.txt")
+    return sha256(f) if os.path.exists(f) else None
+
+
+def install_venv(wheels, requirements):
+    tmp = P["venv"] + ".new"
+    shutil.rmtree(tmp, ignore_errors=True)
+    sh("python3.12", "-m", "venv", tmp)
+    sh(os.path.join(tmp, "bin", "pip"), "install", "-q", "--no-index", "--find-links", wheels, "-r", requirements)
+    shutil.rmtree(P["venv"])
+    os.rename(tmp, P["venv"])
+    # the venv's scripts point at the temporary path; rewrite them to the final one
+    for n in os.listdir(os.path.join(P["venv"], "bin")):
+        f = os.path.join(P["venv"], "bin", n)
+        if os.path.isfile(f) and not os.path.islink(f):
+            with open(f, "rb") as fh:
+                b = fh.read()
+            if tmp.encode() in b:
+                with open(f, "wb") as fh:
+                    fh.write(b.replace(tmp.encode(), P["venv"].encode()))
+
+
+def _restore(bdir, ops):
+    ops["systemctl"]("stop")
+    shutil.rmtree(P["app"], ignore_errors=True)
+    shutil.copytree(os.path.join(bdir, "app"), P["app"], symlinks=True)
+    if os.path.isdir(os.path.join(bdir, "venv")):
+        shutil.rmtree(P["venv"], ignore_errors=True)
+        shutil.copytree(os.path.join(bdir, "venv"), P["venv"], symlinks=True)
+    if os.path.isdir(os.path.join(bdir, "state")):
+        shutil.rmtree(P["state"], ignore_errors=True)
+        shutil.copytree(os.path.join(bdir, "state"), P["state"], symlinks=True)   # copytree keeps modes, not owners
+        sh("chown", "-R", "ev2ahv:ev2ahv", P["state"], check=False)
+    if os.path.exists(os.path.join(bdir, "ev2ahv.env")):
+        shutil.copy2(os.path.join(bdir, "ev2ahv.env"), P["env"])
+    ops["systemctl"]("start")
+
+
+def backups():
+    d = os.path.join(P["data"], "backups")
+    return sorted(os.path.join(d, n) for n in os.listdir(d)) if os.path.isdir(d) else []
+
+
+def rollback(ops=None):
+    ops = ops or {"systemctl": systemctl}
+    b = backups()
+    if not b:
+        raise UpgradeError("no backup to roll back to")
+    log(f"restoring {b[-1]}")
+    _restore(b[-1], ops)
+    return b[-1]
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="ev2ahv appliance upgrade")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    a = sub.add_parser("apply")
+    a.add_argument("bundle")
+    a.add_argument("--force", action="store_true", help="allow a downgrade")
+    sub.add_parser("rollback")
+    sub.add_parser("status")
+    args = ap.parse_args(argv)
+    if os.geteuid() != 0:
+        sys.exit("run as root (sudo)")
+    try:
+        if args.cmd == "apply":
+            apply(args.bundle, args.force)
+        elif args.cmd == "rollback":
+            rollback()
+        else:
+            print(f"installed {current_version()}")
+            for b in backups():
+                print("backup", b)
+    except UpgradeError as e:
+        sys.exit(f"ev2ahv-upgrade: {e}")
+
+
+if __name__ == "__main__":
+    main()

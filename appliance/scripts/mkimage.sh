@@ -69,6 +69,8 @@ install -d $ROOT/opt/ev2ahv/app
 cd /src
 tar -c --exclude=__pycache__ --exclude='*.pyc' --exclude=tests --exclude=node_modules --exclude=run-dev.sh ev2ahv server prep VERSION | tar -x -C $ROOT/opt/ev2ahv/app
 mkdir -p $ROOT/opt/ev2ahv/app/web; cp -a /src/web/dist $ROOT/opt/ev2ahv/app/web/dist
+# kept so ev2ahv-upgrade can tell whether a bundle needs a new venv
+cp /src/appliance/requirements.txt $ROOT/opt/ev2ahv/app/requirements.txt
 mkdir -p $ROOT/tmp/wheels; cp /out/wheels/* $ROOT/tmp/wheels/; cp $APPL/requirements.txt $ROOT/tmp/
 chroot $ROOT bash -euxo pipefail <<'C'
 python3.12 -m venv /opt/ev2ahv/venv

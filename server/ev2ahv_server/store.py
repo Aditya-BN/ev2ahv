@@ -27,6 +27,25 @@ def app_secret():
         return hashlib.sha256(b"ev2ahv-app\0" + fh.read().strip().encode()).hexdigest()
 
 
+# Schema migrations (D7). The database records its schema version in PRAGMA user_version. A new release that changes
+# the schema appends a function here; it runs once, in order, at startup. ev2ahv-upgrade backs up the state directory
+# before the new version starts, so a failed migration is rolled back with the rest of the upgrade.
+#   1: 0.3.0 baseline (docs, secrets, events, jobs). UI users became docs of kind "user"; no table change.
+MIGRATIONS = [lambda db: None]
+
+
+def migrate(db):
+    have = db.execute("PRAGMA user_version").fetchone()[0]
+    if have > len(MIGRATIONS):
+        raise RuntimeError(f"database schema {have} is newer than this version knows ({len(MIGRATIONS)}). "
+                           "Roll back with ev2ahv-upgrade rollback, or upgrade the app")
+    for n in range(have, len(MIGRATIONS)):
+        with db:
+            MIGRATIONS[n](db)
+            db.execute(f"PRAGMA user_version={n + 1}")
+    return len(MIGRATIONS)
+
+
 class Store:
     def __init__(self, path=DB):
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -39,6 +58,7 @@ class Store:
                                             plan TEXT, vm TEXT, message TEXT);
           CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, plan TEXT, vm TEXT, action TEXT, state TEXT,
                                           started REAL, ended REAL, detail TEXT);""")
+        migrate(self.db)
         os.chmod(path, 0o600)
         self.f = _fernet()
 

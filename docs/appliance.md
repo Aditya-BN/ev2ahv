@@ -132,6 +132,33 @@ Services: `ev2ahv`, `ev2ahv-boot` (records boot disks/VM UUID), `ev2ahv-blockd.s
 `ev2ahv-firstboot`, `ev2ahv-tls.path/.service`, `ev2ahv-console`, `ev2ahv-issue`, `nginx`, plus chronyd, sshd, firewalld, NetworkManager, auditd, cloud-init.
 Journal is persistent, capped at 200 MB.
 
+## Upgrades (app)
+
+An upgrade bundle replaces the app (`/opt/ev2ahv/app`), and the venv when `requirements.txt` changed, and keeps all
+state. Build it on a machine with the repo, after `bash appliance/build.sh` (which provides `web/dist` and
+`build/wheels`):
+
+    python3 tools/make_bundle.py            # dist/ev2ahv-upgrade-<version>.tar.gz and .sha256
+
+On the appliance (as admin, with sudo):
+
+    sha256sum -c ev2ahv-upgrade-<version>.tar.gz.sha256
+    sudo ev2ahv-upgrade apply ev2ahv-upgrade-<version>.tar.gz
+    sudo ev2ahv-upgrade status              # installed version and backups
+    sudo ev2ahv-upgrade rollback            # back to the previous app, venv and state
+
+`apply` checks every file against the bundle's manifest, refuses a downgrade (`--force` allows it) and refuses to run
+while a migration step is running (pause the plan or wait). It then stops `ev2ahv`, saves the app, the venv (when
+the requirements change), the state directory (`/var/lib/ev2ahv/.local/share/ev2ahv`: database, engine plans, chunk
+records) and `/etc/ev2ahv/ev2ahv.env` under `/var/lib/ev2ahv/backups/<UTC time>-<old version>/`, installs the new
+version, starts it and waits for `/api/v2/appinfo` to report the new version. If that fails, it restores everything
+and starts the old version. Database schema changes run at startup from `MIGRATIONS` in
+`server/ev2ahv_server/store.py` (`PRAGMA user_version`); a newer database than the app knows is refused.
+Backups are not pruned; delete old ones by hand.
+
+Appliances older than 0.3.1 do not have `ev2ahv-upgrade` yet: extract it from the bundle and run it with
+`sudo python3 ./ev2ahv-upgrade apply <bundle>`; it installs itself to `/usr/local/sbin`.
+
 ## OS updates
 
 Online: `sudo dnf update` (Rocky BaseOS/AppStream repos stay configured); reboot if the kernel changed. The venv/app are not managed by dnf; upgrade the appliance
