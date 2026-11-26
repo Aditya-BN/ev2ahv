@@ -138,6 +138,13 @@ if __name__ == "__main__":
     if cmd == "baseline":
         baseline()
     elif cmd == "serve":
-        sys.exit(serve() or 0)
+        rc = serve() or 0
+        try:
+            sys.stdout.flush()
+        except BrokenPipeError:
+            # The client hangs up after the END frame; the data is already fsynced. Point stdout at /dev/null so
+            # the interpreter's exit-time flush does not fail the unit with status 120.
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        sys.exit(rc)
     else:
         sys.exit("usage: blockd.py baseline|serve")
