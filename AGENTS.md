@@ -28,6 +28,8 @@ Read these first: this file, then [docs/BACKLOG.md](docs/BACKLOG.md) (debt and w
     server/run-dev.sh mock     # https://<host>:8443, demo data; login nutanix / nutanix/4u
     server/run-dev.sh live     # https://<host>:8444, real lab (needs your own Prism/everRun credentials)
     bash appliance/build.sh    # dist/ev2ahv-<ver>.qcow2 + sha256 + MANIFEST.json + SBOM
+    tools/check.sh             # what CI runs: unit tests, openapi.json drift, web tsc (no pytest needed)
+    python3 tools/gen_openapi.py   # after changing server/ev2ahv_server/models.py
 
 ## Rules (lab safety)
 

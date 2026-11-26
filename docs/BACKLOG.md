@@ -28,7 +28,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D9 | P3 | Windows guests need `disk_bus: pci` (virtio-blk); virtio-scsi boot did not work. | engine, docs |
 | D10 | P3 | Security scan leftovers: trivy reports 1 HIGH, setuptools 70.3.0 (probably a false positive, since the venv has 84.2.1). CIS L1 has 69 fails, not triaged. `scan.sh`'s second trivy run fails on a cold DB cache. | appliance/scripts/scan.sh, docs/security.md |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
-| D12 | P3 | No CI. `pytest` and `make` are not installed on the bastion. The unit tests do run with plain `python -m unittest discover -s tests` (44 pass on 2026-11-26), but nothing runs them automatically. | repo |
 | D13 | P3 | UI has a single local user; no RBAC, no LDAP. The default certificate is self-signed (the Health page can replace it). | server |
 | D14 | P3 | The image fallback (`target.transfer: image`) needs up to twice the disk size free on the writer. | engine |
 
@@ -46,10 +45,14 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | T8 | Appliance reboot mid-seed (mid-cutover already passes) | Reboot during a seed | Seed resumes, nothing marked Failed |
 | T9 | Several VMs in one plan at once | Two `ev2ahv-src-*` guests | Both complete; resyncs do not starve each other |
 | T10 | Prism username/password auth (D11) | Environment with a user and password | Validate, refresh and migrate work |
-| T11 | Unit tests (D12) | `pip install pytest && python3 -m pytest tests` | All pass |
+| T11 | Unit tests (D12) | `tools/check.sh` or the GitHub `ci` workflow | All pass |
 
 ## Done (recent)
 
+- 2026-11-26: D12. CI in `.github/workflows/ci.yml`: unit tests on Python 3.12 with the appliance pins, a check that
+  `web/openapi.json` matches the models (`tools/gen_openapi.py --check`), and `npm ci && npm run build` on Node 20.
+  `tools/check.sh` runs the same checks on the bastion (44 of 44 tests pass, openapi current, tsc clean). The workflow
+  itself has not run on GitHub yet.
 - 2026-11-26: D4. The cutover result (downtime, final sync, verify) is now kept on the plan VM and returned by `/api/v2`
   (`PlanVm.cutover_result`) and shown on the Progress page. It was already saved in SQLite, but the response model dropped it.
   Rollback clears it. Unit tests: 44 of 44 pass, 4 new. Not yet seen on a real appliance cutover (see docs/results.md, D4).
