@@ -81,6 +81,37 @@ Powers off the AHV VM, waits until Prism reports it OFF, then starts the source.
 
 The source is never touched. Keep staging disks until you no longer need a quick retry.
 
+## 7. Backups and throttling (D15, T13)
+
+Measured 2026-11-27 on `ev2ahv-src-win22` (Windows Server 2022 HA, node1, 8 vCPU / 31 GiB node, boot disk on `sdb`). The
+engine's own reader (`DirectBlockReader`, hash only, no writes anywhere) read the 60 GiB boot disk from the start for 30 s
+at each `source.max_mbps`, while the node and the guest were sampled once per second (iostat on `sdb`, mpstat; a
+4 KiB write-through probe in the guest over WinRM; ping to the guest).
+
+| max_mbps | Read speed | sdb read await (avg / max) | sdb %util | Node CPU busy | Guest 4 KiB write (avg / p95 ms) |
+| --- | --- | --- | --- | --- | --- |
+| none (no reader) | 0 | 2.0 / 5.0 ms | 3.9 | 60.6 % | 480 / 1485 |
+| unlimited | 132 MiB/s | 5.1 / 7.0 ms | 24.2 | 74.3 % | 417 / 966 |
+| 200 | 130 MiB/s | 5.3 / 10.1 ms | 24.2 | 74.3 % | 457 / 1103 |
+| 100 | 113 MiB/s | 5.6 / 11.5 ms | 22.6 | 70.3 % | 384 / 896 |
+| 50 | 63 MiB/s | 5.6 / 9.1 ms | 13.3 | 66.0 % | 423 / 1337 |
+
+How to read it: the node disk is not the limit (one reader saturates around 130 MiB/s and 24 % util, so 200 does nothing
+more than unlimited). A reader costs about 1.1 cores of the node's 8 (qemu-unity for the guest already used about 60 %),
+and adds about 3 ms read latency on the disk. The guest's write latency was already poor and noisy without any load (the
+lab guest is slow, ping 100-200 ms average) and shows **no change attributable to the reader**; with one 30 s sample per
+row, differences below roughly 2x are within the noise. Not measured: several disks or VMs at once, a production workload,
+an in-guest backup agent, an everRun snapshot, a Stratus backup.
+
+**Recommended default: `source.max_mbps: 100`** (about 90 % of unlimited speed with the lowest observed latency spike, one
+core, ~23 % disk utilisation). Use 50 when the guest is latency-sensitive or the node is busy, and plan the seed from that
+speed (60 GiB allocated: about 10 min at 100 MiB/s). Hash-only resyncs read the same amount, so `sync.cbt: auto`
+(docs/cbt.md, experimental) cuts the load of a resync as well as its time.
+
+Backups and cutover (not tested, from the design): ev2ahv takes no snapshot and no VSS. After cutover the everRun-side
+backup job for the source fails (the VM is stopped); an in-guest backup agent will usually need a full backup because
+disk IDs change. A QEMU-level backup on the same guest could clash with the dirty bitmaps, so keep `sync.cbt` off there.
+
 ## Troubleshooting
 
 | Symptom | Cause and action |

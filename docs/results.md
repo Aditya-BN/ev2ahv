@@ -285,3 +285,21 @@ Compare: the first cutover (2026-11-26) had downtime about 421.8 s; this one 422
 | Health and self-test | health finds itself (`ev2ahv-appliance-3`); self-test PASS (1 GiB hot-add, root helper, offline, remove); no failed units afterwards (the BrokenPipe fix works in the shipped image) |
 
 Not done on appliance-3: the everRun environment, a migration, the console static-IP menu (the VM got its address from IPAM).
+
+## D5 and T13 on real everRun: `ev2ahv-src-win22`, 2026-11-27 (branch adit/d5-everrun)
+
+Read-only SSH on node1 (10.12.136.152) and `virsh qemu-monitor-command` on `ev2ahv-src-win22` only. The guest was running
+when found and was left running. Nothing was written to the guest disks except test files that were deleted afterwards
+(C:\ev2ahv-d5*, F:\ev2ahv-d5*: 2 x 32 MiB of random data per round, WinRM).
+
+| Measure | Result |
+|---|---|
+| QEMU | `qemu-unity` reporting 6.2.0; plain raw over file nodes, no block job, mirror, COLO, migration or bitmap before |
+| Bitmap add / rotate / remove | in memory, non-persistent, 64 KiB granularity; add instant, rotate 1.0 s over ssh |
+| NBD export of the frozen bitmap | unix socket, read-only; `qemu-img map` 0.05 s; dirty bytes equal the bitmap count (34.4 MB for 32 MiB written) |
+| Full hash of the 60 GiB boot disk | 149.9 s |
+| Dirty-only (67 chunks, 39.4 MB dirty) | 7.6 s read + 2.8 s tracker |
+| T13 reader load | see docs/runbook.md section 7: sdb await 2.0 ms idle, 5.1-5.6 ms reading; about 1.1 cores; guest probe unchanged within noise; recommended `max_mbps: 100` |
+
+Left on the lab afterwards: no bitmaps, no NBD server or socket, no exports, test files removed from the guest. The
+temporary helper scripts the engine copies to the node's `/tmp` are the usual ones. Unit tests: see commit.
