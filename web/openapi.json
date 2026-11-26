@@ -1198,6 +1198,61 @@
                 }
             }
         },
+        "/api/v2/prep-script": {
+            "get": {
+                "summary": "Prep Script Any",
+                "description": "Same scripts without a plan, for the wizard before the plan is saved.",
+                "operationId": "prep_script_any_api_v2_prep_script_get",
+                "parameters": [
+                    {
+                        "name": "os_type",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "linux",
+                            "title": "Os Type"
+                        }
+                    },
+                    {
+                        "name": "ev2ahv_session",
+                        "in": "cookie",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Ev2Ahv Session"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v2/plans/{pid}/events": {
             "get": {
                 "summary": "Plan Events",
