@@ -1,6 +1,12 @@
 #!/bin/bash
 # Post-cutover / post-rollback check for the Windows test guest, over WinRM. Exit non-zero on failure.
-set -a; . ~/.config/ev2ahv/win.env; set +a
+# Read-only check: it only runs guest-load.ps1 -Mode check and Get-* queries on the guest.
+WINENV=~/.config/ev2ahv/win.env
+[ -r "$WINENV" ] || { echo "missing $WINENV" >&2; exit 2; }
+set -a
+# shellcheck source=/dev/null
+. "$WINENV"
+set +a
 cd "$(dirname "$0")/.." || exit 1
 export EV2AHV_WINRM_TIMEOUT=300
 # The guest may still be resetting its NIC when this first runs, so retry a hung or refused session.

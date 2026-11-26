@@ -3,7 +3,8 @@
 # SAN = hostname + localhost + every address currently configured. Marker file
 # tls/.selfsigned tells ev2ahv-config the cert may be regenerated when the IP changes.
 set -euo pipefail
-TLS=/var/lib/ev2ahv/tls
+TLS=${EV2AHV_TLS_DIR:-/var/lib/ev2ahv/tls}
+[ -n "$TLS" ] && [ "$TLS" != / ] || { echo "refusing: bad TLS dir" >&2; exit 2; }
 HN=$(cat /proc/sys/kernel/hostname)
 [ -n "$HN" ] || HN=ev2ahv
 SAN="DNS:${HN},DNS:localhost,IP:127.0.0.1,IP:::1"
@@ -13,6 +14,9 @@ for ip in $(ip -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d
 install -d -m 0750 -o ev2ahv -g ev2ahv "$TLS"
 umask 0137
 T=$(mktemp -d "$TLS/.gen.XXXXXX")
+chmod 0700 "$T"   # mktemp honours the 0137 umask above and would leave the directory untraversable
+# remove only the scratch directory this run created, even when openssl fails half way
+trap '[ -n "${T:-}" ] && [ "${T#"$TLS"/.gen.}" != "$T" ] && rm -rf -- "$T"' EXIT
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 825 -sha256 \
   -keyout "$T/server.key" -out "$T/server.crt" -subj "/CN=${HN}/O=ev2ahv appliance" \
   -addext "subjectAltName=${SAN}" -addext "basicConstraints=critical,CA:FALSE" \
@@ -21,6 +25,6 @@ chown ev2ahv:ev2ahv "$T/server.key" "$T/server.crt"
 chmod 0640 "$T/server.key" "$T/server.crt"
 mv -f "$T/server.key" "$TLS/server.key"
 mv -f "$T/server.crt" "$TLS/server.crt"   # last: ev2ahv-tls.path watches the cert
-rmdir "$T"
+rmdir "$T"; T=
 touch "$TLS/.selfsigned"; chown ev2ahv:ev2ahv "$TLS/.selfsigned"
 restorecon -R "$TLS" 2>/dev/null || true

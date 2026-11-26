@@ -1,34 +1,44 @@
 #!/bin/bash
 # Runs INSIDE the privileged builder container. /src = repo (ro), /out = build dir (rw).
 set -euxo pipefail
+# Safety: this script partitions, formats and mounts a loop device and runs rm in a chroot. It only ever works on the
+# image file /out/ev2ahv.raw, and refuses to run outside the throw-away builder container.
+[ -f /.dockerenv ] || [ -f /run/.containerenv ] || { echo "refusing: mkimage.sh must run inside the builder container" >&2; exit 2; }
+[ -d /src/appliance ] && [ -d /out ] || { echo "refusing: /src/appliance and /out must be mounted" >&2; exit 2; }
 SZ=${IMG_SIZE:-20G}
+[[ "$SZ" =~ ^[0-9]+[GM]$ ]] || { echo "refusing: bad IMG_SIZE '$SZ'" >&2; exit 2; }
 RAW=/out/ev2ahv.raw
 ROOT=/mnt/root
 APPL=/src/appliance
-rm -f $RAW; truncate -s $SZ $RAW
-sfdisk $RAW <<P
+rm -f "$RAW"; truncate -s "$SZ" "$RAW"
+sfdisk "$RAW" <<P
 label: gpt
 size=1MiB, type=21686148-6449-6E6F-744E-656564454649, name=biosboot
 size=100MiB, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name=esp
 type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=root
 P
-LOOP=$(losetup -f --show -P $RAW)
-cleanup() { set +e; for m in dev/pts dev sys proc boot/efi ""; do umount -l $ROOT/$m 2>/dev/null; done; losetup -d $LOOP; }
+LOOP=$(losetup -f --show -P "$RAW")
+case "$LOOP" in /dev/loop[0-9]*) ;; *) echo "refusing: unexpected loop device '$LOOP'" >&2; exit 2 ;; esac
+# The trap only undoes what this script set up: its own mounts under $ROOT and its own loop device.
+cleanup() { set +e; for m in dev/pts dev sys proc boot/efi ""; do umount -l "$ROOT/$m" 2>/dev/null; done; losetup -d "$LOOP"; }
 trap cleanup EXIT
-n=$(basename $LOOP)
+n=$(basename "$LOOP")
 for p in "" p1 p2 p3; do
-  [ -b /dev/$n$p ] || { IFS=: read ma mi < /sys/block/$n/${n}${p}/dev 2>/dev/null || IFS=: read ma mi < /sys/block/$n/dev; mknod /dev/$n$p b $ma $mi; }
+  [ -b "/dev/$n$p" ] || { IFS=: read -r ma mi < "/sys/block/$n/${n}${p}/dev" 2>/dev/null || IFS=: read -r ma mi < "/sys/block/$n/dev"; mknod "/dev/$n$p" b "$ma" "$mi"; }
 done
-mkfs.vfat -F32 -n EFI /dev/${n}p2
-mkfs.xfs -f -L ev2ahv-root /dev/${n}p3
-mkdir -p $ROOT; mount /dev/${n}p3 $ROOT; mkdir -p $ROOT/boot/efi; mount /dev/${n}p2 $ROOT/boot/efi
-ROOT_UUID=$(blkid -s UUID -o value /dev/${n}p3); EFI_UUID=$(blkid -s UUID -o value /dev/${n}p2)
+# mkfs only on partitions of the loop device that is backed by our image file
+[ "$(losetup -nO BACK-FILE "$LOOP" 2>/dev/null | head -1)" = "$RAW" ] || { echo "refusing: $LOOP is not backed by $RAW" >&2; exit 2; }
+mkfs.vfat -F32 -n EFI "/dev/${n}p2"
+mkfs.xfs -f -L ev2ahv-root "/dev/${n}p3"
+mkdir -p "$ROOT"; mount "/dev/${n}p3" "$ROOT"; mkdir -p "$ROOT/boot/efi"; mount "/dev/${n}p2" "$ROOT/boot/efi"
+ROOT_UUID=$(blkid -s UUID -o value "/dev/${n}p3"); EFI_UUID=$(blkid -s UUID -o value "/dev/${n}p2")
 mkdir -p $ROOT/{proc,sys,dev/pts,etc/rpm,etc/dracut.conf.d}
 mount -t proc proc $ROOT/proc; mount -t sysfs sys $ROOT/sys; mount --bind /dev $ROOT/dev; mount --bind /dev/pts $ROOT/dev/pts
 cp $APPL/rootfs/etc/rpm/macros.image-language-conf $ROOT/etc/rpm/
 cp $APPL/rootfs/etc/dracut.conf.d/10-ev2ahv.conf $ROOT/etc/dracut.conf.d/
 echo "root=UUID=$ROOT_UUID" > /dev/null
-dnf -y --installroot=$ROOT --releasever=9 --setopt=install_weak_deps=False --setopt=tsflags=nodocs \
+# shellcheck disable=SC2046  # packages.txt is split into words on purpose
+dnf -y --installroot="$ROOT" --releasever=9 --setopt=install_weak_deps=False --setopt=tsflags=nodocs \
     --setopt=cachedir=/out/dnfcache --setopt=keepcache=1 install $(grep -v '^#' $APPL/packages.txt | tr '\n' ' ')
 # --- overlay
 cp -a --no-preserve=ownership $APPL/rootfs/. $ROOT/
@@ -141,6 +151,8 @@ tmpfs /tmp tmpfs defaults,nodev,nosuid,size=1G 0 0
 tmpfs /dev/shm tmpfs defaults,nodev,nosuid,noexec 0 0
 B
 # --- relabel, cleanup
+# The rm -rf below runs inside the chroot; make sure the chroot is the image root, not an empty or host directory.
+mountpoint -q "$ROOT" && [ -x "$ROOT/usr/bin/bash" ] && [ -f "$ROOT/etc/fstab" ] || { echo "refusing to clean: $ROOT is not the mounted image root" >&2; exit 2; }
 chroot $ROOT bash -euxo pipefail <<'C'
 dnf clean all
 rm -rf /var/cache/dnf/* /var/cache/ldconfig/* /tmp/* /var/tmp/* /var/log/dnf*.log /var/log/hawkey.log /var/log/*.log
@@ -155,7 +167,7 @@ chroot $ROOT rpm -qa --qf '%{NAME}\t%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort > /o
 chroot $ROOT /opt/ev2ahv/venv/bin/pip list --format=freeze > /out/pip.list
 du -sh $ROOT --exclude=proc --exclude=sys --exclude=dev || true
 # tree for scanners
-rm -rf /out/tree; mkdir /out/tree
+rm -rf /out/tree; mkdir /out/tree   # constant path inside the builder container
 tar -C $ROOT --exclude=./proc/* --exclude=./sys/* --exclude=./dev/* -c . | tar -C /out/tree -x --no-same-owner 2>/dev/null || true
 fstrim -v $ROOT/boot/efi || true; fstrim -v $ROOT || true
 cleanup; trap - EXIT
