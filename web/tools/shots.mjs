@@ -1,5 +1,5 @@
 // Screenshot + click-through script. Run after `npm run build` with the mock server on 127.0.0.1:8443:
-//   node tools/shots.mjs
+//   node tools/shots.mjs [light|dark]   (default light; writes docs/ui-shots/<scheme>/)
 // Creates a plan named uitest-<time>, drives it through Test and Cutover, then deletes every uitest-* plan via the API.
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -8,14 +8,16 @@ const require = createRequire('/home/adit@ntnx.hin/work/shots-tool/');
 const { chromium } = require('playwright-core');
 
 const BASE = 'https://127.0.0.1:8443';
-const OUT = path.join(os.homedir(), 'ev2ahv/docs/ui-shots');
+const SCHEME = process.argv[2] === 'dark' ? 'dark' : 'light';
+const OUT = path.join(os.homedir(), 'ev2ahv/docs/ui-shots', SCHEME);
+import fs from 'node:fs'; fs.mkdirSync(OUT, { recursive: true });
 const PLAN = 'uitest-' + Date.now().toString(36);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox'] });
-const ctx = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } });
+const ctx = await browser.newContext({ ignoreHTTPSErrors: true, colorScheme: SCHEME, viewport: { width: 1440, height: 900 } });
 const page = await ctx.newPage();
-const shot = async (n, opts = {}) => { await sleep(350); await page.screenshot({ path: path.join(OUT, n + '.png'), ...opts }); console.log('shot', n); };
+const shot = async (n, opts = {}) => { await sleep(350); await page.screenshot({ path: path.join(OUT, n + '.png'), fullPage: true, ...opts }); console.log('shot', n); };
 const poll = async (fn, what, tries = 90, ms = 1000) => {
   for (let i = 0; i < tries; i++) { if (await page.evaluate(fn).catch(() => false)) return; await sleep(ms); }
   throw new Error('timeout: ' + what);
@@ -41,27 +43,21 @@ try {
   await page.getByRole('button', { name: 'Cancel' }).click();
   await page.locator('.env-card .icon-btn').first().click();
   await shot('ui-26-environment-card-menu');
-  await page.keyboard.press('Escape'); await page.mouse.click(700, 600);
+  await page.keyboard.press('Escape'); await page.locator('.page-title').first().click();
   const notStarted = page.locator('tr[data-testid=plan-row]', { hasText: 'Not Started' }).first();
-  await notStarted.getByRole('button', { name: /Actions/ }).click();
+  await notStarted.getByRole('button', { name: /More actions/ }).click();
   await shot('ui-30-plan-row-actions');
-  await page.mouse.click(700, 700);
+  await page.locator('.page-title').first().click();
   await page.locator('select.filter-select').selectOption('Completed');
   await shot('ui-33-plans-filter');
   await page.locator('select.filter-select').selectOption('All Plans');
-  await page.locator('#user-menu').click();
-  await shot('ui-06-user-menu');
-  await page.getByRole('menuitem', { name: 'Change Password' }).click();
+  await page.getByRole('button', { name: 'Change password' }).click();
   await page.locator('input[type=password]').first().fill('x');
   await shot('ui-25-change-password');
   await page.getByRole('button', { name: 'Cancel' }).click();
-  await page.locator('#user-menu').click();
-  await page.getByRole('menuitem', { name: 'About ev2ahv' }).click();
+  await page.getByRole('button', { name: 'About ev2ahv' }).click();
   await shot('ui-24-about');
   await page.getByRole('button', { name: 'OK' }).click();
-  await page.locator('.topbar .gear').click();
-  await shot('ui-07-settings-menu');
-  await page.mouse.click(700, 700);
 
   await go('/events'); await shot('ui-05-events');
   await go('/bandwidth-configuration'); await shot('ui-09-bandwidth-empty');
@@ -77,11 +73,12 @@ try {
   await page.getByRole('button', { name: 'Delete' }).first().click(); await page.locator('.modal .btn.danger').click(); await sleep(600);
   await go('/realtime-logs'); await shot('ui-12-realtime-logs');
   await go('/appliance-settings'); await shot('ui-08-appliance-settings');
+  await go('/health'); await shot('ui-13-health');
 
   // existing plans
   const plans = await (await ctx.request.get(BASE + '/api/v2/plans')).json();
   const byName = (n) => plans.entities.find((p) => p.name === n);
-  await go('/plan-details/' + byName('wave2-erp').id); await shot('ui-39-plan-summary');
+  await go('/plan-details/' + byName('wave2-erp').id); await shot('ui-39-plan-summary'); await page.evaluate(() => window.scrollTo(0, 99999)); await page.locator('.page').evaluate((e) => e.scrollIntoView()); await page.evaluate(() => document.querySelector('[data-testid=prep-scripts]')?.scrollIntoView({ block: 'center' })); await shot('ui-39b-plan-summary-prep-scripts', { fullPage: false });
   await go('/migrationprogress/' + byName('wave2-erp').id); await shot('ui-40-plan-details');
   await page.locator('tr[data-testid=vm-row]').first().locator('input[type=checkbox]').check();
   await shot('ui-40b-selection');
