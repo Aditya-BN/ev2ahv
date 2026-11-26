@@ -1,9 +1,15 @@
-# ev2ahv resume notes (updated 2026-11-26 WIB)
+# ev2ahv resume notes (updated 2026-11-27 WIB)
 
 Tag v0.2.0. Stages A, B, C done; Stage D (appliance) first iteration done. See docs/results.md, docs/appliance.md,
 docs/security.md, docs/side-by-side.md.
 
-## Running now (lab)
+## Running now (lab), as of the 2026-11-27 overnight run
+- `ev2ahv-appliance-3` (a0090f8b-...), https://10.12.135.160/, ON, version 0.3.2, fresh deploy from Prism image `ev2ahv-appliance-0.3.2`;
+  UI password ~/.config/ev2ahv/appliance3-ui.pw, admin ~/.config/ev2ahv/appliance3-admin.pw (key as below). Only the AOS environment.
+- `ev2ahv-appliance-2` now runs 0.3.2 (upgraded by bundle; backups under /var/lib/ev2ahv/backups). Plan `app-rocky-stageB` is Completed again after T2.
+- AHV `ev2ahv-rocky9-app2` (006cf2a0-..., new extId after the T2 re-cutover) is ON at 10.12.136.162; everRun `ev2ahv-src-rocky9` is STOPPED.
+- Images: `ev2ahv-appliance-0.3.2` added. `ev2ahv-appliance-test`, `ev2ahv-appl-fake`, `ev2ahv-win22-ahv` were deleted on 2026-11-26.
+- Older entries below are from 2026-11-26 and partly outdated (appliance-2 version, rocky9-app2 id).
 - Bastion dev servers: mock UI https://<bastion>:8443, live UI :8444 (`server/run-dev.sh mock live`).
 - Appliance test VM `ev2ahv-appliance-test` (b10a98c6-...), https://10.12.135.88/ (VLAN135-IPAM, DHCP).
   UI password: ~/.config/ev2ahv/appliance-ui.pw; ssh admin (key ~/.config/ev2ahv/id_ed25519, sudo password

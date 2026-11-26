@@ -229,3 +229,59 @@ now committed (byte-identical to the copy the 0.2.0 builds used).
 
 Not done: T1 on AHV (upload as `ev2ahv-appliance-0.3.0-root` and deploy), because the Prism API key in prism.env sees
 no VMs or images.
+
+## Overnight lab run 2026-11-27 (WIB; logs UTC): D7 real upgrade, T2, T1 (version 0.3.2)
+
+Everything below ran on the real lab (Prism `NTNX-DC`, everRun `everrun-lab`) from the bastion, through the appliance API
+and the ev2ahv-upgrade CLI. Real, not staged. Nothing outside `ev2ahv-*` objects was touched.
+
+### Builds (bastion, `bash appliance/build.sh`, then `tools/make_bundle.py`)
+
+| Build | Result |
+|---|---|
+| 0.3.1 from main 727863d | 6 min 30 s; `ev2ahv-0.3.1.qcow2` 307,101,696 B; bundle 18,577,680 B (73 files) |
+| 0.3.2 from main 80b0f71 (after the bug below) | 6 min 16 s; `ev2ahv-0.3.2.qcow2` 307,298,304 B (293 MiB), sha256 fd0d36b0...5619; `ev2ahv-upgrade-0.3.2.tar.gz` 18,577,913 B, sha256 3776b828...cf85 |
+
+### D7 for real: `ev2ahv-appliance-2` 0.2.0 (py312 + hot patches) -> 0.3.1 -> 0.3.2
+
+Before: 2 environments Connected (Prism Central 91 VMs, everRun 1), plan `app-rocky-stageB` Completed, SELinux Enforcing,
+no failed units. The bundle was copied with scp; 0.2.0 has no `ev2ahv-upgrade`, so the tool was extracted from the bundle
+and run as `sudo python3 ./ev2ahv-upgrade apply` (it installed itself to /usr/local/sbin).
+
+| Step | Result |
+|---|---|
+| 0.2.0 -> 0.3.1 | bundle verified (73 files), 23 s total (17:43:22 to 17:43:45 UTC) including the venv rebuild from the bundled wheels; backup `20261126T174322Z-0.2.0` |
+| Problem found | `/api/v2/plans` returned HTTP 500. The old plan stored the raw engine cutover result (`vm`, `timings`, `verify`) with no `completed_at`, and 0.3.x's `CutoverResult` requires it. The upgrade's own health check (`/api/v2/appinfo`) passed, so it did not roll back. |
+| Fix | `PlanVm` now reads the legacy shape (`completed_at` 0 = unknown), with a unit test; version 0.3.2 (80b0f71). The old plan keeps its numbers (downtime 421.8 s, final sync 364.2 s). |
+| 0.3.1 -> 0.3.2 | 2 s (17:52:26 to 17:52:28 UTC, venv unchanged); backup `20261126T175226Z-0.3.1` |
+| After | version 0.3.2, venv Python 3.12.16, no failed units, SELinux Enforcing, 0 AVC, UI login with the existing password, both environments Connected (secrets decrypt, so the instance key and database survived), plan intact, selftest PASS |
+
+The automatic restore was not exercised (no upgrade failed its own check).
+
+### T2: rollback and re-cutover from the appliance (plan `app-rocky-stageB`, `ev2ahv-src-rocky9`)
+
+| Step | Result |
+|---|---|
+| Before | AHV `ev2ahv-rocky9-app2` ON, everRun source stopped (absent from discovery, as everRun undefines a stopped guest) |
+| Rollback (UI action, 17:53:14 UTC) | the engine step finished in about 12 s using the seeded engine plan (the T2-rollback-stopped-source fix works on the real system: no "no longer in" error from rollback itself). AHV VM powered off and discarded; everRun source started and answered ping about 75 s after the request, `sys_vendor` Stratus, boot 17:54:30 UTC |
+| Source data | `sha256sum -c MANIFEST.sha256` in `/ext4/ev2ahv` and `/span/ev2ahv`: 438 of 438 OK in each, 0 failures |
+| Post-rollback resync | failed once: `ev2ahv-src-rocky9 is no longer in everrun-lab. Refresh the environment` (the plan went to Ready to Cutover and resync rebuilt the plan from the stale discovery list). Refresh environment + Retry cleared it; resync took about 70 s (69.6 s) |
+| Cutover again (17:59:23 UTC) | Completed after 531 s wall (resync, final sync, stop source, create, power on, verify) |
+| Stored result (D4) | `downtime_seconds` 422.1, `final_sync_seconds` 364.4, `last_resync_seconds` 69.6, `verify` {power ON, reachable 10.12.136.162:22}, new `target_vm_id` 006cf2a0-b1c1-48c3-5cb4-ef5872465437 (rollback deletes the old AHV VM; the cutover creates a new one) |
+| AHV check | ON; same IP 10.12.136.162 and MAC 00:e0:09:a4:d7:40; `sys_vendor` Nutanix; manifests 438/438 OK in both directories; everRun source stopped again. The two were never running together. |
+
+Compare: the first cutover (2026-11-26) had downtime about 421.8 s; this one 422.1 s.
+
+### T1: fresh deploy of 0.3.2 as `ev2ahv-appliance-3`
+
+| Step | Result |
+|---|---|
+| Image | Prism image `ev2ahv-appliance-0.3.2` (daabb60c-fb58-483c-8123-d03069189f1d), upload 39.6 s through the v3 file API |
+| VM | `ev2ahv-appliance-3` (a0090f8b-2db6-484b-7aa1-f9aa927064ca): 2 vCPU, 4 GiB, 20 GiB disk cloned from the image (no `storageContainer`), BIOS, NIC on VLAN135-IPAM, static 10.12.135.160 |
+| IP proof | 10.12.135.160: no ping (3 probes, twice), neighbour entry INCOMPLETE, in no NIC of any of the Prism VMs, outside every IPAM pool of VLAN135-IPAM, no DNS name |
+| First boot | ping after ~15 s, HTTPS 200 after ~24 s; 19.8 s to multi-user (4.5 kernel + 3.6 initrd + 11.7 userspace); `systemctl --failed` empty, system state running, SELinux Enforcing, 0 AVC, Python 3.12.16, version 0.3.2, ~500 MiB RAM used idle |
+| Forced password change | default login gave `must_change`, API 403 until changed, then 200; new UI password in `~/.config/ev2ahv/appliance3-ui.pw` (0600). The expired `admin` password was changed over ssh (new one in `~/.config/ev2ahv/appliance3-admin.pw`, 0600) and the bastion key added to admin's authorized_keys |
+| AOS environment | Nutanix-lab-PC added with the lab API key: Connected, 89 VMs visible |
+| Health and self-test | health finds itself (`ev2ahv-appliance-3`); self-test PASS (1 GiB hot-add, root helper, offline, remove); no failed units afterwards (the BrokenPipe fix works in the shipped image) |
+
+Not done on appliance-3: the everRun environment, a migration, the console static-IP menu (the VM got its address from IPAM).

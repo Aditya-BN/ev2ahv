@@ -1,7 +1,7 @@
 # ev2ahv appliance image
 
 A Rocky Linux 9 minimal qcow2 that boots on Nutanix AHV and serves the ev2ahv web app (same idea as the Nutanix Move appliance).
-Output: `dist/ev2ahv-<VERSION>.qcow2` (0.2.0 with the Python 3.12 venv: 307,232,768 bytes = 293 MiB compressed, sha256 a13c5b01...b995; was 271-284 MB) (+ `.sha256`, `MANIFEST.json`, `.sbom.spdx.json`).
+Output: `dist/ev2ahv-<VERSION>.qcow2` (0.3.2: 307,298,304 bytes, sha256 fd0d36b0...5619, build 6 min 16 s; 0.2.0 with the Python 3.12 venv: 307,232,768 bytes = 293 MiB compressed, sha256 a13c5b01...b995; was 271-284 MB) (+ `.sha256`, `MANIFEST.json`, `.sbom.spdx.json`).
 
 ## Build
 
@@ -156,6 +156,8 @@ and starts the old version. Database schema changes run at startup from `MIGRATI
 `server/ev2ahv_server/store.py` (`PRAGMA user_version`); a newer database than the app knows is refused.
 Backups are not pruned; delete old ones by hand.
 
+Tried for real on 2026-11-27 (appliance-2, 0.2.0 -> 0.3.1 in 23 s, 0.3.1 -> 0.3.2 in 2 s; see docs/results.md). Call it by its full path, `sudo /usr/local/sbin/ev2ahv-upgrade ...`, because sudo's `secure_path` does not include it. After an upgrade, also check `/api/v2/plans`: the health check only reads `/api/v2/appinfo`.
+
 Appliances older than 0.3.1 do not have `ev2ahv-upgrade` yet: extract it from the bundle and run it with
 `sudo python3 ./ev2ahv-upgrade apply <bundle>`; it installs itself to `/usr/local/sbin`.
 
@@ -233,3 +235,11 @@ Notes:
   appliance could use the key already authorized on the everRun nodes and in the guest. Production: authorize the key shown on the Health page instead (see Authorize the appliance SSH key).
 - Bug found: failed `ev2ahv-blockd@` instances after each write (BrokenPipeError on the last "ok" line). Fixed in the repo,
   hot-patched here; needs an image rebuild to ship.
+
+## Validation of 0.3.2 on AHV (2026-11-27, `ev2ahv-appliance-3`)
+
+Fresh deploy (T1) from Prism image `ev2ahv-appliance-0.3.2`: VM `ev2ahv-appliance-3`, 2 vCPU, 4 GiB, 20 GiB, BIOS, VLAN135-IPAM,
+static 10.12.135.160 (checked free). 19.8 s to multi-user, no failed units, SELinux Enforcing, 0 AVC, forced UI password change,
+AOS environment Connected, health finds itself, self-test PASS, no failed `ev2ahv-blockd@` units afterwards (BrokenPipe fix shipped).
+Passwords: `~/.config/ev2ahv/appliance3-ui.pw`, `appliance3-admin.pw` (0600). Details in docs/results.md.
+The same image line was reached on `ev2ahv-appliance-2` by upgrade bundle (0.2.0 -> 0.3.2), see Upgrades.
