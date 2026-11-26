@@ -2,9 +2,11 @@
 # Security scans of the image root tree (build/tree, produced by mkimage.sh). Output in build/scan/.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-REPO=$PWD; mkdir -p build/scan
-docker run --rm -v $REPO/build/tree:/t:ro -v $REPO/build/scan:/o aquasec/trivy:latest rootfs --scanners vuln --severity HIGH,CRITICAL --format json -o /o/trivy.json /t >/dev/null 2>&1
-docker run --rm -v $REPO/build/tree:/t:ro aquasec/trivy:latest rootfs --scanners vuln --severity HIGH,CRITICAL --skip-db-update /t 2>&1 | tail -40 > build/scan/trivy.txt
+REPO=$PWD; mkdir -p build/scan build/trivy-cache
+# One trivy DB cache for both runs: the second run skips the DB update and failed on a cold cache before.
+TC="-v $REPO/build/trivy-cache:/root/.cache/trivy"
+docker run --rm $TC -v $REPO/build/tree:/t:ro -v $REPO/build/scan:/o aquasec/trivy:latest rootfs --scanners vuln --severity HIGH,CRITICAL --format json -o /o/trivy.json /t >/dev/null 2>&1
+docker run --rm $TC -v $REPO/build/tree:/t:ro aquasec/trivy:latest rootfs --scanners vuln --severity HIGH,CRITICAL --skip-db-update /t 2>&1 | tail -40 > build/scan/trivy.txt
 docker run --rm -v $REPO/appliance:/a:ro ev2ahv-builder bash -c 'python3.12 -m pip install -q -U pip pip-audit >/dev/null 2>&1; python3.12 -m pip_audit -r /a/requirements.txt --no-deps --disable-pip 2>&1 | tail -30' > build/scan/pip-audit.txt
 docker run --rm --privileged -v $REPO/build/tree:/t -v $REPO/build/scan:/o ev2ahv-builder bash -c '
  dnf -y -q install openscap-scanner scap-security-guide >/dev/null 2>&1

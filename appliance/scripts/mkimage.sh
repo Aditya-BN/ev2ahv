@@ -43,6 +43,8 @@ id admin >/dev/null 2>&1 || useradd -m -G wheel -s /bin/bash admin
 echo "admin:$(openssl passwd -6 'nutanix/4u')" | chpasswd -e
 chage -d 0 admin
 passwd -l root
+# CIS no_empty_passwords: no account may log in with an empty password (all accounts here have one or are locked)
+sed -i 's/ nullok\b//' /etc/pam.d/system-auth /etc/pam.d/password-auth
 install -d -m 0750 -o ev2ahv -g ev2ahv /var/lib/ev2ahv /var/lib/ev2ahv/tls /var/lib/ev2ahv/config /var/log/ev2ahv
 install -d -m 0750 -o root -g ev2ahv /etc/ev2ahv
 chown root:ev2ahv /etc/ev2ahv/ev2ahv.env; chmod 0640 /etc/ev2ahv/ev2ahv.env

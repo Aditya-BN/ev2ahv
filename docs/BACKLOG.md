@@ -26,7 +26,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D8c | P2 | Network step is VLAN only: subnets are listed without their type and overlay (VPC) subnets are untested as NIC targets. Needs a VPC subnet in the lab. | web, server/live.py, builder |
 | D8d | P2 | "Test migration" works in mock mode only; the engine has no isolated-subnet test clone. | engine, server |
 | D9 | P3 | Windows guests need `disk_bus: pci` (virtio-blk); virtio-scsi boot did not work. | engine, docs |
-| D10 | P3 | Security scan leftovers: trivy reports 1 HIGH, setuptools 70.3.0 (probably a false positive, since the venv has 84.2.1). CIS L1 has 69 fails, not triaged. `scan.sh`'s second trivy run fails on a cold DB cache. | appliance/scripts/scan.sh, docs/security.md |
+| D10 | P3 | Security scan leftovers after triage: rebuild and rescan to confirm the three CIS fixes (ipv6 forwarding, module blacklist, no `nullok`); check sysctl and modules on a booted instance; decide whether to drop pip from the venv for a clean trivy report; `ensure_pam_wheel_group_empty` open. | appliance, docs/security.md |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
 | D13 | P3 | UI has a single local user; no RBAC, no LDAP. The default certificate is self-signed (the Health page can replace it). | server |
 | D14 | P3 | The image fallback (`target.transfer: image`) needs up to twice the disk size free on the writer. | engine |
@@ -50,6 +50,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-26: D10 triage. The trivy HIGH (setuptools 70.3.0) is a confirmed false positive from pip's vendored package list
+  (0 HIGH with pip's directory skipped). `scan.sh` shares one trivy cache, so the second run no longer fails cold (both runs
+  exit 0). CIS: a static check of the tree found 3 real gaps among the "false negatives"; they are fixed in `appliance/` for
+  the next build (up to 8 of the 69 fails; sysctl rules may still fail under oscap-chroot). Details in docs/security.md.
 - 2026-11-26: D8 split into D8a-D8d (each needs the lab or a real Move to finish). In live mode, the wizard's project picker
   now says the project is not applied, instead of offering a hard-coded list that the engine ignored.
 - 2026-11-26: D6 (code; real values not yet seen, see T12). Discovery fills FT/HA from the everRun web API

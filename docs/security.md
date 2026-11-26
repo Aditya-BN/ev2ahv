@@ -19,7 +19,22 @@ Profile `xccdf_org.ssgproject.content_profile_cis_server_l1` from scap-security-
 
 Result (re-run on the Python 3.12 image, unchanged): 187 pass, 69 fail, 34 not applicable, OpenSCAP score 83.7 (about 73 % of applicable rules pass; first run before the hardening pass above: 172 pass / 81 fail).
 
-Important caveat: the sysctl and kernel-module rules (about 20 of the failures) are false negatives. `oscap-chroot` reads the running kernel of the build container, not the image; the values are set in `/etc/sysctl.d/90-ev2ahv.conf` and `/etc/modprobe.d/ev2ahv-blacklist.conf`. They are not verified on a booted instance by this scan.
+Sysctl and kernel-module rules (22 of the failures): `oscap-chroot` reads the running kernel of the build container, not the
+image, so these fail in this scan whatever the image sets. A static check of the 0.2.0 tree (2026-11-26, D10) found that most
+values were already right in `/etc/sysctl.d/90-ev2ahv.conf`, but three gaps were real and are fixed in the repo for the next
+build (not yet rebuilt or rescanned):
+
+| Rule | Gap in the 0.2.0 tree | Fix (`appliance/`) |
+| --- | --- | --- |
+| sysctl_net_ipv6_conf_all_forwarding | key not set | `net.ipv6.conf.{all,default}.forwarding = 0` in `rootfs/etc/sysctl.d/90-ev2ahv.conf` |
+| kernel_module_{cramfs,freevxfs,hfs,hfsplus,jffs2,usb-storage}_disabled | `install X /bin/false` only; the rules also want `blacklist X` | `blacklist` lines in `rootfs/etc/modprobe.d/ev2ahv-blacklist.conf` |
+| no_empty_passwords | `nullok` on pam_unix in system-auth and password-auth | `mkimage.sh` removes `nullok` (every account has a password or is locked) |
+
+The other sysctl rules (ipv4 redirects, source route, log_martians, rp_filter, ip_forward, ipv6 accept_ra/redirects,
+yama ptrace_scope) are set correctly in the tree. All of these still need checking on a booted instance (`sysctl -a`,
+`modprobe -n -v cramfs`).
+
+Not explained in the table below and left open: `ensure_pam_wheel_group_empty` (wheel holds `admin`, needed for sudo).
 
 Accepted exceptions (real failures):
 
@@ -41,7 +56,17 @@ Accepted exceptions (real failures):
 
 OS packages (Rocky 9.9): 0 HIGH/CRITICAL (with fixes available) at build time.
 
-Python venv (Python 3.12 from Rocky AppStream, venv `/opt/ev2ahv/venv`): 0 CRITICAL, 1 HIGH reported by trivy. The remaining one is `setuptools 70.3.0` (CVE-2025-47273, fixed in 78.1.1). The venv ships setuptools 84.2.1 and the image holds no 70.3.0 metadata I could locate (the SBOM lists only 53.0.0 for the system python3.9 and 84.2.1 for the venv), so this is most likely a trivy false positive on a vendored copy; unconfirmed.
+Python venv (Python 3.12 from Rocky AppStream, venv `/opt/ev2ahv/venv`): 0 CRITICAL, 1 HIGH reported by trivy:
+`setuptools 70.3.0` (CVE-2025-47273, path traversal in `setuptools.package_index.PackageIndex`, fixed in 78.1.1).
+Confirmed false positive (2026-11-26, trivy 0.76.2, on the 0.2.0 tree): the 70.3.0 entry has no file path and comes with
+exactly the package list of pip 26.3's `pip/_vendor/vendor.txt` (CacheControl, distlib, resolvelib, rich, truststore, ...).
+pip vendors only `pkg_resources` from setuptools, and there is no `package_index` module anywhere under `pip/_vendor`.
+With `--skip-dirs opt/ev2ahv/venv/lib/python3.12/site-packages/pip` the HIGH count is 0. The installed setuptools is 84.2.1.
+Options if a clean report is required: drop pip from the shipped venv (nothing installs packages at runtime) or record the
+exception in a trivy ignore file; neither is done yet.
+
+`scan.sh`: both trivy runs now share `build/trivy-cache`; before, the second run (`--skip-db-update`) had no DB on a cold
+cache and failed. Tested on the 0.2.0 tree: both runs exit 0.
 
 pip-audit on `appliance/requirements.txt`: 0 known vulnerabilities (was 19 on Python 3.9). The venv moved from python3.9 to python3.12 and the pins were bumped to the latest releases (fastapi 0.165.0, starlette 1.10.0, anyio 4.16.0, urllib3 2.8.0, requests 2.34.2, pip 26.3, setuptools 84.2.1, uvicorn 0.54.0, pydantic 2.14.4, PyYAML 6.0.4, xxhash 4.1.0, among others). The system python3.9 stays installed because dnf and cloud-init need it; the blockd units run from the venv python (3.12); `ev2ahv-config` (stdlib only) stays on system python3. Rocky's python3.9 rpm packages carry setuptools 53.0.0 (trivy reports no HIGH for it with fixes available).
 
