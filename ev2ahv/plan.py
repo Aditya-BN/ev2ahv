@@ -1,7 +1,9 @@
 """Migration plan: YAML, validated before anything runs."""
+import os
 import re
 import yaml
 
+SAFE_NAME = re.compile(r"^\w[\w.-]*$")   # plan and disk names end up in file names on the writer
 MAC = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 DEFAULTS = {"sync": {"chunk_mib": 4, "algo": "auto", "batch": 32}, "verify": {}}
 
@@ -29,15 +31,22 @@ def validate(p):
     if errors:
         raise PlanError("; ".join(errors))
     check(lambda: _need(p, "name", "plan"))
+    if p.get("name") and not SAFE_NAME.match(str(p["name"])):
+        errors.append("plan.name may only contain letters, digits, '.', '_' and '-'")
     if not p["writer"].get("local"):   # local: the appliance itself is the writer
         for key in ("vm", "host"):
             check(lambda k=key: _need(p["writer"], k, "writer"))
     t, s = p["target"], p["source"]
     for key in ("vm_name", "cluster", "container"):
         check(lambda k=key: _need(t, k, "target"))
+    if str(t.get("vm_name") or "").startswith("everrun-"):
+        errors.append("target.vm_name must not start with everrun-: those are production VMs")
     t.setdefault("firmware", "bios"); t.setdefault("disk_bus", "scsi"); t.setdefault("machine_type", "PC")
     t.setdefault("convert_to_scsi", True)    # only acts when disk_bus is pci
     t.setdefault("transfer", "hotadd"); t.setdefault("staging_dir", "/var/tmp/ev2ahv-staging")
+    sd = str(t["staging_dir"])
+    if not sd.startswith("/") or sd != os.path.normpath(sd) or sd.count("/") < 2:
+        errors.append("target.staging_dir must be a normalised absolute path at least two levels deep")
     if t["transfer"] not in ("hotadd", "image"):
         errors.append("target.transfer must be hotadd or image")
     t.setdefault("sockets", 1); t.setdefault("cores", 2); t.setdefault("threads", 1); t.setdefault("memory_mib", 2048)
@@ -55,6 +64,8 @@ def validate(p):
         if not d.get("path"):
             errors.append(f"disks[{i}].path is required")
         d.setdefault("name", f"disk{i}")
+        if not SAFE_NAME.match(str(d["name"])):
+            errors.append(f"disks[{i}].name may only contain letters, digits, '.', '_' and '-'")
         if d.get("size_bytes") is not None and (not isinstance(d["size_bytes"], int) or d["size_bytes"] <= 0):
             errors.append(f"disks[{i}].size_bytes must be a positive integer")
         if d.get("bus") not in (None, "scsi", "pci"):

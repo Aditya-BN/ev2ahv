@@ -3,6 +3,7 @@ import json, logging, ssl, time, urllib.error, urllib.parse, urllib.request, uui
 
 log = logging.getLogger("ev2ahv.prism")
 OWNED_PREFIX = "ev2ahv-"
+NEVER_PREFIXES = ("everrun-",)   # production everRun VMs: never owned, not even when a plan names one
 VMS = "/vmm/v4.2/ahv/config/vms"
 
 
@@ -17,7 +18,8 @@ class NotOwned(PrismError):
 class Prism:
     def __init__(self, creds, dry_run=False, extra_owned=()):
         self.c, self.dry_run = creds, dry_run
-        self.extra_owned = set(extra_owned)
+        self.extra_owned = set(extra_owned)   # whole-VM ownership: the plan's target VM
+        self.disk_only = set()                # the writer / appliance VM: disks may be added and removed, nothing else
         self.ctx = ssl.create_default_context() if creds.verify_tls else ssl._create_unverified_context()
 
     def _call(self, method, path, body=None, etag=None, base="/api"):
@@ -42,13 +44,15 @@ class Prism:
         return self._call("GET", path)[0]
 
     # ---- ownership ---------------------------------------------------------
-    def is_owned(self, name):
-        return bool(name) and (name.startswith(OWNED_PREFIX) or name in self.extra_owned)
+    def is_owned(self, name, disk_ok=False):
+        if not name or name.startswith(NEVER_PREFIXES):
+            return False
+        return name.startswith(OWNED_PREFIX) or name in self.extra_owned or (disk_ok and name in self.disk_only)
 
-    def _owned_vm(self, vm_id):
+    def _owned_vm(self, vm_id, disk_ok=False):
         doc, hdr = self._call("GET", f"{VMS}/{vm_id}")
         vm = doc["data"]
-        if not self.is_owned(vm.get("name")):
+        if not self.is_owned(vm.get("name"), disk_ok):
             raise NotOwned(f"refusing to modify VM {vm.get('name')!r} ({vm_id}): not ev2ahv-owned")
         etag = hdr.get("ETag") or hdr.get("Etag") or hdr.get("etag")
         return vm, etag
@@ -198,7 +202,7 @@ class Prism:
 
     def add_disk(self, vm_id, size_bytes, container=None, bus="SCSI", index=None, clone_from=None):
         """Add an empty disk, or a clone of `clone_from` (from disk_ref). Returns its extId."""
-        vm, etag = self._owned_vm(vm_id)
+        vm, etag = self._owned_vm(vm_id, disk_ok=True)
         before = {d["extId"] for d in vm.get("disks") or []}
         used = {d["diskAddress"]["index"] for d in vm.get("disks") or []
                 if d["diskAddress"]["busType"] == bus}
@@ -222,7 +226,7 @@ class Prism:
 
     def remove_vm_disk(self, vm_id, disk_id):
         """Remove (and on AHV, delete) one disk. Always the VM-scoped path, never clustermgmt."""
-        vm, _ = self._owned_vm(vm_id)
+        vm, _ = self._owned_vm(vm_id, disk_ok=True)
         if disk_id not in {d["extId"] for d in vm.get("disks") or []}:
             log.info("disk %s is already gone from %s", disk_id, vm["name"])
             return

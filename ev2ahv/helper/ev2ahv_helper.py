@@ -244,6 +244,13 @@ def cmd_write(args):
     if problem:
         sys.exit("refusing to write %s: %s" % (args.device, problem))
     fd = os.open(args.device, os.O_WRONLY | getattr(os, "O_CLOEXEC", 0))
+    mode = os.fstat(fd).st_mode
+    if not (stat.S_ISBLK(mode) or stat.S_ISREG(mode)):   # never a char device, fifo, directory or socket
+        os.close(fd)
+        sys.exit("refusing to write %s: not a block device or a regular file" % args.device)
+    if args.chunk <= 0:
+        os.close(fd)
+        sys.exit("refusing to write: --chunk must be positive")
     size = device_size(fd)
     stream = sys.stdin.buffer
     count = 0

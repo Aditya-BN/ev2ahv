@@ -93,7 +93,7 @@ def router(store, user, bump):
         pr, t, disk = prism_for(tp, store.secret), BlockdTransport(), None
         try:
             vm = pr.vm(uuid)
-            pr.extra_owned.add(vm["name"])
+            pr.disk_only.add(vm["name"])
             step(f"Found this appliance in Prism: {vm['name']}")
             cluster = vm["cluster"]["extId"]
             ct = pr.container_id(container, cluster)

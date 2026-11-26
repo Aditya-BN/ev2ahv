@@ -17,6 +17,17 @@ def plan_dir(name):
 
 
 
+def safe_staging_file(path, staging_dir=None):
+    """Guard for every rm/truncate of a staging file on the writer (it runs as root there). The path must be a plain
+    absolute *.raw path: no "..", not "/", and directly inside the plan's staging_dir when that is known."""
+    if (not isinstance(path, str) or not path.startswith("/") or path != os.path.normpath(path)
+            or not path.endswith(".raw") or os.path.basename(path) == ".raw" or path.count("/") < 2):
+        raise RuntimeError(f"refusing to delete or overwrite {path!r}: not a staging *.raw file")
+    if staging_dir and os.path.dirname(path) != os.path.normpath(staging_dir):
+        raise RuntimeError(f"refusing to delete or overwrite {path!r}: not inside the staging directory {staging_dir!r}")
+    return path
+
+
 def image_space_needed(sizes):
     """Worst-case free bytes the writer needs for target.transfer: image: a raw staging file per disk (sparse, but
     worst case fully written) plus one qcow2 at a time while it is converted and uploaded (worst case the largest
@@ -58,7 +69,7 @@ class Migration:
         if self.p["writer"].get("local"):
             vm_id = self.writer.uuid()
             vm = self.prism.vm(vm_id)
-            self.prism.extra_owned.add(vm["name"])   # it may add and remove disks on itself, nothing else
+            self.prism.disk_only.add(vm["name"])   # it may add and remove disks on itself, nothing else (enforced in Prism)
             return vm_id
         vm = self.prism.vm_by_name(self.p["writer"]["vm"])
         if not vm:
@@ -100,7 +111,7 @@ class Migration:
         if self.image_mode:
             if entry:
                 return self.device_for(entry)
-            path = self.staging_file(disk)
+            path = safe_staging_file(self.staging_file(disk), self.p["target"].get("staging_dir"))
             q = shlex.quote(path)
             self.writer.run(f"mkdir -p {shlex.quote(os.path.dirname(path))}; rm -f {q}; truncate -s {size} {q}")
             all_staging[disk["name"]] = {"file": path, "path": path, "size": size}
@@ -142,7 +153,7 @@ class Migration:
                 self.prism.delete_image(old["extId"])
             images.pop(disk["name"], None)
             self.state.set("images", images)
-            raw = self.staging()[disk["name"]]["file"]
+            raw = safe_staging_file(self.staging()[disk["name"]]["file"], self.p["target"].get("staging_dir"))
             qcow = raw[:-4] + ".qcow2"
             q_raw, q_qcow = shlex.quote(raw), shlex.quote(qcow)
             # one qcow2 at a time, removed after upload or failure, so the writer needs the raw files plus the largest
@@ -650,8 +661,8 @@ class Migration:
                     log.info("[dry-run] remove staging %s", entry.get("disk_id") or entry["file"])
                     continue
                 if entry.get("file"):
-                    q = shlex.quote(entry["file"])
-                    self.writer.run(f"rm -f {q} {shlex.quote(entry['file'][:-4] + '.qcow2')}")
+                    raw = safe_staging_file(entry["file"], self.p["target"].get("staging_dir"))
+                    self.writer.run(f"rm -f {shlex.quote(raw)} {shlex.quote(raw[:-4] + '.qcow2')}")
                 else:
                     self.prism.remove_vm_disk(vm, entry["disk_id"])
                 out["removed_staging"].append(name)

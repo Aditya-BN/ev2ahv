@@ -37,6 +37,11 @@ def collect(root=ROOT):
     out.append(("app/requirements.txt", os.path.join(root, "appliance", "requirements.txt")))
     walk(os.path.join(root, "build", "wheels"), "wheels")
     out = [(a, p) for a, p in out if not a.endswith("/.ok")]
+    # A symlink inside the tree must not pull a file from outside the repo (a key, /etc/shadow, ...) into the bundle.
+    top = os.path.realpath(root) + os.sep
+    for _, p in out:
+        if not os.path.realpath(p).startswith(top):
+            raise SystemExit(f"refusing to bundle {p}: it resolves outside {root}")
     out.append(("ev2ahv-upgrade", os.path.join(root, "appliance", "rootfs", "usr", "local", "sbin", "ev2ahv-upgrade")))
     return out
 
