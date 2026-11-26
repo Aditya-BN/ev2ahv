@@ -29,7 +29,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D10 | P3 | Security scan leftovers after triage: rebuild and rescan to confirm the three CIS fixes (ipv6 forwarding, module blacklist, no `nullok`); check sysctl and modules on a booted instance; decide whether to drop pip from the venv for a clean trivy report; `ensure_pam_wheel_group_empty` open. | appliance, docs/security.md |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
 | D13 | P3 | UI has a single local user; no RBAC, no LDAP. The default certificate is self-signed (the Health page can replace it). | server |
-| D14 | P3 | The image fallback (`target.transfer: image`) needs up to twice the disk size free on the writer. | engine |
+| D14 | P3 | The image fallback (`target.transfer: image`) still needs the total disk size plus the largest disk free on the writer, and the upload adds to downtime. Going lower needs uploading straight from the raw file (no qcow2 copy). | engine |
 
 ## What to test
 
@@ -50,6 +50,9 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-26: D14 (partly). The image-mode prep-check asked for twice the total disk size; the real worst case is the total
+  plus the largest disk (one qcow2 at a time), for example 100 GiB instead of 120 GiB for 40+10+10 GiB. A failed upload no longer
+  leaves its qcow2 on the writer (a retry needed room for two copies). 4 new unit tests; not run on the lab writer.
 - 2026-11-26: D10 triage. The trivy HIGH (setuptools 70.3.0) is a confirmed false positive from pip's vendored package list
   (0 HIGH with pip's directory skipped). `scan.sh` shares one trivy cache, so the second run no longer fails cold (both runs
   exit 0). CIS: a static check of the tree found 3 real gaps among the "false negatives"; they are fixed in `appliance/` for
