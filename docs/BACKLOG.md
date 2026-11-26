@@ -20,7 +20,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 |---|---|---|---|
 | D1 | P1 | The root-helper BrokenPipe fix (`ev2ahv/helper/ev2ahv_helper.py`, 292e839) is not in `dist/ev2ahv-0.2.0.qcow2`. It is only hot-patched on `ev2ahv-appliance-2`. Rebuild before handing out the image. | appliance |
 | D5 | P2 | No changed-block tracking: every resync and final sync reads the whole disk (about 110 MiB/s). Downtime grows with disk size. | engine |
-| D6 | P2 | Discovery uses `virsh -r` over SSH and cannot tell FT from HA (availability is blank). The everRun DOH API has it. | server/live.py, ev2ahv/everrun_api.py |
 | D7 | P2 | Upgrade path is not built: a versioned bundle, DB migrations with backup and rollback, and UI/CLI apply. Deferred by the owner. | appliance, server |
 | D8 | P2 | UI gaps against Move: no Prism project list, no "Edit Cutover Settings", the network step is VLAN-only (no VPC), and "test migration" works in mock mode only. | web, server |
 | D9 | P3 | Windows guests need `disk_bus: pci` (virtio-blk); virtio-scsi boot did not work. | engine, docs |
@@ -44,9 +43,14 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | T9 | Several VMs in one plan at once | Two `ev2ahv-src-*` guests | Both complete; resyncs do not starve each other |
 | T10 | Prism username/password auth (D11) | Environment with a user and password | Validate, refresh and migrate work |
 | T11 | Unit tests (D12) | `tools/check.sh` or the GitHub `ci` workflow | All pass |
+| T12 | FT/HA in discovery (D6) against the real everRun DOH API | `EV2AHV_EVERRUN_PASS=... python3 ev2ahv/everrun_api.py --host <portal> list`, then refresh the everRun environment in the UI | `ev2ahv-src-rocky9` shows FT and `ev2ahv-src-win22` HA; if the raw text is something else, extend `availability_level` |
 
 ## Done (recent)
 
+- 2026-11-26: D6 (code; real values not yet seen, see T12). Discovery fills FT/HA from the everRun web API
+  (`EverRun.availability()`, the same `watch` call as `everrun_api.py list`), normalized by `availability_level`. If the
+  everRun password is missing or the API fails, the column stays blank and a warning is logged; discovery still works.
+  5 new unit tests on a sample `watch` response.
 - 2026-11-26: D2. Documented step "Authorize the appliance SSH key" in docs/appliance.md (what root access is used for,
   per-node steps, rotation, revocation). The Health page shows a ready-to-paste `authorized_keys` line limited with `from=`
   and no forwarding, and the everRun validation error points there. `ev2ahv-appliance-2` still runs the lab shortcut (the

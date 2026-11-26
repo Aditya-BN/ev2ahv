@@ -15,7 +15,7 @@ import glob, json, logging, os, re, shlex, subprocess, sys, threading, time
 import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from ev2ahv import credentials, everrun, plan as planlib  # noqa: E402
+from ev2ahv import credentials, everrun, everrun_api, plan as planlib  # noqa: E402
 from ev2ahv.prism import Prism  # noqa: E402
 
 DATA = os.path.expanduser("~/.local/share/ev2ahv/ui")
@@ -117,6 +117,7 @@ def refresh(doc, secret, settings=None):
         doc["workloads"] = _plan_file_workloads(os.path.expanduser(doc["address"]), settings)
     else:
         doc["workloads"] = _everrun_workloads(doc["node_addresses"], settings)
+        _fill_availability(doc, secret)
     doc["vm_count"] = len(doc.get("workloads", [])) if t != "aos" else doc["vm_count"]
     doc["status"], doc["error"], doc["last_refreshed"] = "Connected", None, time.time()
     return doc
@@ -152,12 +153,27 @@ def _everrun_workloads(nodes, settings=None):
                 pass
         out.append({"id": name, "name": name, "os_type": "windows" if windows else "linux",
                     "os_name": "Windows" if windows else "Linux", "power_state": "On" if running else "Off",
-                    "availability": "",   # virsh shows a paused partner for both FT and HA guests
+                    "availability": "",   # filled from the everRun web API by _fill_availability
                     "active_node": host, "vcpus": info["vcpus"], "memory_mib": info["memory_mib"],
                     "firmware": info["firmware"], "disks": len(info["disks"]), "total_bytes": size,
                     "nics": [{"network": "sharednetwork", "mac": n["mac"], "ip": None} for n in info["nics"]],
                     "warnings": warn})
     return out
+
+
+def _fill_availability(doc, secret, api=everrun_api.EverRun):
+    """FT or HA per workload from the everRun web API (virsh shows a paused partner for both, so it cannot tell).
+    Best effort: on any error the column stays blank and discovery still works."""
+    pw = secret(f"provider:{doc['id']}:password") if doc.get("id") else None
+    if not (pw and doc.get("address")):
+        return
+    try:
+        levels = api(doc["address"], doc.get("username") or "admin", pw, timeout=30).availability()
+    except Exception as e:
+        log.warning("everRun %s: cannot read FT/HA from the web API: %s", doc["address"], e)
+        return
+    for w in doc.get("workloads", []):
+        w["availability"] = levels.get(w["name"], "")
 
 
 def _plan_file_workloads(d, settings=None):
