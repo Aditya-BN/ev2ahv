@@ -137,7 +137,8 @@ def apply(bundle, force=False, ops=None):
             if os.path.exists(os.path.join(work, "ev2ahv-upgrade")):
                 shutil.copy2(os.path.join(work, "ev2ahv-upgrade"), P["self"])
             sh("chown", "-R", "root:root", P["app"], check=False)
-            sh("restorecon", "-R", P["app"], check=False)
+            if shutil.which("restorecon"):   # absent off-appliance (CI runners)
+                sh("restorecon", "-R", P["app"], check=False)
             ops["systemctl"]("start")
             ops["health"](new)
         except Exception as e:
