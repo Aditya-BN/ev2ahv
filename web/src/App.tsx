@@ -4,7 +4,7 @@ import { api, authEvents, AppInfo } from './api';
 import { Spinner } from './components/ui';
 import { setDisplayTz, useLive } from './util';
 import Login from './pages/Login';
-import TopBar from './components/TopBar';
+import NavRail from './components/NavRail';
 import Dashboard from './pages/Dashboard';
 import Wizard from './pages/Wizard';
 import PlanDetails from './pages/PlanDetails';
@@ -21,7 +21,7 @@ export const SessionCtx = createContext<{ info: AppInfo; logout: () => void }>(n
 export const useSession = () => useContext(SessionCtx);
 
 function Shell({ children }: { children: React.ReactNode }) {
-  return <><TopBar /><main className="page">{children}</main></>;
+  return <div className="shell"><NavRail /><main className="page">{children}</main></div>;
 }
 
 export default function App() {

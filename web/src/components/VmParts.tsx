@@ -14,6 +14,25 @@ export function VmStatusBadge({ s }: { s: VmStatus }) {
   return <span className={'vm-status ' + vmTone(s)}><span className="si">{icon}</span> {s}</span>;
 }
 
+// Prep-script downloads. Always offered: live discovery often leaves the guest OS unknown, so
+// both scripts show unless every VM is known to be one OS. `planId` is optional (unsaved wizard plan).
+export function PrepScripts({ planId, os, mode }: { planId?: string; os: string[]; mode: 'manual' | 'automatic' }) {
+  const win = os.includes('windows'), lin = os.includes('linux');
+  const unknown = os.some((o) => o !== 'windows' && o !== 'linux') || (!win && !lin);
+  const showWin = win || unknown, showLin = lin || unknown;
+  const auto = mode !== 'manual';
+  return (
+    <div className="prep-dl" data-testid="prep-scripts">
+      <p className="lead">{auto
+        ? 'Automatic mode runs the preparation for you. Download the scripts only if you want to review what it does.'
+        : 'Run the script as Administrator (Windows) or root (Linux) inside every VM, then start the plan.'}</p>
+      {showWin && <a className={'dl' + (auto ? ' review' : '')} href={api.prepScriptUrl(planId, 'windows')}>{auto ? 'Download for review: Windows (.ps1)' : 'Download Windows script (.ps1)'}</a>}
+      {showLin && <a className={'dl' + (auto ? ' review' : '')} href={api.prepScriptUrl(planId, 'linux')}>{auto ? 'Download for review: Linux (.sh)' : 'Download Linux script (.sh)'}</a>}
+      {unknown && <p className="muted">The guest OS of some VMs is not known yet, so both scripts are offered.</p>}
+    </div>
+  );
+}
+
 export function ChecksBadge({ vm }: { vm: PlanVm }) {
   const w = worstCheck(vm);
   if (!w) return <span className="muted">-</span>;

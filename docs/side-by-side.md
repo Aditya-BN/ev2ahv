@@ -1,4 +1,6 @@
-# ev2ahv UI vs Nutanix Move 6.2, side by side
+# ev2ahv UI vs Nutanix Move 6.2, side by side (historical)
+
+> **Historical.** This is the reference capture of Move's UI made in Stage C, when ev2ahv still copied Move's look. The ev2ahv UI no longer looks like this: it was redesigned in Material 3 Expressive (see [ui-design.md](ui-design.md)). The right-hand images below show the old look, not the current one. Current screenshots: `docs/ui-shots/light` and `docs/ui-shots/dark`.
 
 Left: Move (read-only capture, docs/move-reference). Right: ev2ahv in mock mode. Layout, flow and wording follow Move; components, CSS and brand are ev2ahv's own (no Move assets).
 Wizard steps 4-6 of Move are reconstructed, not observed (Move failed to create a plan: vCenter DNS).

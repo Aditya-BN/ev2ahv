@@ -16,7 +16,7 @@ Read these first: this file, then [docs/BACKLOG.md](docs/BACKLOG.md) (debt and w
 |---|---|
 | `ev2ahv/` | Engine and CLI (`python3 -m ev2ahv`). Sync, Prism v4 client, target, transport, everRun DOH client, root helper `blockd.py` |
 | `server/ev2ahv_server/` | FastAPI backend, Move-shaped `/api/v2`. `--mock` uses demo data; `--live` drives the engine through `runner.py` subprocesses |
-| `web/` | React + Vite UI that matches Move (`npm run build` gives `web/dist`, which the server serves) |
+| `web/` | React + Vite UI in its own Material 3 Expressive design, keeping the Move-like workflow ([docs/ui-design.md](docs/ui-design.md); `npm run build` gives `web/dist`, which the server serves) |
 | `appliance/` | Rocky 9 appliance qcow2: `bash appliance/build.sh` (docker, no sudo), smoke boot and scans in `appliance/scripts/` |
 | `plans/`, `examples/` | Plan YAMLs for the CLI |
 | `tests/` | Unit tests (`python3 -m pytest tests`) and e2e rigs (`tests/e2e/`) |

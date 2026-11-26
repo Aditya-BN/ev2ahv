@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { Spinner, useDialogs } from '../components/ui';
 import { fmtBytes, fmtDate, fmtDateSec, fmtMem, tzLabel, useLive } from '../util';
+import { PrepScripts } from '../components/VmParts';
 import { StatusText } from './Dashboard';
 import { typeLabel } from '../components/EnvDialogs';
 
@@ -26,7 +27,6 @@ export default function PlanDetails() {
     if (!(await confirm({ title: 'Delete Migration Plan', danger: true, ok: 'Delete', body: <p>Delete plan <b>{p.name}</b>? Target VMs that were already created are kept.</p> }))) return;
     try { await api.deletePlan(id); nav('/dashboard'); } catch (e) { showError(e, 'Delete plan'); }
   };
-  const os = new Set(p.vms.map((v) => v.os_type));
   return (
     <div className="content narrow">
       <Link to="/dashboard" className="back">&#8249; Back to Dashboard</Link>
@@ -61,9 +61,7 @@ export default function PlanDetails() {
               <dt>Uninstall Stratus guest tools</dt><dd>{p.prep.uninstall_guest_tools ? 'Yes' : 'No'}</dd><dt>Install NGT</dt><dd>{p.prep.install_ngt ? 'Yes' : 'No'}</dd>
               <dt>Start</dt><dd>{p.schedule.seed_at ? `${fmtDate(p.schedule.seed_at)} (${tzLabel()})` : started ? fmtDate(p.started_at) : 'On Start'}</dd>
               <dt>Resync interval</dt><dd>{p.schedule.resync_minutes} minutes</dd><dt>Created</dt><dd>{fmtDate(p.created_at)} by {p.created_by}</dd></dl>
-            {p.prep.mode === 'manual' && (
-              <p>Manual preparation scripts: {os.has('windows') && <a className="dl" href={api.prepScriptUrl(id, 'windows')}>Download Windows script (.ps1)</a>}{' '}
-                {os.has('linux') && <a className="dl" href={api.prepScriptUrl(id, 'linux')}>Download Linux script (.sh)</a>}</p>)}
+            <PrepScripts planId={id} os={p.vms.map((v) => v.os_type)} mode={p.prep.mode === 'manual' ? 'manual' : 'automatic'} />
           </div>
           <div className="form-actions left">
             {can('Edit') && <button className="btn primary" id="edit-plan" onClick={() => nav(`/migrationplan/${id}`)}>Edit</button>}

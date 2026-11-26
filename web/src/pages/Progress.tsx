@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, Plan, PlanVm } from '../api';
-import { Kebab, Menu, Modal, Pager, Spinner, usePager } from '../components/ui';
+import { SplitButton, Modal, Pager, Spinner, usePager } from '../components/ui';
 import { ACTION_LABEL, ACTION_ORDER, ChecksBadge, PhaseInfo, ProgressBar, useVmActions, VmLogDialog, VmStatusBadge } from '../components/VmParts';
 import { fmtBytes, fmtDate, fmtDuration, fmtMem, useLive, vmTone } from '../util';
 import { StatusText } from './Dashboard';
@@ -83,6 +83,11 @@ export default function Progress() {
                   disabled={!selVms.some((v) => v.actions.includes(a))} onClick={() => runFor(a, selVms)}>{ACTION_LABEL[a]}</button>
               ))}
             </div>
+            <div className="filter-bar" role="group" aria-label="Filter VMs">
+              <div className="search"><span>&#128269;</span><input value={q} placeholder="e.g. VM Apache" aria-label="Search VMs" onChange={(e) => setQ(e.target.value)} /></div>
+              <button className={'chip' + (fil.size === 0 ? ' on' : '')} aria-pressed={fil.size === 0} onClick={() => setFil(new Set())}>All VMs</button>
+              {FILTERS.map((f) => <button key={f.key} className={'chip' + (fil.has(f.key) ? ' on' : '')} aria-pressed={fil.has(f.key)} onClick={() => toggleFilter(f.key)}>{f.label}</button>)}
+            </div>
             <div className="list-head"><b>Viewing {vms.length} VM{vms.length === 1 ? '' : 's'}</b><div className="spacer" /><Pager pager={pager} total={vms.length} /></div>
             <div className="table-wrap">
               <table className="grid vmtable">
@@ -111,8 +116,9 @@ export default function Progress() {
                         {!v.target_vm_url && !v.error && !(v.test_vm_id && v.status === 'Tested') && '-'}
                       </td>
                       <td className="row-actions">
-                        <Menu kind="icon" align="right" label={Kebab} disabled={v.actions.length === 0}
-                          items={ACTION_ORDER.filter((a) => v.actions.includes(a)).map((a) => ({ label: ACTION_LABEL[a], danger: a === 'cancel' || a === 'rollback', onClick: () => runFor(a, [v]) }))} />
+                        {(() => { const acts = ACTION_ORDER.filter((a) => v.actions.includes(a)); return acts.length === 0 ? null : (
+                          <SplitButton label={ACTION_LABEL[acts[0]]} onClick={() => runFor(acts[0], [v])} moreLabel={`More actions for ${v.name}`}
+                            items={acts.slice(1).map((a) => ({ label: ACTION_LABEL[a], danger: a === 'cancel' || a === 'rollback', onClick: () => runFor(a, [v]) }))} />); })()}
                       </td>
                     </tr>
                   ))}
@@ -121,13 +127,6 @@ export default function Progress() {
               </table>
             </div>
           </div>
-          <aside className="filter-panel">
-            <div className="fp-head"><b>Filters</b><button className="linkbtn" onClick={() => { setFil(new Set()); setQ(''); }}>Clear</button></div>
-            <input value={q} placeholder="e.g. VM Apache" onChange={(e) => setQ(e.target.value)} />
-            <div className="fp-title">Migration Status</div>
-            <label className="cb"><input type="checkbox" checked={fil.size === 0} onChange={() => setFil(new Set())} /> All VMs</label>
-            {FILTERS.map((f) => <label className="cb" key={f.key}><input type="checkbox" checked={fil.has(f.key)} onChange={() => toggleFilter(f.key)} /> {f.label}</label>)}
-          </aside>
         </div>
       )}
       {cfg && plan && <VmConfigDialog plan={plan} vm={cfg} onClose={() => setCfg(null)} />}
