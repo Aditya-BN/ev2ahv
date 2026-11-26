@@ -96,6 +96,46 @@ def sync(source, target, state, key, algo, verify_target=False, batch=32, progre
     return stats
 
 
+def sync_dirty(source, target, state, key, algo, dirty, batch=32, progress=None, stop=None):
+    """Changed-block pass (D5): read only the chunks a tracker reported dirty since the last pass, and send the ones
+    whose content differs from the record. Valid only if the tracker was recording without a gap since the last full
+    pass started; the caller falls back to sync() otherwise. Never used while a full pass is half done."""
+    d = state.disk(key)
+    if d is None or d["pass_active"] or not d["passes"]:
+        raise RuntimeError(f"{key}: no completed full pass to build on; run a full pass")
+    size, chunk = source.size(), source.chunk
+    total = (size + chunk - 1) // chunk
+    idxs = sorted(i for i in set(dirty) if 0 <= i < total)
+    known = state.digests(key)
+    stats, began = Stats(), time.monotonic()
+    stats["read_chunks"] = 0
+    for b in range(0, len(idxs), batch):
+        if stop and stop():
+            raise InterruptedError(f"stopped after {b} of {len(idxs)} dirty chunks")
+        items, updates = [], []
+        for idx, data in source.read(idxs[b:b + batch]):
+            dg = fingerprint(data, algo)
+            stats["read_chunks"] += 1
+            stats["scanned"] += 1
+            updates.append((idx, dg))
+            if dg == known.get(idx, ZERO):
+                stats["skipped"] += 1
+                continue
+            items.append((idx, data))
+            stats["sent"] += 1
+            stats["sent_bytes"] += len(data)
+            stats["zero_written"] += dg == ZERO
+        if items:
+            target.write_batch(items)
+        state.commit(key, updates, 0)
+        if progress:
+            progress(key, min(b + batch, len(idxs)), max(len(idxs), 1), stats)
+    stats["seconds"] = round(time.monotonic() - began, 3)
+    state.event("sync-dirty", disk=key, dirty=len(idxs), **stats)
+    log.info("%s (dirty %d of %d chunks): %s", key, len(idxs), total, dict(stats))
+    return stats
+
+
 def final_sync(source, target, state, key, algo, rounds=5, **kw):
     """A fast source-only pass sends what changed, then verified passes run until both sides match."""
     sync(source, target, state, key, algo, verify_target=False, **kw)

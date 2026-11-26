@@ -192,3 +192,23 @@ onto `ev2ahv-appliance-2`, which adit holds), `npm run build`, and a browser vie
 | D10 trivy | trivy 0.76.2 on the 0.2.0 tree: 1 HIGH (setuptools 70.3.0) with no file path, package list identical to pip 26.3 `vendor.txt`; 0 HIGH with pip's directory skipped. Both `scan.sh` trivy runs exit 0 with the shared cache | rescan of a rebuilt image |
 | D10 CIS | static check of the tree: 3 real gaps among the "false negative" rules (ipv6 forwarding, module `blacklist`, PAM `nullok`), fixed in `appliance/` | rebuild + oscap rescan; sysctl/modules on a booted instance |
 | D14 image mode | worst case for 40+10+10 GiB: 100 GiB (was 120 GiB); 4 unit tests incl. qcow2 removal after a failed upload | a run on the lab writer |
+
+## D5 changed-block tracking on a fake source, 2026-11-26 (builder container, QEMU 10.1)
+
+`docker run --rm -v $PWD:/src:ro -w /src ev2ahv-builder python3 tools/cbt_bench.py <GiB> <dirty %>`; details in docs/cbt.md.
+
+| Disk | Dirty | Full resync | Dirty-bitmap resync | Speed-up |
+|---|---|---|---|---|
+| 2 GiB | 2 % (10 of 512 chunks) | 10.07 s, 512 chunks read | 0.86 s, 10 read | 11.7x |
+| 8 GiB | 1 % (20 of 2048 chunks) | 38.33 s, 2048 chunks read | 1.57 s, 20 read | 24.4x |
+
+Both passes left the target byte-identical to the source (`cmp`). Not run on everRun.
+
+## T2 attempt, 2026-11-26 (stopped before any change)
+
+State before: AHV `ev2ahv-rocky9-app2` ON and answering on 10.12.136.162 (sys_vendor Nutanix); manifests on the AHV copy
+`/ext4/ev2ahv` and `/span/ev2ahv` 438 lines each, `sha256sum -c` OK. everRun `ev2ahv-src-rocky9` stopped.
+Finding: everRun undefines a stopped guest in libvirt (`virsh -r list --all` on both nodes shows only
+`ev2ahv-src-win22`), so a refreshed environment drops the source, and 0.2.0 rebuilds the engine plan from discovery
+before every step: rollback from the appliance would fail. Fixed on branch `root/T2-rollback-stopped-source`; not yet
+deployed to `ev2ahv-appliance-2`, so rollback and re-cutover were not run.

@@ -19,7 +19,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | ID | Pri | Debt | Where |
 |---|---|---|---|
 | D1 | P1 | The root-helper BrokenPipe fix (`ev2ahv/helper/ev2ahv_helper.py`, 292e839) is not in `dist/ev2ahv-0.2.0.qcow2`. It is only hot-patched on `ev2ahv-appliance-2`. Rebuild before handing out the image. | appliance |
-| D5 | P2 | No changed-block tracking: every resync and final sync reads the whole disk (about 110 MiB/s). Downtime grows with disk size. | engine |
+| D5 | P2 | Changed-block tracking is built and measured on a fake source but not wired in: needs an everRun check of read-write `virsh qemu-monitor-command` on an `ev2ahv-src-*` guest, then `sync.cbt: qemu-bitmap` in resync (docs/cbt.md, Next steps). Ask Stratus about bitmaps on FT guests. | engine, ev2ahv/cbt.py |
 | D7 | P2 | Upgrade path is not built: a versioned bundle, DB migrations with backup and rollback, and UI/CLI apply. Deferred by the owner. | appliance, server |
 | D8a | P2 | Prism project: the wizard's project list was hard-coded and the engine never applied the choice. Live mode now shows "None, not applied yet". To do: list projects from Prism and set the VM's project at create (v3 `metadata.project_reference`; needs a lab test). | web, ev2ahv/prism.py, builder |
 | D8b | P2 | No "Edit Cutover Settings" (Move's button was never clicked in the reference, so its fields are unknown; see docs/move-reference). Needs a look at a real Move first. | web, server |
@@ -50,6 +50,9 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-26: D5 design and prototype (docs/cbt.md). QEMU dirty bitmaps, rotated atomically and read over NBD, plus
+  `engine.sync_dirty`. Fake source, same writes: 2 GiB / 2 % dirty, 10.07 s full vs 0.86 s (11.7x); 8 GiB / 1 %,
+  38.33 s vs 1.57 s (24.4x); target identical to source in every run. 7 unit tests. Not on everRun yet.
 - 2026-11-26: D13 (local part). Local users with admin and viewer roles; viewers are read only (one middleware refuses
   every non-GET call). Users page for admins; the 0.2.0 login is imported as admin. 11 unit tests, 26 end-to-end checks
   on a mock server, UI build and headless-browser check (admin sees Users, viewer does not, no page errors).
