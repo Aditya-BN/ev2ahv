@@ -70,7 +70,9 @@ mode 0600) and handed to the engine through a 0600 file or environment variables
 isolated test VM) appears in mock mode only; the engine does not do it yet. The CLI keeps working and
 uses the same engine; the UI's engine plans are ordinary plan files you can also run with the CLI.
 
-Lab guard: live mode only migrates `ev2ahv-*` VMs unless `EV2AHV_ALLOW_ANY_SOURCE=1` is set.
+Name guard: live mode only migrates VMs whose name starts with the **Source VM name prefix** in Appliance Settings
+(default `ev2ahv-`; empty allows any VM; every change is logged as a warning event). `EV2AHV_ALLOW_ANY_SOURCE=1` still
+overrides it but is deprecated.
 
 The older stdlib console (`python3 -m ev2ahv ui`, http://127.0.0.1:8460) still works but is superseded.
 

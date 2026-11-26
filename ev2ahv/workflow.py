@@ -16,6 +16,14 @@ def plan_dir(name):
     return os.path.join(DATA_DIR, re.sub(r"[^\w.-]", "_", name))
 
 
+
+def image_space_needed(sizes):
+    """Worst-case free bytes the writer needs for target.transfer: image: a raw staging file per disk (sparse, but
+    worst case fully written) plus one qcow2 at a time while it is converted and uploaded (worst case the largest
+    disk). Before 2026-11-26 the check asked for twice the total."""
+    return sum(sizes) + max(sizes, default=0)
+
+
 class Migration:
     def __init__(self, plan, prism, dry_run=False, progress=None):
         self.p, self.prism, self.dry_run, self.progress = plan, prism, dry_run, progress
@@ -137,20 +145,27 @@ class Migration:
             raw = self.staging()[disk["name"]]["file"]
             qcow = raw[:-4] + ".qcow2"
             q_raw, q_qcow = shlex.quote(raw), shlex.quote(qcow)
-            self.writer.run(f"sync; qemu-img convert -f raw -O qcow2 {q_raw} {q_qcow}.tmp && mv -f {q_qcow}.tmp {q_qcow}", timeout=14400)
-            size = int(self.writer.run(f"stat -c %s {q_qcow}").strip())
-            proc = subprocess.Popen(self.writer.argv(f"cat {q_qcow}"), stdout=subprocess.PIPE)
+            # one qcow2 at a time, removed after upload or failure, so the writer needs the raw files plus the largest
+            # disk (image_space_needed); a leftover from an earlier failed attempt is removed first
+            self.writer.run(f"rm -f {q_qcow} {q_qcow}.tmp; sync; "
+                            f"qemu-img convert -f raw -O qcow2 {q_raw} {q_qcow}.tmp && mv -f {q_qcow}.tmp {q_qcow}",
+                            timeout=14400)
             try:
-                image = self.prism.upload_image(name, proc.stdout, size, cluster, f"ev2ahv staging, plan {self.p['name']}")
+                size = int(self.writer.run(f"stat -c %s {q_qcow}").strip())
+                proc = subprocess.Popen(self.writer.argv(f"cat {q_qcow}"), stdout=subprocess.PIPE)
+                try:
+                    image = self.prism.upload_image(name, proc.stdout, size, cluster,
+                                                    f"ev2ahv staging, plan {self.p['name']}")
+                finally:
+                    proc.stdout.close()
+                    rc = proc.wait()
+                if rc:
+                    self.prism.delete_image(image)
+                    raise RuntimeError(f"reading {qcow} on the writer failed (rc {rc})")
             finally:
-                proc.stdout.close()
-                rc = proc.wait()
-            if rc:
-                self.prism.delete_image(image)
-                raise RuntimeError(f"reading {qcow} on the writer failed (rc {rc})")
+                self.writer.run(f"rm -f {q_qcow} {q_qcow}.tmp")
             images[disk["name"]] = image
             self.state.set("images", images)
-            self.writer.run(f"rm -f {q_qcow}")
 
     def device_for(self, entry):
         """Find the staging device by serial and size, rescanning if it was offlined."""
@@ -211,13 +226,14 @@ class Migration:
                                "detail": "runs after cutover. Set target.convert_to_scsi: false to stay on PCI"})
         if self.image_mode:
             def space():
-                need = 0
+                sizes = []
                 for disk in self.p["disks"]:
                     r = self.reader(disk)
                     try:
-                        need += 2 * builder.align(r.size())
+                        sizes.append(builder.align(r.size()))
                     finally:
                         r.close()
+                need = image_space_needed(sizes)
                 base = self.p["target"]["staging_dir"]
                 free = int(self.writer.run(f"mkdir -p {shlex.quote(base)}; df -B1 --output=avail {shlex.quote(base)} | tail -1").strip())
                 if free < need:

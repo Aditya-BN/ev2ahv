@@ -19,18 +19,17 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | ID | Pri | Debt | Where |
 |---|---|---|---|
 | D1 | P1 | The root-helper BrokenPipe fix (`ev2ahv/helper/ev2ahv_helper.py`, 292e839) is not in `dist/ev2ahv-0.2.0.qcow2`. It is only hot-patched on `ev2ahv-appliance-2`. Rebuild before handing out the image. | appliance |
-| D2 | P1 | Lab shortcut: `ev2ahv-appliance-2` uses the bastion's SSH keypair as its app key. In a real deployment the user authorizes the appliance's own key (shown on the Health page) on the everRun nodes; this needs a documented step or a UI flow. | appliance, docs |
-| D3 | P1 | Live-mode lab guard: only `ev2ahv-*` source VMs unless `EV2AHV_ALLOW_ANY_SOURCE=1`. A product needs a real setting, not an env var. | server/live.py |
 | D5 | P2 | No changed-block tracking: every resync and final sync reads the whole disk (about 110 MiB/s). Downtime grows with disk size. | engine |
-| D6 | P2 | Discovery uses `virsh -r` over SSH and cannot tell FT from HA (availability is blank). The everRun DOH API has it. | server/live.py, ev2ahv/everrun_api.py |
 | D7 | P2 | Upgrade path is not built: a versioned bundle, DB migrations with backup and rollback, and UI/CLI apply. Deferred by the owner. | appliance, server |
-| D8 | P2 | UI gaps against Move: no Prism project list, no "Edit Cutover Settings", the network step is VLAN-only (no VPC), and "test migration" works in mock mode only. | web, server |
-| D9 | P3 | Windows guests need `disk_bus: pci` (virtio-blk); virtio-scsi boot did not work. | engine, docs |
-| D10 | P3 | Security scan leftovers: trivy reports 1 HIGH, setuptools 70.3.0 (probably a false positive, since the venv has 84.2.1). CIS L1 has 69 fails, not triaged. `scan.sh`'s second trivy run fails on a cold DB cache. | appliance/scripts/scan.sh, docs/security.md |
+| D8a | P2 | Prism project: the wizard's project list was hard-coded and the engine never applied the choice. Live mode now shows "None, not applied yet". To do: list projects from Prism and set the VM's project at create (v3 `metadata.project_reference`; needs a lab test). | web, ev2ahv/prism.py, builder |
+| D8b | P2 | No "Edit Cutover Settings" (Move's button was never clicked in the reference, so its fields are unknown; see docs/move-reference). Needs a look at a real Move first. | web, server |
+| D8c | P2 | Network step is VLAN only: subnets are listed without their type and overlay (VPC) subnets are untested as NIC targets. Needs a VPC subnet in the lab. | web, server/live.py, builder |
+| D8d | P2 | "Test migration" works in mock mode only; the engine has no isolated-subnet test clone. | engine, server |
+| D9 | P3 | Windows on SCSI costs downtime: the guest boots on PCI (virtio-blk) and is converted to SCSI after cutover, which added 182 s in the 2026-11-24 run. Binding `vioscsi` during guest prep, before cutover, could remove that step (not tried). | engine, ev2ahv/guest.py |
+| D10 | P3 | Security scan leftovers after triage: rebuild and rescan to confirm the three CIS fixes (ipv6 forwarding, module blacklist, no `nullok`); check sysctl and modules on a booted instance; decide whether to drop pip from the venv for a clean trivy report; `ensure_pam_wheel_group_empty` open. | appliance, docs/security.md |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
-| D12 | P3 | No CI. `pytest` and `make` are not installed on the bastion. The unit tests do run with plain `python -m unittest discover -s tests` (44 pass on 2026-11-26), but nothing runs them automatically. | repo |
 | D13 | P3 | UI has a single local user; no RBAC, no LDAP. The default certificate is self-signed (the Health page can replace it). | server |
-| D14 | P3 | The image fallback (`target.transfer: image`) needs up to twice the disk size free on the writer. | engine |
+| D14 | P3 | The image fallback (`target.transfer: image`) still needs the total disk size plus the largest disk free on the writer, and the upload adds to downtime. Going lower needs uploading straight from the raw file (no qcow2 copy). | engine |
 
 ## What to test
 
@@ -46,10 +45,38 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | T8 | Appliance reboot mid-seed (mid-cutover already passes) | Reboot during a seed | Seed resumes, nothing marked Failed |
 | T9 | Several VMs in one plan at once | Two `ev2ahv-src-*` guests | Both complete; resyncs do not starve each other |
 | T10 | Prism username/password auth (D11) | Environment with a user and password | Validate, refresh and migrate work |
-| T11 | Unit tests (D12) | `pip install pytest && python3 -m pytest tests` | All pass |
+| T11 | Unit tests (D12) | `tools/check.sh` or the GitHub `ci` workflow | All pass |
+| T12 | FT/HA in discovery (D6) against the real everRun DOH API | `EV2AHV_EVERRUN_PASS=... python3 ev2ahv/everrun_api.py --host <portal> list`, then refresh the everRun environment in the UI | `ev2ahv-src-rocky9` shows FT and `ev2ahv-src-win22` HA; if the raw text is something else, extend `availability_level` |
 
 ## Done (recent)
 
+- 2026-11-26: D9 reviewed; the boot failure itself is handled. The wizard picks PCI for Windows guests with virtio-blk disks,
+  prep-check FAILs SCSI for them (`api.py` boot driver check), and the engine converts PCI to SCSI after cutover
+  (verified 2026-11-24, docs/results.md). The row now tracks only the extra downtime.
+- 2026-11-26: D14 (partly). The image-mode prep-check asked for twice the total disk size; the real worst case is the total
+  plus the largest disk (one qcow2 at a time), for example 100 GiB instead of 120 GiB for 40+10+10 GiB. A failed upload no longer
+  leaves its qcow2 on the writer (a retry needed room for two copies). 4 new unit tests; not run on the lab writer.
+- 2026-11-26: D10 triage. The trivy HIGH (setuptools 70.3.0) is a confirmed false positive from pip's vendored package list
+  (0 HIGH with pip's directory skipped). `scan.sh` shares one trivy cache, so the second run no longer fails cold (both runs
+  exit 0). CIS: a static check of the tree found 3 real gaps among the "false negatives"; they are fixed in `appliance/` for
+  the next build (up to 8 of the 69 fails; sysctl rules may still fail under oscap-chroot). Details in docs/security.md.
+- 2026-11-26: D8 split into D8a-D8d (each needs the lab or a real Move to finish). In live mode, the wizard's project picker
+  now says the project is not applied, instead of offering a hard-coded list that the engine ignored.
+- 2026-11-26: D6 (code; real values not yet seen, see T12). Discovery fills FT/HA from the everRun web API
+  (`EverRun.availability()`, the same `watch` call as `everrun_api.py list`), normalized by `availability_level`. If the
+  everRun password is missing or the API fails, the column stays blank and a warning is logged; discovery still works.
+  5 new unit tests on a sample `watch` response.
+- 2026-11-26: D2. Documented step "Authorize the appliance SSH key" in docs/appliance.md (what root access is used for,
+  per-node steps, rotation, revocation). The Health page shows a ready-to-paste `authorized_keys` line limited with `from=`
+  and no forwarding, and the everRun validation error points there. `ev2ahv-appliance-2` still runs the lab shortcut (the
+  bastion's key); switching it is for its holder (adit). Not clicked through in a browser.
+- 2026-11-26: D3. The source name guard is a setting: Appliance Settings, "Source VM name prefix" (`source_name_prefix`,
+  default `ev2ahv-`, empty allows any VM after a confirm). A change is logged as a warning event. Older databases get the
+  default. `EV2AHV_ALLOW_ANY_SOURCE=1` still overrides it (deprecated). 6 new unit tests; not clicked through in a browser.
+- 2026-11-26: D12. CI in `.github/workflows/ci.yml`: unit tests on Python 3.12 with the appliance pins, a check that
+  `web/openapi.json` matches the models (`tools/gen_openapi.py --check`), and `npm ci && npm run build` on Node 20.
+  `tools/check.sh` runs the same checks on the bastion (44 of 44 tests pass, openapi current, tsc clean). The workflow
+  itself has not run on GitHub yet.
 - 2026-11-26: D4. The cutover result (downtime, final sync, verify) is now kept on the plan VM and returned by `/api/v2`
   (`PlanVm.cutover_result`) and shown on the Progress page. It was already saved in SQLite, but the response model dropped it.
   Rollback clears it. Unit tests: 44 of 44 pass, 4 new. Not yet seen on a real appliance cutover (see docs/results.md, D4).

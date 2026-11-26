@@ -1,9 +1,10 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, DEFAULT_PREP, Plan, PlanIn, Prep, Provider, VmSettings, Workload } from '../api';
 import { Field, Modal, PasswordInput, Pager, Spinner, Tip, useDialogs, usePager } from '../components/ui';
 import { epochToZoned, fmtBytes, fmtMem, getDisplayTz, timezones, tzLabel, useLive, zonedToEpoch } from '../util';
 import { typeLabel } from '../components/EnvDialogs';
+import { SessionCtx } from '../App';
 
 const STEPS = ['Source & Target', "Select VM's", 'Network and Policy', 'VM Preparation', 'VM Settings', 'Summary'];
 const RESYNC = [15, 30, 60, 120, 240, 720, 1440];
@@ -204,6 +205,7 @@ function NameGate(props: { initial?: string; rename?: boolean; taken: (n: string
 type SP = { ws: WS; set: (p: Partial<WS>) => void };
 
 function Step1({ ws, set, sources, targets, target, source, envsReload }: SP & { sources: Provider[]; targets: Provider[]; target?: Provider; source?: Provider; envsReload: () => void }) {
+  const live = useContext(SessionCtx)?.info.mode === 'live';
   const { showError, toast } = useDialogs();
   const refresh = async () => { try { await api.refreshProvider(ws.targetId); envsReload(); toast('Target refreshed'); } catch (e) { showError(e, 'Refresh'); } };
   return (
@@ -222,7 +224,9 @@ function Step1({ ws, set, sources, targets, target, source, envsReload }: SP & {
       {source && !targets.length && <div className="alert warn">No Nutanix AOS target environment is registered. Add one on the dashboard first.</div>}
       {target && (
         <>
-          <Field label="Target Project"><select value={ws.project} onChange={(e) => set({ project: e.target.value })}>{PROJECTS.map((p) => <option key={p}>{p}</option>)}</select></Field>
+          {live
+            ? <Field label="Target Project" hint="Not applied yet: the migrated VM is created without a project (backlog D8a)."><select value="None" disabled><option>None</option></select></Field>
+            : <Field label="Target Project"><select value={ws.project} onChange={(e) => set({ project: e.target.value })}>{PROJECTS.map((p) => <option key={p}>{p}</option>)}</select></Field>}
           <Field label="Target Cluster"><select id="sel-cluster" value={ws.cluster} onChange={(e) => set({ cluster: e.target.value, container: '' })}>
             <option value="">Select a Cluster...</option>{target.clusters.map((c) => <option key={c.id}>{c.name}</option>)}</select></Field>
           {ws.cluster && <Field label="Target Container"><select id="sel-container" value={ws.container} onChange={(e) => set({ container: e.target.value })}>

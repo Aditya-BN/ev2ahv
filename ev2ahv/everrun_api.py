@@ -10,6 +10,16 @@ import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
 
+def availability_level(text):
+    """everRun availability text to "FT", "HA" or "" (unknown). Accepts FT/HA in any case and the long forms."""
+    t = (text or "").strip().lower().replace("-", " ").replace("_", " ")
+    if t in ("ft", "fault tolerant", "fault tolerance") or t.startswith("ft"):
+        return "FT"
+    if t in ("ha", "high availability") or t.startswith("ha"):
+        return "HA"
+    return ""
+
+
 class EverRun:
     def __init__(self, host, user, password, timeout=60):
         self.url, self.timeout = f"https://{host}/doh/", timeout
@@ -40,6 +50,10 @@ class EverRun:
         if v is None:
             raise RuntimeError(f"no everRun VM named {name}")
         return v
+
+    def availability(self):
+        """{vm name: "FT" | "HA" | ""} for every VM, from the same watch call the portal uses."""
+        return {name: availability_level(v.findtext("availability")) for name, v in self.vms().items()}
 
     def state(self, name):
         return self.vm(name).findtext("state")

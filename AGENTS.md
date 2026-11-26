@@ -28,12 +28,15 @@ Read these first: this file, then [docs/BACKLOG.md](docs/BACKLOG.md) (debt and w
     server/run-dev.sh mock     # https://<host>:8443, demo data; login nutanix / nutanix/4u
     server/run-dev.sh live     # https://<host>:8444, real lab (needs your own Prism/everRun credentials)
     bash appliance/build.sh    # dist/ev2ahv-<ver>.qcow2 + sha256 + MANIFEST.json + SBOM
+    tools/check.sh             # what CI runs: unit tests, openapi.json drift, web tsc (no pytest needed)
+    python3 tools/gen_openapi.py   # after changing server/ev2ahv_server/models.py
 
 ## Rules (lab safety)
 
 - **Lab objects:** touch only objects named `ev2ahv-*` (VMs, images, disks).
   - Never touch `everrun-*` VMs or anyone else's VMs.
-  - The live server enforces this. `EV2AHV_ALLOW_ANY_SOURCE=1` turns the guard off; do not set it in the lab.
+  - The live server enforces this with the **Source VM name prefix** setting (default `ev2ahv-`). In the lab, never clear
+    or change it, and never set `EV2AHV_ALLOW_ANY_SOURCE=1` (the old switch, which still turns the guard off).
 - **Claim before you touch:** claim a lab object in the shared board (see below) before you power, migrate or delete it, and release it when done.
 - **Shared IP and MAC:** a migrated AHV VM keeps the source's IP and MAC.
   - Never run the everRun source and its AHV copy at the same time.

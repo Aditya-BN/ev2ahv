@@ -180,3 +180,15 @@ under "View Target VM".
 
 Not verified: a real cutover on the appliance showing the stored numbers (needs the D1 rebuild, or a redeploy of `server/`
 onto `ev2ahv-appliance-2`, which adit holds), `npm run build`, and a browser view of the Progress page.
+
+## Backlog batch, 2026-11-26 (code, docs and offline checks; no lab objects touched)
+
+| Item | Measured | Not verified |
+|---|---|---|
+| D12 CI | `tools/check.sh`: 59 of 59 unit tests pass (Python 3.9.25 venv), `web/openapi.json` current, `tsc --noEmit` clean | the GitHub workflow has not run yet (branch not pushed) |
+| D3 name guard setting | 6 unit tests (default `ev2ahv-`, custom prefix, empty = any, bad value, env override, engine refuses) | browser click-through, the warning event on change |
+| D2 appliance key | docs + Health page line; tsc clean | pasting the line on real everRun nodes |
+| D6 FT/HA | 5 unit tests on a sample DOH `watch` response | the real `availability` text on everRun 8.1.1 (T12) |
+| D10 trivy | trivy 0.76.2 on the 0.2.0 tree: 1 HIGH (setuptools 70.3.0) with no file path, package list identical to pip 26.3 `vendor.txt`; 0 HIGH with pip's directory skipped. Both `scan.sh` trivy runs exit 0 with the shared cache | rescan of a rebuilt image |
+| D10 CIS | static check of the tree: 3 real gaps among the "false negative" rules (ipv6 forwarding, module `blacklist`, PAM `nullok`), fixed in `appliance/` | rebuild + oscap rescan; sysctl/modules on a booted instance |
+| D14 image mode | worst case for 40+10+10 GiB: 100 GiB (was 120 GiB); 4 unit tests incl. qcow2 removal after a failed upload | a run on the lab writer |
