@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, Plan, Provider } from '../api';
-import { Kebab, Menu, Modal, Pager, Spinner, useDialogs, usePager } from '../components/ui';
+import { Kebab, Menu, Modal, Pager, Spinner, SplitButton, useDialogs, usePager } from '../components/ui';
 import { EnvDialog, EnvView, typeLabel } from '../components/EnvDialogs';
 import { useSession } from '../App';
 import { fmtBytes, fmtDate, fmtElapsed, GROUPS, useLive } from '../util';
@@ -65,10 +65,32 @@ export default function Dashboard() {
 
   return (
     <div className="dash">
-      <aside className="env-panel">
-        <div className="env-head"><b>Environments</b>
-          <button className="linkbtn" id="add-env" onClick={() => setEnvDlg({})}>+ Add Environment</button></div>
+
+      <section className="dash-main">
+        {info.appliance && hl.data && hl.data.selftest.status !== 'PASS' && (
+          <div className="alert warn" role="status">
+            The disk hot-add self-test has not passed yet ({hl.data.selftest.status}). <Link to="/health">Open Appliance Health</Link>
+          </div>
+        )}
+        <div className="dash-head">
+          <div><h2 className="page-title">Migration plans</h2>
+            <p className="muted">Seed while the VM runs, test, then cut over. Rollback is powering the source back on.</p></div>
+        </div>
+        <div className="tiles">
+          {tiles.map((t) => (
+            <div className={'tile ' + t.slug} key={t.slug}>
+              <div className="tile-label">{t.label}</div>
+              <div className="tile-num">{t.n}</div>
+              <Link className="tile-count" to={`/all-plan-vms/${t.slug}`}>VMs, view all</Link>
+              <span className="tile-icon">{TILE_ICON[t.slug]}</span>
+            </div>
+          ))}
+        </div>
+      <section className="env-strip" aria-label="Environments">
+        <div className="env-head"><b>Environments</b><div className="spacer" />
+          <button className="btn" id="add-env" onClick={() => setEnvDlg({})}>+ Add environment</button></div>
         {envs.loading && <Spinner />}
+        <div className="env-row">
         {provs.map((e) => (
           <div className="env-card" key={e.id} data-testid="env-card">
             <div className="env-tag">{e.type === 'everrun' ? 'everRun' : e.type === 'plans' ? 'Files' : 'AOS'}</div>
@@ -85,34 +107,16 @@ export default function Dashboard() {
             </div>
           </div>
         ))}
+        </div>
         {!envs.loading && provs.length === 0 && <p className="muted">No environments yet. Add a Stratus everRun source and a Nutanix AOS target.</p>}
-      </aside>
-
-      <section className="dash-main">
-        {info.appliance && hl.data && hl.data.selftest.status !== 'PASS' && (
-          <div className="alert warn" role="status">
-            The disk hot-add self-test has not passed yet ({hl.data.selftest.status}). <Link to="/health">Open Appliance Health</Link>
-          </div>
-        )}
-        <div className="tiles">
-          {tiles.map((t) => (
-            <div className={'tile ' + t.slug} key={t.slug}>
-              <div><div className="tile-label">{t.label}</div>
-                <Link className="tile-count" to={`/all-plan-vms/${t.slug}`}>{t.n} VMs</Link></div>
-              <span className="tile-icon">{TILE_ICON[t.slug]}</span>
-            </div>
-          ))}
-        </div>
-        <div className="action-row">
-          <button className="btn primary" id="new-plan" onClick={() => nav('/migrationplan')}>+ New Migration Plan</button>
-          <Menu kind="btn" label="Actions" disabled={selPlans.length === 0} items={[
-            { label: 'Start', disabled: !bulk('Start'), onClick: () => bulkRun('Start') },
-            { label: 'Delete', danger: true, disabled: !bulk('Delete'), onClick: () => bulkRun('Delete') },
-          ]} />
-        </div>
+      </section>
         <div className="list-head">
           <b>Viewing {list.length} plan{list.length === 1 ? '' : 's'}</b>
           <div className="spacer" />
+          <Menu kind="btn" label="Bulk actions" disabled={selPlans.length === 0} items={[
+            { label: 'Start', disabled: !bulk('Start'), onClick: () => bulkRun('Start') },
+            { label: 'Delete', danger: true, disabled: !bulk('Delete'), onClick: () => bulkRun('Delete') },
+          ]} />
           <div className="search"><span>&#128269;</span><input value={q} placeholder="e.g. My Migration Plan" onChange={(e) => setQ(e.target.value)} /></div>
           <select className="filter-select" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Plan status filter">
             {FILTERS.map((f) => <option key={f}>{f}</option>)}
@@ -123,40 +127,43 @@ export default function Dashboard() {
           <table className="grid plans">
             <thead><tr>
               <th className="chk"><input type="checkbox" checked={allSel} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())} aria-label="Select all" /></th>
-              <th>Plan name</th><th>Created By</th><th>Source</th><th>Target</th><th>Data Migrated</th><th>Elapsed Time</th>
-              <th>Plan Status</th><th>VMs Status</th><th>Total VMs</th><th></th></tr></thead>
+              <th>Plan name</th><th>Source / Target</th><th>Data Migrated</th><th>Elapsed Time</th>
+              <th>Status</th><th>VMs</th><th></th></tr></thead>
             <tbody>
-              {plans.loading && <tr><td colSpan={11}><Spinner /></td></tr>}
+              {plans.loading && <tr><td colSpan={9}><Spinner /></td></tr>}
               {rows.map((p) => {
                 const started = !!p.started_at;
                 return (
                   <tr key={p.id} data-testid="plan-row">
                     <td className="chk"><input type="checkbox" checked={sel.has(p.id)} aria-label={`Select ${p.name}`}
                       onChange={(e) => { const n = new Set(sel); e.target.checked ? n.add(p.id) : n.delete(p.id); setSel(n); }} /></td>
-                    <td><Link to={`/plan-details/${p.id}`} className="plan-link">{p.name}</Link><div className="sub">{fmtDate(p.created_at)}</div></td>
-                    <td>{p.created_by}</td>
-                    <td><button className="linkbtn underline" onClick={() => setPopup({ kind: 'src', plan: p })}>everRun</button></td>
-                    <td><button className="linkbtn underline" onClick={() => setPopup({ kind: 'tgt', plan: p })}>AOS</button></td>
+                    <td><Link to={`/plan-details/${p.id}`} className="plan-link">{p.name}</Link><div className="sub">{fmtDate(p.created_at)} by {p.created_by}</div></td>
+                    <td className="nowrap"><button className="linkbtn underline" onClick={() => setPopup({ kind: 'src', plan: p })}>everRun</button>
+                      <span className="muted" aria-hidden="true">&rarr;</span><button className="linkbtn underline" onClick={() => setPopup({ kind: 'tgt', plan: p })}>AOS</button></td>
                     <td>{started && p.data_migrated_bytes > 0
                       ? <button className="linkbtn underline" onClick={() => setPopup({ kind: 'data', plan: p })}>{fmtBytes(p.data_migrated_bytes)}</button>
                       : <span className="muted">Not Available</span>}</td>
                     <td>{fmtElapsed(p)}</td>
                     <td><StatusText s={p.status} /></td>
                     <td className="counters">
+                      <span className="c" title="Total VMs">{p.counts.total} total</span>
                       <span className="c ready" title="Ready to Cutover">&#8645; {p.counts.ready_to_cutover}</span>
                       <span className="c bad" title="Failed">&#9650; {p.counts.failed}</span>
                       <span className="c warn" title="Paused">&#9670; {p.counts.paused}</span>
                     </td>
-                    <td>{p.counts.total}</td>
                     <td className="row-actions">
-                      {started && <Link className="linkbtn" to={`/migrationprogress/${p.id}`}>View Details</Link>}
-                      <Menu kind="link" label="Actions" align="right" disabled={p.actions.length === 0}
-                        items={p.actions.map((a) => ({ label: a, danger: a === 'Delete', onClick: () => doAction(p, a) }))} />
+                      {started
+                        ? <SplitButton label="View details" onClick={() => nav(`/migrationprogress/${p.id}`)} moreLabel={`More actions for ${p.name}`}
+                            items={p.actions.map((a) => ({ label: a, danger: a === 'Delete', onClick: () => doAction(p, a) }))} />
+                        : p.actions.length > 0
+                          ? <SplitButton label={p.actions[0]} onClick={() => doAction(p, p.actions[0])} moreLabel={`More actions for ${p.name}`}
+                              items={p.actions.slice(1).map((a) => ({ label: a, danger: a === 'Delete', onClick: () => doAction(p, a) }))} />
+                          : null}
                     </td>
                   </tr>
                 );
               })}
-              {!plans.loading && rows.length === 0 && <tr><td colSpan={11} className="empty">No migration plans{filter !== 'All Plans' || q ? ' match the filter' : ' yet. Click New Migration Plan to create one'}.</td></tr>}
+              {!plans.loading && rows.length === 0 && <tr><td colSpan={9} className="empty">No migration plans{filter !== 'All Plans' || q ? ' match the filter' : ' yet. Click New Migration Plan to create one'}.</td></tr>}
             </tbody>
           </table>
         </div>

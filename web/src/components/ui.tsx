@@ -63,6 +63,38 @@ export function Menu(props: {
 }
 export const Kebab = '⋮';
 
+// ---------- Split button: primary action plus a menu of the rest ----------
+export function SplitButton(props: {
+  label: ReactNode; onClick: () => void; items: { label: string; onClick?: () => void; href?: string; danger?: boolean; disabled?: boolean }[];
+  disabled?: boolean; id?: string; moreLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', h); document.addEventListener('keydown', k);
+    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k); };
+  }, [open]);
+  return (
+    <div className="split menu" ref={ref}>
+      <button id={props.id} className="split-main" disabled={props.disabled} onClick={props.onClick}>{props.label}</button>
+      <button className="split-more" disabled={props.disabled || props.items.length === 0} aria-haspopup="menu" aria-expanded={open}
+        aria-label={props.moreLabel || 'More actions'} onClick={() => setOpen(!open)}>&#9662;</button>
+      {open && (
+        <ul className="menu-list right" role="menu">
+          {props.items.map((it, i) => (
+            <li key={i}><button className={'menu-item' + (it.danger ? ' danger' : '')} role="menuitem" disabled={it.disabled}
+              onClick={() => { setOpen(false); it.onClick?.(); }}>{it.label}</button></li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+
 // ---------- Tip (hover tooltip) and Popover (click) ----------
 export function Tip(props: { text: ReactNode; children: ReactNode; wide?: boolean }) {
   const [pos, setPos] = useState<null | { x: number; y: number }>(null);

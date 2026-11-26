@@ -27,14 +27,18 @@ export default function Events() {
   };
   const toggle = (k: string) => { const n = new Set(sev); n.has(k) ? n.delete(k) : n.add(k); setSev(n); };
   return (
-    <div className="content with-panel">
+    <div className="content">
       <div className="main-col">
-        <Link to="/dashboard" className="back">&#8249; Back to Dashboard</Link>
-        <div className="list-head">
+        <h2 className="page-title">Events</h2>
+                <div className="list-head">
           <div className="search wide"><span>&#128269;</span><input value={q} placeholder="Type to filter events by plan, VM or message" onChange={(e) => setQ(e.target.value)} /></div>
           <div className="spacer" />
           <button className="btn" onClick={exportCsv}>Export as CSV</button>
           <Pager pager={pager} total={list.length} />
+        </div>
+        <div className="filter-bar" role="group" aria-label="Severity filter">
+          <button className={'chip' + (sev.size === 0 ? ' on' : '')} aria-pressed={sev.size === 0} onClick={() => { setSev(new Set()); setQ(''); }}>All severities</button>
+          {SEV.map((s) => <button key={s} className={'chip' + (sev.has(s) ? ' on' : '')} aria-pressed={sev.has(s)} onClick={() => toggle(s)}>{s[0].toUpperCase() + s.slice(1)}</button>)}
         </div>
         <div className="muted viewing">viewing all {list.length} events. Times are shown in {tzLabel()} ({'Asia/Jakarta'}); logs on the server use UTC.</div>
         <div className="table-wrap">
@@ -54,11 +58,6 @@ export default function Events() {
           </table>
         </div>
       </div>
-      <aside className="filter-panel">
-        <div className="fp-head"><b>Filters</b><button className="linkbtn" onClick={() => { setSev(new Set()); setQ(''); }}>Clear</button></div>
-        <div className="fp-title">Severity</div>
-        {SEV.map((s) => <label className="cb" key={s}><input type="checkbox" checked={sev.has(s)} onChange={() => toggle(s)} /> {s[0].toUpperCase() + s.slice(1)}</label>)}
-      </aside>
     </div>
   );
 }

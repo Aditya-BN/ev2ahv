@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api, DEFAULT_PREP, Plan, PlanIn, Prep, Provider, VmSettings, Workload } from '../api';
 import { Field, Modal, PasswordInput, Pager, Spinner, Tip, useDialogs, usePager } from '../components/ui';
 import { epochToZoned, fmtBytes, fmtMem, getDisplayTz, timezones, tzLabel, useLive, zonedToEpoch } from '../util';
+import { PrepScripts } from '../components/VmParts';
 import { typeLabel } from '../components/EnvDialogs';
 import { SessionCtx } from '../App';
 
@@ -158,6 +159,9 @@ export default function Wizard() {
           </li>
         ))}
       </ol>
+      <div className="step-progress" role="progressbar" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1} aria-label="Wizard progress">
+        <div className="bar"><i style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} /></div><span>Step {step + 1} of {STEPS.length}</span>
+      </div>
       <div className={'wiz-body' + (step === 1 ? ' two-col' : '')}>
         {step === 0 && <Step1 {...{ ws, set, sources, targets, target, source, envsReload: envs.reload }} />}
         {step === 1 && <Step2 {...{ ws, set, wl, wlLoading, source }} />}
@@ -355,15 +359,7 @@ function Step4({ ws, set, hasWin, hasLin, editing, planId, selected }: SP & { ha
         <label className={'rc' + (manual ? ' on' : '')}><input type="radio" name="mode" checked={manual} onChange={() => up({ mode: 'manual' })} />
           <b>Manual</b><span>You run a preparation script in each guest yourself.</span></label>
       </div>
-      {manual && (
-        <div className="card">
-          <p>Download the script, run it as Administrator (Windows) or root (Linux) inside every VM, then start the plan.</p>
-          {editing && planId ? (
-            <p>{hasWin && <a className="dl" href={api.prepScriptUrl(planId, 'windows')}>Download Windows script (.ps1)</a>}{' '}
-              {hasLin && <a className="dl" href={api.prepScriptUrl(planId, 'linux')}>Download Linux script (.sh)</a>}</p>
-          ) : <p className="muted">The download links appear after the plan is saved (plan summary page) or when you edit the plan. Selected: {selected.length} VM(s).</p>}
-        </div>
-      )}
+      <PrepScripts planId={planId} os={selected.map((x) => x.os_type)} mode={manual ? 'manual' : 'automatic'} />
       {auto && (
         <>
           {hasWin && <div className="cred-box"><h5>Windows credentials</h5>
