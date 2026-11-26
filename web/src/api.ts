@@ -153,7 +153,7 @@ export const api = {
   startPlan: (id: string) => req<Plan>('POST', `/plans/${id}/start`),
   planAction: (id: string, b: ActionIn) => req<Plan>('POST', `/plans/${id}/action`, b),
   precheck: (id: string) => req<Plan>('POST', `/plans/${id}/precheck`),
-  prepScriptUrl: (id: string, os: 'windows' | 'linux') => `${BASE}/plans/${id}/prep-script?os_type=${os}`,
+  prepScriptUrl: (id: string | undefined, os: 'windows' | 'linux') => `${BASE}${id ? `/plans/${id}` : ''}/prep-script?os_type=${os}`,
   vmLog: async (planId: string, vmId: string) => {
     const res = await fetch(`${BASE}/plans/${planId}/vms/${vmId}/log`, { credentials: 'same-origin' });
     if (res.status === 401) authEvents.dispatchEvent(new Event('unauthorized'));

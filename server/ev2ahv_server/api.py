@@ -543,11 +543,21 @@ def precheck(pid: str, who=Depends(user)):
     return _plan_out(doc)
 
 
+def _prep_file(os_type: str):
+    name = "prep-windows.ps1" if os_type == "windows" else "prep-linux.sh"
+    return FileResponse(os.path.join(ROOT, "prep", name), filename=name, media_type="application/octet-stream")
+
+
 @app.get("/api/v2/plans/{pid}/prep-script")
 def prep_script(pid: str, os_type: str = "linux", who=Depends(user)):
     _plan(pid)
-    name = "prep-windows.ps1" if os_type == "windows" else "prep-linux.sh"
-    return FileResponse(os.path.join(ROOT, "prep", name), filename=name, media_type="application/octet-stream")
+    return _prep_file(os_type)
+
+
+@app.get("/api/v2/prep-script")
+def prep_script_any(os_type: str = "linux", who=Depends(user)):
+    """Same scripts without a plan, for the wizard before the plan is saved."""
+    return _prep_file(os_type)
 
 
 @app.get("/api/v2/plans/{pid}/events")
