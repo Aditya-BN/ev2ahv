@@ -4,7 +4,7 @@ Names follow Nutanix Move 6.2 (see docs/move-reference): providers = environment
 Secrets are write-only: request models accept them, response models never contain them.
 """
 from typing import Dict, List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 ProviderType = Literal["everrun", "aos", "plans"]  # plans: a directory of engine plan YAML files (CLI plans, test rigs)
 PlanStatus = Literal["Not Started", "In Progress", "Paused", "Completed", "Failed", "Cancelled", "Scheduled"]
@@ -187,6 +187,19 @@ class PlanVm(BaseModel):
     sync_progress: Optional[float] = Field(None, description="percent of the running sync pass (resync, cutover)")
     cutover_result: Optional[CutoverResult] = Field(None, description="set when a cutover completes, cleared on rollback")
     actions: List[PlanAction] = Field(default_factory=list)
+
+    @field_validator("cutover_result", mode="before")
+    @classmethod
+    def _legacy_cutover_result(cls, v):
+        """Plans stored before 0.3.x kept the engine's raw result {"vm", "timings", "verify", "conversion"}; read it
+        in the current shape instead of failing the whole plan list (found on a real 0.2.0 -> 0.3.1 upgrade)."""
+        if isinstance(v, dict) and "completed_at" not in v:
+            t = v.get("timings") or {}
+            ver = {k: x for k, x in (v.get("verify") or {}).items() if isinstance(x, (str, int, float, bool))}
+            keep = {k: t[k] for k in ("downtime_seconds", "final_sync_seconds", "image_upload_seconds",
+                                      "conversion_seconds", "last_resync_seconds") if t.get(k) is not None}
+            return {"completed_at": 0.0, "target_vm_id": v.get("vm"), "verify": ver, **keep}
+        return v
 
 
 class Plan(BaseModel):

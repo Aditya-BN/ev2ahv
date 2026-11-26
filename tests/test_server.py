@@ -48,6 +48,14 @@ class CutoverResultTest(unittest.TestCase):
         Live._rolled_back({}, v, None)
         self.assertIsNone(m.PlanVm(**v).cutover_result)
 
+    def test_legacy_raw_engine_result_is_read(self):
+        """Found on a real 0.2.0 -> 0.3.x upgrade: the stored raw result lacked completed_at and broke /plans."""
+        v = m.PlanVm(id="a", name="a", cutover_result={"vm": "uuid", "timings": {"downtime_seconds": 448.0},
+                                                       "verify": {"power": "ON", "out": {"x": 1}}, "conversion": None})
+        self.assertEqual(v.cutover_result.target_vm_id, "uuid")
+        self.assertEqual(v.cutover_result.downtime_seconds, 448.0)
+        self.assertEqual(v.cutover_result.verify, {"power": "ON"})
+
 
 class NameGuardTest(unittest.TestCase):
     """D3: the source name guard is a setting (default ev2ahv-), not only an env var."""
