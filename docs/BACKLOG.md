@@ -21,7 +21,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D1 | P1 | The root-helper BrokenPipe fix (`ev2ahv/helper/ev2ahv_helper.py`, 292e839) is not in `dist/ev2ahv-0.2.0.qcow2`. It is only hot-patched on `ev2ahv-appliance-2`. Rebuild before handing out the image. | appliance |
 | D5 | P2 | No changed-block tracking: every resync and final sync reads the whole disk (about 110 MiB/s). Downtime grows with disk size. | engine |
 | D7 | P2 | Upgrade path is not built: a versioned bundle, DB migrations with backup and rollback, and UI/CLI apply. Deferred by the owner. | appliance, server |
-| D8 | P2 | UI gaps against Move: no Prism project list, no "Edit Cutover Settings", the network step is VLAN-only (no VPC), and "test migration" works in mock mode only. | web, server |
+| D8a | P2 | Prism project: the wizard's project list was hard-coded and the engine never applied the choice. Live mode now shows "None, not applied yet". To do: list projects from Prism and set the VM's project at create (v3 `metadata.project_reference`; needs a lab test). | web, ev2ahv/prism.py, builder |
+| D8b | P2 | No "Edit Cutover Settings" (Move's button was never clicked in the reference, so its fields are unknown; see docs/move-reference). Needs a look at a real Move first. | web, server |
+| D8c | P2 | Network step is VLAN only: subnets are listed without their type and overlay (VPC) subnets are untested as NIC targets. Needs a VPC subnet in the lab. | web, server/live.py, builder |
+| D8d | P2 | "Test migration" works in mock mode only; the engine has no isolated-subnet test clone. | engine, server |
 | D9 | P3 | Windows guests need `disk_bus: pci` (virtio-blk); virtio-scsi boot did not work. | engine, docs |
 | D10 | P3 | Security scan leftovers: trivy reports 1 HIGH, setuptools 70.3.0 (probably a false positive, since the venv has 84.2.1). CIS L1 has 69 fails, not triaged. `scan.sh`'s second trivy run fails on a cold DB cache. | appliance/scripts/scan.sh, docs/security.md |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
@@ -47,6 +50,8 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-26: D8 split into D8a-D8d (each needs the lab or a real Move to finish). In live mode, the wizard's project picker
+  now says the project is not applied, instead of offering a hard-coded list that the engine ignored.
 - 2026-11-26: D6 (code; real values not yet seen, see T12). Discovery fills FT/HA from the everRun web API
   (`EverRun.availability()`, the same `watch` call as `everrun_api.py list`), normalized by `availability_level`. If the
   everRun password is missing or the API fails, the column stays blank and a warning is logged; discovery still works.
