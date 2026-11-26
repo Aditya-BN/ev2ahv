@@ -153,3 +153,29 @@ separate vdisks hot-added per migration.
 Not exercised on AHV: the console menu's static-IP / hostname / NTP actions (the test VM used DHCP from an
 IPAM subnet and cloud-init for the admin SSH key), UEFI boot, the upgrade bundle and a second fresh deploy
 (deferred by the owner), Stage B (everRun) from the appliance.
+
+## Validation of the Python 3.12 build on AHV (2026-11-26, `ev2ahv-appliance-2`)
+
+`dist/ev2ahv-0.2.0.qcow2` (sha256 a13c5b01...b995) uploaded as Prism image `ev2ahv-appliance-0.2.0-py312`; VM `ev2ahv-appliance-2`
+(2 vCPU, 4 GiB, 20 GiB, BIOS, VLAN135-IPAM), copied from `ev2ahv-appliance-test`.
+
+| Step | Result |
+|---|---|
+| Boot | 18.5 s to multi-user (4.1 kernel + 3.5 initrd + 10.9 userspace); `systemctl --failed` empty, system state running; SELinux Enforcing; 0 AVC denials since boot; venv Python 3.12.16 |
+| HTTPS UI | up (nginx 502 for ~20 s while the app starts, then 200) |
+| Forced password change | default `nutanix`/`nutanix/4u` login gives `must_change`, other API calls 403 until changed; new password saved to `~/.config/ev2ahv/appliance2-ui.pw` (0600) |
+| Console admin | `admin` forced password change over ssh worked (new password in `~/.config/ev2ahv/appliance2-admin.pw`, 0600); the bastion public key was added to admin's authorized_keys |
+| Prism environment (API key) | Connected, 91 VMs visible |
+| `/api/v2/health` | shows its own VM `ev2ahv-appliance-2` |
+| `POST /api/v2/health/selftest` | PASS (1 GiB disk hot-added, root helper read it, offlined, removed), also after the helper patch below |
+| Idle memory | about 475 MiB used of 3.8 GiB |
+| Stage B (everRun) from this appliance | works, see results.md "Stage B from the appliance" |
+
+Notes:
+- The first VM was created with a DHCP address from the IPAM pool (10.12.135.94). That address is in use by another
+  device on the lab VLAN (the pool overlaps non-IPAM hosts), so the VM answered nothing useful; it was deleted and recreated with the free
+  static address 10.12.135.154 on the same subnet. The image is not at fault.
+- Lab shortcut: the bastion's ssh keypair was installed as the app key (`/var/lib/ev2ahv/config/id_ed25519`, owner ev2ahv, 0600) so the
+  appliance could use the key already authorized on the everRun nodes and in the guest. Production: authorize the key shown on the Health page instead.
+- Bug found: failed `ev2ahv-blockd@` instances after each write (BrokenPipeError on the last "ok" line). Fixed in the repo,
+  hot-patched here; needs an image rebuild to ship.

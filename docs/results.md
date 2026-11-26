@@ -122,3 +122,43 @@ prep, seed (4 disks, 40 GiB), cutover from the API the UI uses. On AHV: sys_vend
 manifests OK on /ext4 (189 files) and /span (188 files). Before it, the old CLI-test copy ev2ahv-rocky9-multi
 was discarded (owner-approved) because it held the guest's MAC; prep-check had correctly failed on that.
 The C4.2 fake-source VM ev2ahv-ui-fake and its staging disk were deleted, and the fake file removed from the writer.
+
+## Stage B from the appliance (py312 build on AHV), 2026-11-26
+
+Run on `ev2ahv-appliance-2` (image `ev2ahv-appliance-0.2.0-py312`, https://10.12.135.154/), through the same
+`/api/v2` calls the UI makes (driven with curl). Times below are UTC (WIB = +7).
+
+Setup: everRun environment `everrun-lab` (10.12.136.153, nodes .151/.152) and the Prism environment were added in the
+appliance. This lab shortcut was used for SSH: the bastion keypair `~/.config/ev2ahv/id_ed25519` was copied to
+`/var/lib/ev2ahv/config/id_ed25519` (owner ev2ahv, 0600, restorecon), so the appliance's app key is the bastion's key, which is
+already authorized on the everRun nodes and in the guest. No key was added to the everRun nodes. A real deployment would
+authorize the appliance's own generated key instead.
+
+Preparation on the lab systems (owner-approved): the AHV copy of the earlier C4.3 run (`ev2ahv-rocky9-ui`, extId
+9f074705-4157-4fb7-5a6a-524f00322306, description "Migrated by ev2ahv, plan ui-ui-rocky-c43-ev2ahv-src-rocky9", same MAC
+00:e0:09:a4:d7:40 as the guest) was powered off and deleted; the brief called it `ev2ahv-src-rocky9`, but no AHV VM had that name.
+The everRun source `ev2ahv-src-rocky9` was then started (it was stopped) and SSH on 10.12.136.162 answered. Only one of the two
+was ever running with that IP.
+
+Plan `app-rocky-stageB`: network `sharednetwork` to `VLAN136`, automatic prep over SSH (root, key), retain IP and MAC,
+disk bus scsi, target name `ev2ahv-rocky9-app2`, resync every 5 min.
+
+| Measure | Result |
+|---|---|
+| prep-check | 18 PASS, 0 WARN, 0 FAIL (writer helper on Python 3.12; source disks read from the everRun nodes over SSH) |
+| Guest prep + prep-check | 57 s (01:58:02 to 01:58:59) |
+| Seed (4 disks, 40 GiB) | 205.6 s (01:59:04 to 02:02:30) |
+| Resync while waiting | 1 run, 118 s (02:07:34 to 02:09:32), driven by a write load on /ext4 and /span; ~2.4 GiB sent in total on vdd/vde |
+| Cutover (start to verified) | 448 s (02:09:59 to 02:17:27); source stopped by 02:10:48; final sync 364 s to 02:16:52 |
+| Downtime (source shutdown requested to target verified) | about 448 s (the engine did not store `cutover_result` timings for this run; derived from the events and job log) |
+| Result on AHV | `ev2ahv-rocky9-app2` (8e75066d-a0cb-4d79-69c2-0bf01223efa2) ON, 2 vCPU, 4 GiB, 4 SCSI disks, MAC 00:e0:09:a4:d7:40, IP 10.12.136.162, ssh works, sys_vendor Nutanix, SELinux enforcing |
+| Data check | manifests written on the source just before cutover: /ext4/ev2ahv 438 files and /span/ev2ahv 438 files, sha256 of both manifests identical on AHV, `sha256sum -c` OK on both |
+| everRun source after | stopped (not running); not deleted |
+
+Found and fixed during the run: the root helper's final `print("ok N")` after a write raised `BrokenPipeError` because the
+client hangs up after the END frame, leaving 10 failed `ev2ahv-blockd@...` units in `systemctl --failed` (data was already
+fsynced and verified). `ev2ahv/helper/ev2ahv_helper.py` now ignores that error; hot-patched onto the appliance, failed units cleared,
+self-test rerun PASS. The patch is not in the shipped py312 qcow2; rebuild to include it.
+
+Not verified: the UI itself was not clicked through (API only), rollback and re-cutover from this appliance, and a Windows
+source from the appliance.

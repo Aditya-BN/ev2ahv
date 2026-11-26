@@ -265,7 +265,10 @@ def cmd_write(args):
         count += 1
     os.fsync(fd)
     os.close(fd)
-    print("ok %d" % count, flush=True)
+    try:
+        print("ok %d" % count, flush=True)
+    except BrokenPipeError:
+        pass   # the client hangs up after the END frame; data is already fsynced
 
 
 def main(argv=None):
