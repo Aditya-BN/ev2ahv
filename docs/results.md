@@ -645,3 +645,12 @@ Conclusion: on Server 2022 a boot-start vioscsi with CriticalDeviceDatabase entr
 the earlier note in prep-windows.ps1 ("boot-start alone is not enough") holds even with the CDD keys. The fallback is safe
 but slow, so the direct attempt is now opt-in (`target.try_direct_scsi`, default off). The conversion check in prep-check
 was also reported before the guest facts were read; fixed.
+
+## D5: everRun FT failover with cbt on, 2026-11-27 evening
+
+Details in docs/cbt.md ("Real FT failover with cbt on"). Summary: node0 put into maintenance with `avcli node-workon` while
+the Rocky FT guest was tracked; the guest moved to node1 in about 14 s without losing ping; the next resync detected the lost
+bitmap on all 4 disks and did full passes; the one after was dirty-only again. A full-verify cutover afterwards repaired 0
+chunks; downtime 515.4 s (final sync 448.4 s, writes running until shutdown); data on AHV: static 438/438 x2, journaled
+writes complete except the file in flight at shutdown. Node0 taken out of maintenance; node1 is now the everRun primary.
+cbt set back to off on the plan.

@@ -190,3 +190,19 @@ off before a dirty pass and back to tracking only when it finishes. Final sync i
 3. Done 2026-11-27: seed and resyncs through the plan with `sync.cbt: auto` against the real target (FT guest above); the UI option exists.
 4. Apply a changed `cbt` setting while the engine plan is reused (after a rollback, the source is not in discovery, so today the
    environment must be refreshed once first); consider replacing the first pass of the final sync.
+
+## Real FT failover with cbt on (2026-11-27, root)
+
+Rocky FT guest (`ev2ahv-src-rocky9`, plan `app-rocky-stageB`, appliance-2 0.3.8), journaled write load running. Only the two
+`ev2ahv-src-*` guests exist on this everRun, so node maintenance moved nothing else.
+
+1. cbt on; first resync = full scan (tracking starts); next resync dirty-only (vda 22 of 5120 chunks, vdd 184 of 1280).
+2. `avcli node-workon node0` (issued on node0; on node1 it failed with "Cannot determine the system version"): 14 s later the
+   guest ran on node1 and node0 held the paused partner. Ping never dropped.
+3. Next resync: for every disk "dirty-bitmap pass failed (no ev2ahv-cbt-* bitmap ...: tracking was interrupted), full pass
+   instead"; the full passes sent what the load wrote (vdd 488 chunks).
+4. Following resync: dirty-only again on node1 (vda 14, vdd 466 chunks): tracking restarted by itself.
+5. `avcli node-workoff node0` (on node1; on node0 it failed with a Java NullPointerException, node1 had become primary).
+6. Cutover with `final_verify: full` and the load running: 0 repaired chunks in the verified passes; on AHV 438/438 x2,
+   journals 100/100 and 99/100 (the one differing file is the one being written at shutdown).
+
