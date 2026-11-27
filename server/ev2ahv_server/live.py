@@ -267,6 +267,9 @@ def engine_plan(plan, vm, src, wl, secret, settings):
         t["vm_name"] = vs["target_name"]
     if plan.get("project") and plan["project"] != "None":
         t["project"] = plan["project"]
+    tests = [m.get("test_subnet") for m in plan.get("network_map") or [] if m.get("test_subnet")]
+    if tests:   # D8d: test migration boots the clone here (new MACs)
+        t["test_subnet"] = tests[0]
     for k_ui, k_eng in (("vcpus", "cores"), ("memory_mib", "memory_mib"), ("firmware", "firmware"),
                         ("disk_bus", "disk_bus"), ("convert_to_scsi", "convert_to_scsi")):
         if vs.get(k_ui) is not None:
@@ -327,7 +330,7 @@ def _write(plan, vm, p):
 
 # Steps that run while the source is (or may be) stopped. everRun undefines a stopped guest in libvirt, so discovery
 # cannot see it; these steps reuse the engine plan written when the VM was seeded (same disks, same source).
-REUSE_PLAN_STEPS = {"rollback", "cutover", "discard-target", "guest-cleanup", "cleanup", "status"}
+REUSE_PLAN_STEPS = {"rollback", "cutover", "discard-target", "guest-cleanup", "cleanup", "status", "discard-test"}
 # After a rollback the source is stopped or still booting, so its first resyncs also reuse the seeded plan (D16),
 # and a failed one is retried a few times (the source may not answer yet) instead of marking the VM Failed.
 ROLLBACK_RESYNC_RETRIES = 20
@@ -561,6 +564,8 @@ class Live:
                     self.launch(p, v, steps, self._cut, force=bool(v.get("force")))
                 elif s == "Rolling Back":
                     self.launch(p, v, ["rollback"], self._rolled_back)
+                elif s == "Testing":
+                    self.launch(p, v, ["test"], self._tested)
 
     @staticmethod
     def _prepared(p, v, checks):
@@ -579,6 +584,10 @@ class Live:
         if r.get("vm"):
             v["target_vm_id"] = r["vm"]
             v["target_vm_url"] = f"https://{tgt.get('address')}:9440/console/#page/explore/s/vms"
+
+    @staticmethod
+    def _tested(p, v, r):
+        v.update(status="Tested", test_vm_id=(r or {}).get("test_vm"))
 
     @staticmethod
     def _rolled_back(p, v, r):

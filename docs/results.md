@@ -509,3 +509,18 @@ Real Prism Central (adit's API key): `Prism.projects()` returned 9 projects. A d
 `ev2ahv-d8a-test` (e9066136-...) was created with v4, then `set_project(vm, <Testing>)` updated it through v3:
 GET `/api/nutanix/v3/vms/{uuid}` afterwards shows `project_reference` = Testing (21dd8ccd-...). A second call returned
 "no change". Not yet run inside a full migration (the step runs right after create, before power-on).
+
+## D8d: test migration, 2026-11-27
+
+Plan `d8d` (hot-add) on `ev2ahv-writer-root`, fake source 2 GiB (512 MiB written) + 1 GiB (256 MiB written), test
+subnet VLAN136, CLI from the bastion.
+
+| Step | Result |
+|---|---|
+| seed | staging vdisks hot-added to the writer, synced |
+| `ev2ahv test` | 15 s: `ev2ahv-d8d-target-test` created and ON, SCSI 0 2,147,483,648 B, SCSI 1 1,073,741,824 B, new MAC 50:6b:8d:a8:2e:34 on VLAN136 |
+| `ev2ahv discard-test` | test VM deleted (Prism no longer finds it) |
+| resync after 8 MiB written on the source | offlined staging devices came back; sent 2 chunks (8,388,608 B), skipped 510 + 256 |
+| cleanup | both staging disks removed from the writer; fake source deleted |
+
+Not checked: booting a real guest from the test clone (the fake disks are not bootable).

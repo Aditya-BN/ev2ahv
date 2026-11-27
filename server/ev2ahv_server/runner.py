@@ -14,7 +14,7 @@ from ev2ahv.prism import Prism  # noqa: E402
 from ev2ahv.workflow import Migration  # noqa: E402
 
 ACTIONS = ("prep-check", "guest-prep", "seed", "resync", "cutover", "rollback", "discard-target", "guest-cleanup",
-           "cleanup", "status")
+           "cleanup", "status", "test", "discard-test")
 
 
 def emit(**kw):
