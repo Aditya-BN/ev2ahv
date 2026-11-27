@@ -156,7 +156,7 @@ def simulate(store, lock, finish, bump):
                         v["status"], v["test_vm_id"] = "Tested", f"test-{v['id']}"
                         store.event("info", "Test VM is up on the isolated subnet", plan=p["name"], vm=v["name"])
                         dirty = True
-                    elif s == "Ready to Cutover" and v.get("rolled_back") is None and \
+                    elif s == "Ready to Cutover" and (v.get("rolled_back") is None or v.get("last_sync_at") == 0) and \
                             time.time() - (v.get("last_sync_at") or 0) > 60 * p["schedule"].get("resync_minutes", 60):
                         v["last_sync_at"] = time.time()
                         store.event("info", "Automatic resync done", plan=p["name"], vm=v["name"])

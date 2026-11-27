@@ -10,7 +10,8 @@ ProviderType = Literal["everrun", "aos", "plans"]  # plans: a directory of engin
 PlanStatus = Literal["Not Started", "In Progress", "Paused", "Completed", "Failed", "Cancelled", "Scheduled"]
 VmStatus = Literal["Queued", "Preparing", "Seeding", "Ready to Cutover", "Scheduled for Cutover", "Cutover in Progress",
                    "Testing", "Tested", "Rolling Back", "Completed", "Failed", "Paused", "Cancelled"]
-PlanAction = Literal["start", "pause", "resume", "cutover", "test", "cancel", "retry", "discard", "complete", "rollback"]
+PlanAction = Literal["start", "pause", "resume", "cutover", "test", "cancel", "retry", "discard", "complete", "rollback",
+                     "resync"]
 CheckStatus = Literal["PASS", "WARN", "FAIL"]
 
 
@@ -129,7 +130,7 @@ class VmSettingsPatch(BaseModel):
 class Schedule(BaseModel):
     seed_at: Optional[float] = Field(None, description="epoch seconds; None = start now")
     timezone: str = "Asia/Jakarta"
-    resync_minutes: int = Field(60, description="automatic resync interval while waiting for cutover")
+    resync_minutes: int = Field(60, ge=5, description="automatic resync interval while waiting for cutover (5 min or more)")
 
 
 class PlanIn(BaseModel):
