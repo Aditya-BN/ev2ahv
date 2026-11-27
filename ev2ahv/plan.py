@@ -49,6 +49,9 @@ def validate(p):
         errors.append("target.staging_dir must be a normalised absolute path at least two levels deep")
     if t["transfer"] not in ("hotadd", "image"):
         errors.append("target.transfer must be hotadd or image")
+    t.setdefault("image_format", "qcow2")   # image transfer only: qcow2 (convert first) or raw (upload as is, D14)
+    if t["image_format"] not in ("qcow2", "raw"):
+        errors.append("target.image_format must be qcow2 or raw")
     t.setdefault("sockets", 1); t.setdefault("cores", 2); t.setdefault("threads", 1); t.setdefault("memory_mib", 2048)
     if t["firmware"] not in ("bios", "uefi"):
         errors.append("target.firmware must be bios or uefi")
