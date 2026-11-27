@@ -165,12 +165,17 @@ class DirectScsi(unittest.TestCase):
 
     def mig(self, facts, **target):
         from ev2ahv.workflow import Migration
-        base = json.loads(json.dumps(self.BASE)); base["target"].update(target)
+        base = json.loads(json.dumps(self.BASE)); base["target"].update(dict({"try_direct_scsi": True}, **target))
         m = Migration.__new__(Migration); m.p = plan.validate(base); m._guest_facts = facts
         stored = {}
         m.state = type("S", (), {"get": lambda s, k, d=None: stored.get(k, d), "set": lambda s, k, v: stored.__setitem__(k, v),
                                   "event": lambda *a, **k: None})()
         return m
+
+    def test_direct_scsi_is_opt_in(self):
+        """Off unless target.try_direct_scsi: the direct boot failed on Server 2022 in the lab (2026-11-27)."""
+        self.assertFalse(self.mig(WIN_OK, try_direct_scsi=False).direct_scsi_now())
+        self.assertTrue(self.mig(WIN_OK).direct_scsi_now())
 
     def test_grade_row_pass_when_boot_ready_warn_when_not(self):
         name = "Direct SCSI boot (vioscsi boot-ready)"

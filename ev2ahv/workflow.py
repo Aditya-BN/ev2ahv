@@ -582,7 +582,10 @@ class Migration:
         """True when a Windows plan on PCI (with convert_to_scsi) can boot straight from SCSI: the guest facts of the
         last prep-check say vioscsi is boot-ready. Anything else keeps the PCI boot and the conversion after cutover."""
         t, g = self.p["target"], self.p.get("guest") or {}
-        return bool(g.get("os") == "windows" and t["disk_bus"] == "pci" and t.get("convert_to_scsi", True)
+        # opt-in (target.try_direct_scsi): on Windows Server 2022 the direct SCSI boot ended in the recovery
+        # environment and the fallback cost the 900 s verify timeout (2026-11-27, docs/results.md D9)
+        return bool(t.get("try_direct_scsi") and g.get("os") == "windows" and t["disk_bus"] == "pci"
+                    and t.get("convert_to_scsi", True)
                     and self._guest_facts is not None and guestlib.scsi_boot_ready(self._guest_facts))
 
     def direct_scsi(self):

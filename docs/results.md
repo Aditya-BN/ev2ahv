@@ -626,3 +626,22 @@ Plan `app-rocky-stageB` (Rocky 9 FT, 4 disks, 40 GiB), `final_verify: sample`, c
 
 So writes up to the shutdown cost about 13 s more downtime than an idle guest, and every write that completed (fsync + journal)
 before the shutdown is on AHV.
+
+## D9: Windows straight to SCSI on win22 (appliance-3, 0.3.9), 2026-11-27 evening
+
+Branch `root/D9-win-scsi` (= root/batch5 + adit's WIP `adit/d9-win-scsi`). Guest prep made vioscsi boot-start and registered
+the virtio-scsi controller IDs in the CriticalDeviceDatabase ("6 new keys"); prep-check: "Direct SCSI boot (vioscsi
+boot-ready)" PASS, 0 FAIL of 19. Source baseline F: 400/400, C: 399/399. Cutover with `final_verify: full` (same as T4).
+
+| Step | Result |
+|---|---|
+| Final sync | 686.9 s (T4: 678.6 s) |
+| VM created directly on SCSI (SCSI 0 + 1, boot SCSI 0), powered on 14:14:06 UTC | Windows did **not** boot: console showed the recovery environment ("Choose your keyboard layout") |
+| Verify | timed out after 900 s; the engine powered off, moved the disks to PCI, booted, then ran the normal PCI to SCSI conversion (69.5 s) |
+| **Downtime** | **1,835.8 s** (T4 with PCI boot + conversion: 877.2 s) |
+| On AHV after | vendor Nutanix, two "NUTANIX VDISK SCSI Disk Device", 10.12.136.161:5985; F: 400/400, C: 399/399 OK |
+
+Conclusion: on Server 2022 a boot-start vioscsi with CriticalDeviceDatabase entries is not enough to boot from virtio-scsi;
+the earlier note in prep-windows.ps1 ("boot-start alone is not enough") holds even with the CDD keys. The fallback is safe
+but slow, so the direct attempt is now opt-in (`target.try_direct_scsi`, default off). The conversion check in prep-check
+was also reported before the guest facts were read; fixed.
