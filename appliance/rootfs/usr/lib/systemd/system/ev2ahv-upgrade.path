@@ -1,0 +1,9 @@
+[Unit]
+Description=ev2ahv: apply an upgrade bundle uploaded through the web UI
+
+[Path]
+PathExists=/var/lib/ev2ahv/upgrade/request.json
+Unit=ev2ahv-upgrade.service
+
+[Install]
+WantedBy=multi-user.target

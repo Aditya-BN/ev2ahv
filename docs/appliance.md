@@ -161,6 +161,20 @@ Tried for real on 2026-11-27 (appliance-2, 0.2.0 -> 0.3.1 in 23 s, 0.3.1 -> 0.3.
 Appliances older than 0.3.1 do not have `ev2ahv-upgrade` yet: extract it from the bundle and run it with
 `sudo python3 ./ev2ahv-upgrade apply <bundle>`; it installs itself to `/usr/local/sbin`.
 
+### Upgrade from the UI and signed bundles (0.3.7, D7)
+
+- **Health > Upgrade** (admins): upload the bundle. The app only writes it into `/var/lib/ev2ahv/upgrade/` with a
+  `request.json`; `ev2ahv-upgrade.path` (root) starts `ev2ahv-upgrade apply-request`, which copies the bundle out of
+  the app-writable spool without following links, verifies and applies it exactly like the CLI, and writes
+  `status.json` for the page. The app restarts during the upgrade; the page shows the result when it is back.
+- **Signing**: `python3 tools/make_bundle.py --sign owner.key` adds `manifest.json.sig` (Ed25519 over the manifest).
+  Put the matching public key in `/etc/ev2ahv/upgrade-keys/<name>.pub` and from then on the appliance refuses
+  unsigned bundles and bundles signed with any other key. With no keys installed, unsigned bundles are accepted.
+  Make a key pair with `openssl genpkey -algorithm ed25519 -out owner.key` and
+  `openssl pkey -in owner.key -pubout -out owner.pub`; keep `owner.key` off the appliance.
+- **Older appliances**: the first bundle must be applied with the bundled tool (`sudo ev2ahv-upgrade apply`, which
+  installs the new tool); applying it once more, or any later bundle, installs the UI upgrade units and the spool.
+
 ## OS updates
 
 Online: `sudo dnf update` (Rocky BaseOS/AppStream repos stay configured); reboot if the kernel changed. The venv/app are not managed by dnf; upgrade the appliance
