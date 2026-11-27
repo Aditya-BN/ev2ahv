@@ -75,6 +75,11 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 - 2026-11-27: D19. Environment details show memory with the shared formatter (`6 GiB`, not `5.990234375 GiB`), and
   an everRun environment shows its release (`everRun 8.1.1-285`, read from `supernova/version` in the web API's watch
   output, seen on the lab system). 1 new test.
+- 2026-11-27: D20. Cutover shows its stage next to the phase (stopping source, final sync, image upload or preparing
+  disks, creating AHV VM, powering on, verifying, converting to SCSI): the runner emits it after each engine step and
+  live mode stores it as `stage`. The prep-check badge shows "Checking…" while prep-check or guest prep runs instead
+  of the old result. ETA uses the rate of the last 120 s instead of the since-start average, which was far off on
+  sparse disks (holes pass fast). 4 tests; not yet watched on a real cutover.
 - 2026-11-27: T3 and T4 done together: win22 HA migrated from appliance-3 by clicking through the UI (Playwright, 49 screenshots in docs/appliance-shots/t4/). Downtime 877.2 s, final sync 678.6 s, PCI to SCSI 78.9 s, seed about 12.6 min, resync 188 s; boots, same IP and MAC, 3389/5985 open, 400+399 of 400+399 manifest files match. See docs/results.md. D9 note: the conversion cost 79 s this time. New debt D18 to D21.
 - 2026-11-27: v0.3.5 released (commit 3585d22, tag v0.3.5). Both appliances upgraded 0.3.4 -> 0.3.5 in 3 s each; self-test PASS, `running`, 0 AVC, 0 failed units afterwards (the blockd exit-flush fix, fa865b8, is confirmed). Image `ev2ahv-appliance-0.3.5` in Prism (0.3.2 kept; 0.2.0 images and `ev2ahv-writer` were deleted the same morning on purpose).
   - D7 prune: `ev2ahv-upgrade prune --keep N [--dry-run]`, guarded like the rest (own backup names only, needs `app/`, no symlinks, keep >= 1), 2 unit tests. Used on appliance-2: 5 backups -> 2.

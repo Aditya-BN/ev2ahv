@@ -193,6 +193,7 @@ class PlanVm(BaseModel):
     checks: List[Check] = Field(default_factory=list)
     error: Optional[str] = None
     phase: Optional[str] = Field(None, description="engine step running now, e.g. guest-prep, seed, resync, cutover")
+    stage: Optional[str] = Field(None, description="part of the cutover running now, e.g. final sync, image upload")
     sync_progress: Optional[float] = Field(None, description="percent of the running sync pass (resync, cutover)")
     cutover_result: Optional[CutoverResult] = Field(None, description="set when a cutover completes, cleared on rollback")
     actions: List[PlanAction] = Field(default_factory=list)
