@@ -4,7 +4,7 @@ import { api } from '../api';
 import { Field, Spinner, useDialogs } from '../components/ui';
 import { setDisplayTz, timezones, useLive } from '../util';
 
-export const RESYNC = [15, 30, 60, 120, 240, 720, 1440];
+export const RESYNC = [5, 15, 30, 60, 120, 240, 720, 1440];
 
 export default function ApplianceSettings() {
   const { showError, toast } = useDialogs();

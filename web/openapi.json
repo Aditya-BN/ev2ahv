@@ -2140,7 +2140,8 @@
                             "retry",
                             "discard",
                             "complete",
-                            "rollback"
+                            "rollback",
+                            "resync"
                         ],
                         "title": "Action"
                     },
@@ -2861,7 +2862,8 @@
                                 "retry",
                                 "discard",
                                 "complete",
-                                "rollback"
+                                "rollback",
+                                "resync"
                             ]
                         },
                         "type": "array",
@@ -3180,8 +3182,9 @@
                     },
                     "resync_minutes": {
                         "type": "integer",
+                        "minimum": 5.0,
                         "title": "Resync Minutes",
-                        "description": "automatic resync interval while waiting for cutover",
+                        "description": "automatic resync interval while waiting for cutover (5 min or more)",
                         "default": 60
                     }
                 },
