@@ -1,6 +1,6 @@
 # Backlog: debt and what to test
 
-Updated 2026-11-27 WIB. Version 0.3.4: still a first iteration. It works end to end in the lab, but it is not a product yet.
+Updated 2026-11-27 WIB (after the 0.3.5 release and the D5 FT test). Version 0.3.5: still a first iteration. It works end to end in the lab, but it is not a product yet.
 
 Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md)). When you finish one, move it to
 "Done" with the date, the commit and the numbers.
@@ -18,8 +18,8 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 | ID | Pri | Debt | Where |
 |---|---|---|---|
-| D5 | P2 | Changed-block tracking works on real everRun (win22 HA, 2026-11-27) and is wired in as `sync.cbt: auto` (default off, no UI). Left: ask Stratus about FT guests, test the FT Rocky guest, force a guest restart, a full plan run with a real target, UI option, final sync still full (docs/cbt.md). | engine, ev2ahv/cbt.py, workflow.py |
-| D7 | P2 | Upgrades are CLI only (no UI upload or apply); backups are not pruned (3 on appliance-2); bundles are checksummed but not signed. The health check, sudo path and tarfile notes are fixed in 0.3.3 (see Done); the automatic restore on a real failing upgrade has still only been run in unit tests. | appliance, server |
+| D5 | P2 | Changed-block tracking works on real everRun: HA win22 and, since 2026-11-27, the FT Rocky guest (8 resyncs under load, idle dirty pass 26 s against 72 s, fallback after bitmap loss works; docs/cbt.md). Per-VM setting `cbt` in the API and wizard (0.3.5, default off). Left: a real failover or guest restart (only simulated by removing the bitmaps), ask Stratus about customer FT guests, final sync still full, and a changed `cbt` is not applied while the engine plan is reused after a rollback (refresh the environment first). | engine, ev2ahv/cbt.py, workflow.py, server/live.py |
+| D7 | P2 | Upgrades are CLI only (no UI upload or apply); bundles are checksummed but not signed. Backups are pruned with `ev2ahv-upgrade prune --keep N` (0.3.5, manual, not scheduled); appliance-2 holds 2. The automatic restore on a real failing upgrade has still only been run in unit tests. | appliance, server |
 | D8a | P2 | Prism project: the wizard's project list was hard-coded and the engine never applied the choice. Live mode now shows "None, not applied yet". To do: list projects from Prism and set the VM's project at create (v3 `metadata.project_reference`; needs a lab test). | web, ev2ahv/prism.py, builder |
 | D8b | P2 | No "Edit Cutover Settings" (Move's button was never clicked in the reference, so its fields are unknown; see docs/move-reference). Needs a look at a real Move first. | web, server |
 | D8c | P2 | Network step is VLAN only: subnets are listed without their type and overlay (VPC) subnets are untested as NIC targets. Needs a VPC subnet in the lab. | web, server/live.py, builder |
@@ -49,6 +49,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: v0.3.5 released (commit 3585d22, tag v0.3.5). Both appliances upgraded 0.3.4 -> 0.3.5 in 3 s each; self-test PASS, `running`, 0 AVC, 0 failed units afterwards (the blockd exit-flush fix, fa865b8, is confirmed). Image `ev2ahv-appliance-0.3.5` in Prism (0.3.2 kept; 0.2.0 images and `ev2ahv-writer` were deleted the same morning on purpose).
+  - D7 prune: `ev2ahv-upgrade prune --keep N [--dry-run]`, guarded like the rest (own backup names only, needs `app/`, no symlinks, keep >= 1), 2 unit tests. Used on appliance-2: 5 backups -> 2.
+  - D16 real result: after a rollback from the appliance the first resync started at once, took 72 s and succeeded without refreshing the environment (log: "using the engine plan from the seed"). Side effect: a changed per-VM setting is not applied while that plan is reused; refresh the environment once.
+  - D5 on FT: per-VM `cbt` setting (API `PATCH /api/v2/plans/{id}/vms/{vm}/settings`, wizard checkbox, default off). FT guest Rocky 9: no block jobs, COLO none, no migration, no exports, no bitmaps before; 8 resyncs, dirty passes idle 26-27 s against 72-73 s full, fallback after bitmap removal works; cutover afterwards 439.1 s downtime, 438/438 files OK in both directories, same IP and MAC. A real failover was not run (see D5). Numbers in docs/results.md and docs/cbt.md.
 - 2026-11-27: D5 on real everRun and the load part of T13/D15 (branch adit/d5-everrun, numbers in docs/cbt.md, docs/runbook.md section 7, docs/results.md). Bitmap, NBD export and dirty extents all work on win22; boot disk 149.9 s full vs about 10 s dirty. `sync.cbt: auto|off` added to plans. T13 stays open for backup agents, snapshots and cutover-then-backup.
 - 2026-11-27: 0.3.3 and 0.3.4 (details in docs/results.md). Both appliances upgraded 0.3.2 -> 0.3.3 -> 0.3.4 (0.3.4 adds the D5 merge, off by default; 2-3 s each). The sudo link is now present on both; the health check ran for real in the 0.3.4 upgrade.
   - D16: the resync of a rolled-back VM reuses the seeded engine plan when the source is not in discovery, and a failed one is retried every 60 s up to 20 times (VM stays Ready to Cutover, warning events) instead of going to Failed. 6 unit tests. The first real use is the next rollback; not run on the lab.

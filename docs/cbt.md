@@ -1,7 +1,9 @@
 # Changed-block tracking (D5)
 
-Status 2026-11-27: works on real everRun (`ev2ahv-src-win22`, see "On everRun" below). Wired into the resync as a plan
-option `sync.cbt: auto|off` (default **off**; not in the UI). Final sync still uses the verified full pass.
+Status 2026-11-27: works on real everRun, on the HA guest (`ev2ahv-src-win22`, "On everRun" below) and on the FT guest
+(`ev2ahv-src-rocky9`, "On an FT guest" below). Wired into the resync as a plan option `sync.cbt: auto|off` (default **off**).
+Since 0.3.5 it is a per-VM setting in the appliance too (wizard checkbox, `vm_settings.cbt`, and
+`PATCH /api/v2/plans/{id}/vms/{vm}/settings` `{"cbt": "auto"}` for an existing plan). Final sync still uses the verified full pass.
 
 ## Why
 
@@ -93,6 +95,32 @@ Not verified: FT guests (the Rocky FT guest was not touched); a failover or gues
 then falls back to a full pass, unit-tested but not forced on everRun); behaviour under a Stratus snapshot or backup;
 Stratus support's view. Treat `sync.cbt: auto` as experimental, and keep it off for customer guests.
 
+## On an FT guest (measured 2026-11-27, `ev2ahv-src-rocky9`, Rocky 9 FT, 4 disks, 40 GiB, from appliance-2 0.3.5)
+
+Same picture as the HA guest. Node0 runs the guest (`qemu-unity` 6.2), node1 has the partner domain `paused`; on both,
+`query-block-jobs` is empty, `query-colo-status` says mode `none`, `query-migrate` is `{}`, `query-block-exports` is empty
+and there are no bitmaps, over plain raw nodes. Nothing at the QEMU level that a bitmap could interfere with, so tracking
+was enabled and 8 scheduled resyncs ran with a write load in the guest (table in docs/results.md, "D5 on the FT guest").
+
+| Pass | Wall time | Read | Sent |
+| --- | --- | --- | --- |
+| Full scan, idle | 72-73 s | 10,240 chunks | 0-348 MB |
+| Dirty pass, idle | 26-27 s | 11-17 chunks | 29-54 MB |
+| Dirty pass, moderate load (60 files) | 73 s | 354 chunks | 1,418 MB |
+| Dirty pass, heavy load | 126 s (full scan under the same load: 140 s) | 697 chunks | 2,793 MB |
+| Fallback after the bitmaps were removed by hand | 110 s (full scan, tracking restarted) | 10,240 chunks | 705 MB |
+
+- The gain is the read and hash time: on this small guest 2.7x idle, because each disk still costs 5-6 s for the rotation, the NBD
+  export and the extent query. Under heavy load the transfer (about 23 MB/s) dominates and CBT changes little.
+- The fallback works on the FT guest: with no bitmap on a disk the engine logs "dirty-bitmap pass failed (... tracking was
+  interrupted), full pass instead", completes the pass, restarts tracking, and the next resync is a dirty pass again.
+- Cutover after the test: data identical (438 of 438 files in each of two directories), the guest never paused or lost
+  connectivity while tracking was on; bitmaps removed afterwards (none, no exports, no socket left on either node).
+- **Not tested:** a real FT failover or an everRun migration of the guest. The bitmap exists only in the active node's QEMU, so
+  a failover loses it; the fallback above was run by removing the bitmaps over QMP, which is a simulation. The everRun API has
+  no per-VM failover for an FT guest (it is a node action, which also moves the other lab guest), so it was left alone.
+  Ask Stratus before using this on customer FT guests.
+
 ## Plan option
 
     source: {type: direct, host: 10.12.136.152, qemu_domain: ev2ahv-src-win22, ...}
@@ -106,7 +134,8 @@ off before a dirty pass and back to tracking only when it finishes. Final sync i
 
 ## Next steps
 
-1. Ask Stratus about bitmaps on FT guests, then test on `ev2ahv-src-rocky9` (FT).
-2. Force a guest restart on win22 and watch the fallback on real everRun.
-3. Run seed and resync through the plan with `sync.cbt: auto` against a real target (writer) and compare the cutover.
-4. Expose the option in the UI; consider a replacement of the first pass of the final sync.
+1. Ask Stratus about bitmaps on FT guests (the lab FT test is done; a customer FT guest is a different matter).
+2. Force a real failover or guest restart (node maintenance in a window where both lab guests may move) and watch the fallback.
+3. Done 2026-11-27: seed and resyncs through the plan with `sync.cbt: auto` against the real target (FT guest above); the UI option exists.
+4. Apply a changed `cbt` setting while the engine plan is reused (after a rollback, the source is not in discovery, so today the
+   environment must be refreshed once first); consider replacing the first pass of the final sync.

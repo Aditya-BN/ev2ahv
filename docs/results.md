@@ -339,3 +339,73 @@ About 10 percent of full-suite runs in `python:3.12-slim` (3 failures in about 3
 | `ev2ahv-appliance-3` | 20:10:26 to 20:10:28 UTC, 2 s, backup `20261126T201026Z-0.3.3` | same; AOS environment Connected, self-test PASS, no failed units |
 
 This was the first upgrade run by the 0.3.3 tool on the lab: `sudo ev2ahv-upgrade apply` worked (symlink), no tarfile warning, and the new health check (appinfo plus plans, plans/vms, providers, events, settings with the app's health session) passed on the real apps. The 7 old `ev2ahv-blockd@` failed units on appliance-2 are unchanged. Nothing migrated, rolled back or cut over; D5 is off by default and was not exercised on the appliances.
+
+
+## 2026-11-27 morning run (WIB 08:00-09:10; logs UTC): v0.3.5 and D5 on the FT guest
+
+Real lab, from the bastion, through the appliance API and `ev2ahv-upgrade`. Only `ev2ahv-*` objects were touched.
+
+### v0.3.5 release
+
+- Contents: the blockd exit-flush fix (fa865b8), `ev2ahv-upgrade prune --keep N [--dry-run]`, and a per-VM changed-block tracking setting (API, UI checkbox, default off; see the D5 part below). 175 unit tests, openapi current, tsc and shellcheck clean. Commit 3585d22, tag `v0.3.5`.
+- Build (`appliance/build.sh`): 6 min 32 s. `ev2ahv-0.3.5.qcow2` 306,905,088 B; `ev2ahv-upgrade-0.3.5.tar.gz` 18,585,497 B (73 files), sha256 c32e2f4d...0d99 (checked on the appliance after scp).
+- Image uploaded to Prism as `ev2ahv-appliance-0.3.5` (b409f2bb-082e-4c91-9a59-8796d31df9fd), 38.5 s. `ev2ahv-appliance-0.3.2` kept.
+
+| Appliance | Apply 0.3.4 -> 0.3.5 | Verified after |
+|---|---|---|
+| `ev2ahv-appliance-2` | 01:06:57 to 01:07:00 UTC (08:06 WIB), 3 s, backup `20261127T010657Z-0.3.4`. Before it: `systemctl reset-failed` cleared the 7 old failed blockd units (state was `degraded`) | version 0.3.5, `is-system-running` running, SELinux Enforcing, 0 AVC since boot, login 200, `/api/v2/plans` and `/providers` 200, self-test PASS, then 0 failed units |
+| `ev2ahv-appliance-3` | 01:08:27 to 01:08:30 UTC, 3 s, backup `20261127T010827Z-0.3.4` | same list; self-test PASS, 0 failed units |
+
+The blockd fix is confirmed on both appliances: after a self-test (which hot-adds a disk and talks to the helper) there are 0 failed `ev2ahv-blockd@` units. On appliance-2 this came on top of a full day of jobs: the rollback, 8 resyncs and a cutover in the D5 run below also left 0 failed units (checked at the end, state `running`).
+
+Prune: `ev2ahv-upgrade prune --keep 2` on appliance-2, dry run first, removed `20261126T174322Z-0.2.0`, `...175226Z-0.3.1` and `...194735Z-0.3.2`; kept `...201021Z-0.3.3` and `...010657Z-0.3.4`. Only directories named like the ones `apply` creates, holding an `app/` and not symlinks, are considered; `--keep` below 1 is refused; deletes go through the same `rm_tree` guard (2 unit tests, see docs/script-safety.md).
+
+### D16, first real test: resync after rollback
+
+Plan `app-rocky-stageB` (Rocky 9 FT `ev2ahv-src-rocky9`, 4 disks, 40 GiB, resync every 5 min) on appliance-2.
+
+| Step | Result |
+|---|---|
+| Rollback from the appliance (AHV `ev2ahv-rocky9-app2` off, everRun source started) | 01:10:33 to 01:10:45 UTC, 12 s |
+| First resync after the rollback | Started 01:10:45, finished 01:11:57 (72 s), 0 bytes sent. **It succeeded without refreshing the environment.** The log shows the D16 path: "ev2ahv-src-rocky9 is no longer in everrun-lab. Refresh the environment; using the engine plan from the seed". |
+| Source data | `sha256sum -c MANIFEST.sha256`: `/ext4/ev2ahv` 438 of 438 OK, `/span/ev2ahv` 438 of 438 OK, 0 failures (guest up 3 min, `sys_vendor` Stratus Technologies) |
+
+Finding: while the engine plan is reused, per-VM setting changes (the new `cbt` one) are not applied, because the plan is not rebuilt. After a rollback the environment has to be refreshed once before the change takes effect (done at 01:17 UTC; the 01:23 resync rebuilt the plan). Recorded as a follow-up in BACKLOG.
+
+### D5 on the FT guest (everRun 8.1.1, qemu-unity 6.2)
+
+Read-only QMP checks on both nodes before enabling (`virsh qemu-monitor-command ev2ahv-src-rocky9`): node0 `running` (primary), node1 `paused` (partner). On both: `query-block-jobs` `[]`, `query-colo-status` mode `none`, `query-migrate` `{}`, `query-block-exports` `[]`, no dirty bitmaps, plain raw nodes over file nodes (4 disks, libvirt-2..5). This is the same picture as the HA guest (win22): FT replication is not a QEMU block job, COLO or migration that a bitmap could clash with. So tracking was enabled.
+
+Enabling: the new `PATCH /api/v2/plans/{id}/vms/{vm}/settings` with `{"cbt": "auto"}`, then an environment refresh (see the finding above). Write load: `tests/e2e/guest-load.sh` (current version, copied to the guest) on `/ext4/ev2ahv`, `/span/ev2ahv` and `/data/ev2ahv` (about 1 file per second per directory, 1-4 MiB each, plus random 128 KiB rewrites of older files). Per-disk numbers are in the engine log (`.../ui/<plan>/ev2ahv-src-rocky9.log`); wall time is from the plan events. "Sent" is the sum over the 4 disks.
+
+| # | Start UTC | Mode | Load | Wall | Chunks read | Sent |
+|---|---|---|---|---|---|---|
+| R1 | 01:10:45 | full scan, cbt off (after rollback) | none | 72 s | 10,240 | 0 B |
+| R2 | 01:16:57 | full scan, cbt off | none | 73 s | 10,240 | 348 MB |
+| R3 | 01:23:14 | full scan, tracking starts (first cbt resync) | heavy | 140 s | 10,240 | 2,068 MB |
+| R4 | 01:30:38 | dirty only (697 of 10,240 chunks) | heavy | 126 s | 697 | 2,793 MB |
+| R5 | 01:37:48 | dirty only (354 chunks) | moderate (60 files) | 73 s | 354 | 1,418 MB |
+| R6 | 01:44:04 | dirty only (11 chunks) | none | 26 s | 11 | 29 MB |
+| R7 | 01:49:35 | bitmaps removed by hand: fallback full scan, tracking restarts | moderate | 110 s | 10,240 | 705 MB |
+| R8 | 01:56:28 | dirty only (17 chunks) | none | 27 s | 17 | 54 MB |
+
+- Idle, CBT against a full scan: 26-27 s against 72-73 s (2.7x), 11-17 chunks read instead of 10,240. The floor is about 5-6 s per disk (rotate over ssh and virsh about 1 s, NBD export and extent query, teardown), so on a small 40 GiB guest the gain is smaller than the 14x seen on the 60 GiB win22 boot disk.
+- Under heavy load the transfer to the target dominates (about 23 MB/s), so a dirty pass saves little (126 s against 140 s). Reading was never the limit there. CBT pays off when the dirty set is small against the allocated size.
+- Time per disk, vda (20 GiB) idle: 26-29 s full scan, 1.5-2.6 s dirty.
+- Fallback: R7 logged, per disk, "dirty-bitmap pass failed (no ev2ahv-cbt-* bitmap on libvirt-N-format: tracking was interrupted), full pass instead", completed correctly, and R8 was a dirty pass again. This **simulated** the bitmap loss of a failover or restart by removing the bitmaps over QMP on node0; it is not a real failover.
+- Not run: a real everRun failover or migration of the guest. The everRun API has no per-VM failover for an FT guest; the way to force one is node maintenance on a node, which moves both lab guests (`ev2ahv-src-win22` too, which was off limits) and needs the everRun password (kept only in the appliance's store, not on the bastion). Skipped on purpose.
+- Cleanup: setting back to `off` (PATCH), then every `ev2ahv-cbt-*` bitmap removed over QMP on node0. Afterwards on both nodes: no bitmaps, `query-block-exports` `[]`, `query-block-jobs` `[]`, COLO `none`, no `/var/tmp/ev2ahv-cbt-*` socket. The guest never paused or lost connectivity during the 8 resyncs.
+
+### Cutover again from the appliance
+
+Load stopped, manifests written (`stop`): `/ext4/ev2ahv` 438 files, `/span/ev2ahv` 438 files, both `check` OK on the source. Cutover started 01:59:01 UTC (08:59 WIB) and the plan reached Completed at 02:08:30.
+
+| Item | Result |
+|---|---|
+| Stored cutover result | downtime **439.1 s**, final sync 377.9 s, last resync 93.8 s, power ON, reachable 10.12.136.162:22. No image upload or conversion (Rocky, SCSI) |
+| AHV VM | `ev2ahv-rocky9-app2`, new id 645b6dfa-5cc9-4f21-4b58-a4fe57bef1b4, ON; the previous (rolled back) copy was deleted by the cutover, so there is one VM of that name |
+| Guest | same IP 10.12.136.162, same MAC 00:e0:09:a4:d7:40, `sys_vendor` Nutanix, kernel 5.14.0-570.17.1.el9_6, 4 disks 20/10/5/5 GiB, `is-system-running` running |
+| Data | `sha256sum -c MANIFEST.sha256`: `/ext4/ev2ahv` 438 of 438 OK, `/span/ev2ahv` 438 of 438 OK, 0 failures |
+| everRun | `ev2ahv-src-rocky9` stopped (not defined on node0 or node1); the two were never running together |
+
+The final sync is unchanged (a verified full pass), so the downtime is in line with T2 (422.1 s). The dirty pass was not used for the final sync.
