@@ -250,14 +250,6 @@ class Migration:
             return "free" if not vm else "created by this plan"
         check("Target VM name", target_free)
         t_ = self.p["target"]
-        if self.wants_conversion() and (self.p.get("guest") or {}).get("os") == "windows" and not self.direct_scsi_now():
-            g_ = self.p["guest"]
-            if g_.get("prep") != "auto" and not (g_.get("password_env") or g_.get("password_file")):
-                checks.append({"name": "PCI to SCSI conversion", "status": "WARN",
-                               "detail": "needs WinRM credentials in the guest section, so it will be skipped"})
-            else:
-                checks.append({"name": "PCI to SCSI conversion", "status": "PASS",
-                               "detail": "runs after cutover. Set target.convert_to_scsi: false to stay on PCI"})
         if self.image_mode:
             def space():
                 sizes = []
@@ -283,6 +275,18 @@ class Migration:
                     r.close()
             check(f"Source disk {d['name']}", src)
         checks += self.guest_checks()
+        # after the guest checks: they read the facts that decide whether the VM boots on SCSI directly (D9)
+        if self.wants_conversion() and (self.p.get("guest") or {}).get("os") == "windows":
+            g_ = self.p["guest"]
+            if self.direct_scsi_now():
+                checks.append({"name": "PCI to SCSI conversion", "status": "PASS",
+                               "detail": "not needed: vioscsi is boot-ready, so the VM is created on SCSI directly"})
+            elif g_.get("prep") != "auto" and not (g_.get("password_env") or g_.get("password_file")):
+                checks.append({"name": "PCI to SCSI conversion", "status": "WARN",
+                               "detail": "needs WinRM credentials in the guest section, so it will be skipped"})
+            else:
+                checks.append({"name": "PCI to SCSI conversion", "status": "PASS",
+                               "detail": "runs after cutover. Set target.convert_to_scsi: false to stay on PCI"})
         return checks
 
     # ---- guest prep (Move-like) ---------------------------------------------
