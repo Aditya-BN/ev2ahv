@@ -166,6 +166,9 @@ setfiles -F -r $ROOT /etc/selinux/targeted/contexts/files/file_contexts $ROOT 2>
 setfiles -F -r $ROOT $ROOT/etc/selinux/targeted/contexts/files/file_contexts $ROOT/boot/efi 2>/dev/null || true
 chroot $ROOT rpm -qa --qf '%{NAME}\t%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort > /out/rpm.list
 chroot $ROOT /opt/ev2ahv/venv/bin/pip list --format=freeze > /out/pip.list
+# D10: nothing installs packages at runtime (upgrades rebuild the venv), so pip does not ship. This also removes
+# the vendored setuptools 70.3.0 metadata that trivy reported as a HIGH false positive.
+chroot $ROOT /opt/ev2ahv/venv/bin/python -m pip uninstall -q -y pip
 du -sh $ROOT --exclude=proc --exclude=sys --exclude=dev || true
 # tree for scanners
 rm -rf /out/tree; mkdir /out/tree   # constant path inside the builder container

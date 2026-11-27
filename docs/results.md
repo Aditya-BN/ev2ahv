@@ -523,3 +523,9 @@ VLAN135-IPAM static 10.12.135.161 (checked free: no Prism NIC, no ping, neighbou
 | Self-test | PASS, 5 steps (hot-add 1 GiB disk as /dev/sdb, helper read 1073741824 bytes, offline, remove via Prism) |
 
 Not checked: failed units and SELinux from inside (console admin needs an interactive password change), secure boot.
+
+## D10 closed: rebuilt image without pip, 2026-11-27
+
+`bash appliance/build.sh && bash appliance/scripts/scan.sh` on branch `root/D10-leftovers`: trivy HIGH/CRITICAL 0 (was 1, the
+pip-vendored setuptools false positive), pip-audit "No known vulnerabilities found", OpenSCAP CIS L1 195 pass / 61 fail.
+The venv in the image has no pip (site-packages has no `pip*`); `pip.list` is written before pip is removed.

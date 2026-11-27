@@ -24,7 +24,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D8c | P2 | Network step is VLAN only: subnets are listed without their type and overlay (VPC) subnets are untested as NIC targets. Needs a VPC subnet in the lab. | web, server/live.py, builder |
 | D8d | P2 | "Test migration" works in mock mode only; the engine has no isolated-subnet test clone. | engine, server |
 | D9 | P3 | Windows on SCSI costs downtime: the guest boots on PCI (virtio-blk) and is converted to SCSI after cutover, which added 182 s in the 2026-11-24 run. Binding `vioscsi` during guest prep, before cutover, could remove that step (not tried). | engine, ev2ahv/guest.py |
-| D10 | P3 | Security scan leftovers: `ensure_pam_wheel_group_empty` is not explained in docs/security.md; the pip-vendored trivy false positive remains (drop pip from the venv or record an exception). The sysctl/module rules pass on a booted instance (2026-11-27). | appliance, docs/security.md |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
 | D13 | P3 | LDAP / AD sign-in is a stub (design in docs/security.md). The default certificate is self-signed (the Health page can replace it). | server |
 | D14 | P3 | The image fallback (`target.transfer: image`) still needs the total disk size plus the largest disk free on the writer, and the upload adds to downtime. Going lower needs uploading straight from the raw file (no qcow2 copy). | engine |
@@ -50,6 +49,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
   authorized_keys on both everRun nodes with `from="10.12.135.160",no-agent-forwarding,no-port-forwarding,no-X11-forwarding`
   (backups `authorized_keys.bak-ev2ahv-<UTC>` on each node), tested as the `ev2ahv` user, then made the app key; the
   bastion key is kept on the appliance as `id_ed25519.bastion-lab` for a revert. everRun environment refresh: Connected.
+- 2026-11-27: D10 closed. pip is no longer shipped in the venv (mkimage.sh and ev2ahv-upgrade remove it after
+  installing), so trivy's only HIGH (pip's vendored setuptools 70.3.0) is gone: rebuilt image, trivy 0 HIGH/CRITICAL,
+  pip-audit clean, CIS L1 195 pass / 61 fail (all 61 explained in docs/security.md; `ensure_pam_wheel_group_empty`
+  accepted: root is locked, wheel is the admin sudo group).
 - 2026-11-27: D14 run on a real writer (`ev2ahv-writer-root`): prep-check asked 14 GiB (old rule 16), peak use 7.00 GiB
   (raw staging + one qcow2), never two qcow2 at once, none left behind, staging sha256-identical to the source.
   Downtime 299.4 s, of which 246.4 s image upload: the upload, not the space, is now the cost of image mode.

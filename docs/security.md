@@ -112,3 +112,12 @@ running appliance instead (read-only, `sysctl -n`, `modprobe -n -v`, `lsmod`):
 
 So the 22 sysctl/module "fails" in the chroot scan are passes on a real instance.
 
+## Leftovers closed (2026-11-27, D10)
+
+- `ensure_pam_wheel_group_empty` (and `use_pam_wheel_group_for_su`): CIS wants `su` limited to an empty group. Accepted
+  as is: root's password is locked (`passwd -l root`), so `su` to root cannot succeed for anyone, and `wheel` is the
+  group that gives `admin` sudo, so it cannot be empty.
+- trivy's only HIGH (setuptools 70.3.0, a false positive from pip's vendored package list) is gone by removing pip from
+  the shipped venv: `mkimage.sh` uninstalls it after writing `pip.list`, and `ev2ahv-upgrade` does the same when it
+  rebuilds the venv. Nothing installs Python packages on the appliance at runtime.
+
