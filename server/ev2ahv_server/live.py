@@ -117,7 +117,7 @@ def refresh(doc, secret, settings=None):
         doc["workloads"] = _plan_file_workloads(os.path.expanduser(doc["address"]), settings)
     else:
         doc["workloads"] = _everrun_workloads(doc["node_addresses"], settings)
-        _fill_availability(doc, secret)
+        _fill_availability(doc, secret, settings=settings)
     doc["vm_count"] = len(doc.get("workloads", [])) if t != "aos" else doc["vm_count"]
     doc["status"], doc["error"], doc["last_refreshed"] = "Connected", None, time.time()
     return doc
@@ -161,19 +161,38 @@ def _everrun_workloads(nodes, settings=None):
     return out
 
 
-def _fill_availability(doc, secret, api=everrun_api.EverRun):
-    """FT or HA per workload from the everRun web API (virsh shows a paused partner for both, so it cannot tell).
-    Best effort: on any error the column stays blank and discovery still works."""
+STOPPED_WARNING = ("Stopped on everRun: libvirt does not define a stopped guest, so its disks, CPU and memory are "
+                   "unknown. Start it on everRun and refresh before migrating it")
+
+
+def _fill_availability(doc, secret, api=everrun_api.EverRun, settings=None):
+    """FT or HA per workload from the everRun web API (virsh shows a paused partner for both, so it cannot tell),
+    and the guests virsh cannot see because they are stopped (D22). Best effort: on any error the column stays blank,
+    stopped guests stay unlisted, and discovery still works."""
     pw = secret(f"provider:{doc['id']}:password") if doc.get("id") else None
     if not (pw and doc.get("address")):
         return
     try:
-        levels = api(doc["address"], doc.get("username") or "admin", pw, timeout=30).availability()
+        client = api(doc["address"], doc.get("username") or "admin", pw, timeout=30)
+        inv = client.inventory() if hasattr(client, "inventory") else \
+            {n: {"state": "", "availability": a} for n, a in client.availability().items()}
     except Exception as e:
         log.warning("everRun %s: cannot read FT/HA from the web API: %s", doc["address"], e)
         return
-    for w in doc.get("workloads", []):
-        w["availability"] = levels.get(w["name"], "")
+    workloads = doc.setdefault("workloads", [])
+    seen = {w["name"] for w in workloads}
+    for w in workloads:
+        w["availability"] = (inv.get(w["name"]) or {}).get("availability", "")
+    for name, v in sorted(inv.items()):
+        if name in seen or v["state"].lower() not in ("stopped", "shutoff", "off", "powered off", "halted"):
+            continue
+        warn = [STOPPED_WARNING]
+        if not name_allowed(name, settings):
+            warn.insert(0, f"Name guard: only {guard_prefix(settings)}* VMs can be migrated (Appliance Settings)")
+        workloads.append({"id": name, "name": name, "os_type": "other", "os_name": "unknown (stopped)",
+                          "power_state": "Off", "availability": v["availability"], "active_node": "",
+                          "vcpus": 1, "memory_mib": 1024, "firmware": "bios", "disks": 0, "total_bytes": 0,
+                          "nics": [], "warnings": warn})
 
 
 def _plan_file_workloads(d, settings=None):
