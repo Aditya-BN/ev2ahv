@@ -130,6 +130,12 @@ def unpack(bundle, into):
     return man
 
 
+def relabel(*paths):
+    """Give copied files the SELinux label of where they now live (no-op without restorecon, e.g. on CI)."""
+    if paths and shutil.which("restorecon"):
+        sh("restorecon", *paths, check=False)
+
+
 def trusted_keys():
     d = P["keys"]
     return sorted(os.path.join(d, n) for n in os.listdir(d) if n.endswith(".pub")) if os.path.isdir(d) else []
@@ -167,6 +173,7 @@ def install_units(work):
             shutil.chown(P["spool"], "ev2ahv", "ev2ahv")
         except (LookupError, PermissionError):
             pass
+    relabel(*[os.path.join(P["units"], n) for n in names])
     if names and shutil.which("systemctl"):   # absent off-appliance (CI runners)
         sh("systemctl", "daemon-reload", check=False)
         sh("systemctl", "enable", "--now", "ev2ahv-upgrade.path", check=False)
@@ -314,6 +321,8 @@ def apply(bundle, force=False, ops=None):
                 ops["install_venv"](os.path.join(work, "wheels"), os.path.join(work, "app", "requirements.txt"))
             if os.path.exists(os.path.join(work, "ev2ahv-upgrade")):
                 shutil.copy2(os.path.join(work, "ev2ahv-upgrade"), P["self"])
+                os.chmod(P["self"], 0o755)
+                relabel(P["self"])   # copied from /var/lib: without this it keeps var_lib_t and systemd cannot run it
                 link_self()
             install_units(work)
             sh("chown", "-R", "root:root", P["app"], check=False)

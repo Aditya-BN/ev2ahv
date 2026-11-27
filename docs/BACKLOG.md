@@ -19,7 +19,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | ID | Pri | Debt | Where |
 |---|---|---|---|
 | D5 | P2 | Changed-block tracking works on real everRun: HA win22 and, since 2026-11-27, the FT Rocky guest (8 resyncs under load, idle dirty pass 26 s against 72 s, fallback after bitmap loss works; docs/cbt.md). Per-VM setting `cbt` in the API and wizard (0.3.5, default off). 0.3.6: the bitmap does not give a safe final sync on everRun (QEMU exits with the guest, QMP stop does not hold, guest writes after disk silence; docs/cbt.md), so the final sync stays a source pass; `final_verify` full/sample/none shortens it (downtime 422-474 s -> 208 s sample, 161 s none). Left: a real failover or guest restart (only simulated by removing the bitmaps), ask Stratus about customer FT guests, a guest-side halt signal or a read-only `blockdev-reopen` if a bitmap final is wanted, and a changed `cbt` is not applied while the engine plan is reused after a rollback (refresh the environment first). | engine, ev2ahv/cbt.py, workflow.py, server/live.py |
-| D7 | P2 | Upgrades are CLI only (no UI upload or apply); bundles are checksummed but not signed. Backups are pruned with `ev2ahv-upgrade prune --keep N` (0.3.5, manual, not scheduled); appliance-2 holds 2. The automatic restore on a real failing upgrade has still only been run in unit tests. | appliance, server |
+| D7 | P3 | Upgrades: no signing key is installed on the lab appliances yet (unsigned bundles still accepted) and key custody is undecided; backups are pruned only by hand (`ev2ahv-upgrade prune`). | appliance, server |
 | D8b | P2 | No "Edit Cutover Settings" (Move's button was never clicked in the reference, so its fields are unknown; see docs/move-reference). Needs a look at a real Move first. | web, server |
 | D8c | P2 | Network step is VLAN only: subnets are listed without their type and overlay (VPC) subnets are untested as NIC targets. Needs a VPC subnet in the lab. | web, server/live.py, builder |
 | D8d | P2 | "Test migration" works in mock mode only; the engine has no isolated-subnet test clone. | engine, server |
@@ -49,6 +49,12 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: D7 UI upgrade and signing (0.3.7). Health page uploads a bundle; a root path unit applies it
+  (`ev2ahv-upgrade apply-request`) and writes status for the page. Bundles can be Ed25519-signed; signatures are
+  required once `/etc/ev2ahv/upgrade-keys/*.pub` exist. Lab on `ev2ahv-appliance-3`: CLI 0.3.5 -> 0.3.7 (5 s), then the
+  same bundle through `PUT /api/v2/upgrade`: applied by the path unit, status "done" 6 s after the trigger, 0 AVC,
+  no failed units. Found and fixed on the way: files copied out of `/var/lib` kept the `var_lib_t` label, so systemd
+  could not run the tool (now `restorecon`); a misplaced block had left the routes unregistered. 12 new tests.
 - 2026-11-27: D14 run on a real writer (`ev2ahv-writer-root`): prep-check asked 14 GiB (old rule 16), peak use 7.00 GiB
   (raw staging + one qcow2), never two qcow2 at once, none left behind, staging sha256-identical to the source.
   Downtime 299.4 s, of which 246.4 s image upload: the upload, not the space, is now the cost of image mode.
