@@ -3,10 +3,10 @@ import { api, ApiError, PlanAction, PlanVm, VmStatus } from '../api';
 import { Modal, Popover, useDialogs } from './ui';
 import { vmTone, worstCheck } from '../util';
 
-export const ACTION_ORDER: PlanAction[] = ['retry', 'discard', 'cutover', 'test', 'cancel', 'resume', 'pause', 'complete', 'rollback'];
+export const ACTION_ORDER: PlanAction[] = ['retry', 'discard', 'cutover', 'resync', 'test', 'cancel', 'resume', 'pause', 'complete', 'rollback'];
 export const ACTION_LABEL: Record<string, string> = {
   start: 'Start', retry: 'Retry', discard: 'Discard', cutover: 'Cutover', test: 'Test', cancel: 'Cancel', resume: 'Resume',
-  pause: 'Pause', complete: 'Complete', rollback: 'Rollback',
+  pause: 'Pause', complete: 'Complete', rollback: 'Rollback', resync: 'Resync now',
 };
 
 export function VmStatusBadge({ s }: { s: VmStatus }) {

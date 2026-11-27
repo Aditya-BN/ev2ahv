@@ -5,7 +5,7 @@ export type PlanStatus = 'Not Started' | 'In Progress' | 'Paused' | 'Completed' 
 export type VmStatus =
   | 'Queued' | 'Preparing' | 'Seeding' | 'Ready to Cutover' | 'Scheduled for Cutover' | 'Cutover in Progress'
   | 'Testing' | 'Tested' | 'Rolling Back' | 'Completed' | 'Failed' | 'Paused' | 'Cancelled';
-export type PlanAction = 'start' | 'pause' | 'resume' | 'cutover' | 'test' | 'cancel' | 'retry' | 'discard' | 'complete' | 'rollback';
+export type PlanAction = 'start' | 'pause' | 'resume' | 'cutover' | 'test' | 'cancel' | 'retry' | 'discard' | 'complete' | 'rollback' | 'resync';
 export type CheckStatus = 'PASS' | 'WARN' | 'FAIL';
 
 export interface AppInfo { name: string; version: string; build: string; mode: 'mock' | 'live'; user: string | null; role?: 'admin' | 'viewer' | null; must_change?: boolean; appliance?: boolean }

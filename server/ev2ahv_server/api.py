@@ -320,10 +320,10 @@ VM_ACTIONS = {
     "Preparing": ["pause", "cancel"],
     "Seeding": ["pause", "cancel"],
     "Paused": ["resume", "cancel"],
-    "Ready to Cutover": ["cutover", "test", "pause", "cancel"],
+    "Ready to Cutover": ["cutover", "resync", "test", "pause", "cancel"],
     "Scheduled for Cutover": ["cutover", "cancel"],
     "Testing": [],
-    "Tested": ["cutover", "test", "discard", "cancel"],
+    "Tested": ["cutover", "resync", "test", "discard", "cancel"],
     "Cutover in Progress": [],
     "Rolling Back": [],
     "Completed": ["rollback"],
@@ -588,6 +588,10 @@ def plan_action(pid: str, body: m.ActionIn, who=Depends(user)):
             elif a == "pause":
                 v["resume_to"] = v["status"]
                 v["status"] = "Paused"
+            elif a == "resync":
+                # D18: the worker resyncs a seeded VM whose last sync is older than the plan interval, so marking it
+                # as never synced makes the next tick (2 s) start one; a resync already running absorbs the request
+                v["last_sync_at"] = 0
             elif a == "discard":
                 v["test_vm_id"] = None
                 v["status"] = "Ready to Cutover"

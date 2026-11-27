@@ -8,7 +8,7 @@ import { typeLabel } from '../components/EnvDialogs';
 import { SessionCtx } from '../App';
 
 const STEPS = ['Source & Target', "Select VM's", 'Network and Policy', 'VM Preparation', 'VM Settings', 'Summary'];
-const RESYNC = [15, 30, 60, 120, 240, 720, 1440];
+const RESYNC = [5, 15, 30, 60, 120, 240, 720, 1440];
 const PROJECTS = ['None', '_internal', 'default'];
 
 interface WS {
