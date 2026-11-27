@@ -2826,6 +2826,18 @@
                         "title": "Phase",
                         "description": "engine step running now, e.g. guest-prep, seed, resync, cutover"
                     },
+                    "stage": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Stage",
+                        "description": "part of the cutover running now, e.g. final sync, image upload"
+                    },
                     "sync_progress": {
                         "anyOf": [
                             {
