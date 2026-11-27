@@ -334,8 +334,8 @@ VM_ACTIONS = {
 }
 
 
-# Test migration needs an isolated-subnet clone, which the engine does not do yet.
-LIVE_UNSUPPORTED = {"test", "discard"} if MODE == "live" else set()
+# Test migration (D8d) works in live mode too: the engine clones the staging disks onto the test subnet.
+LIVE_UNSUPPORTED = set()
 
 
 def finish(plan):
@@ -595,6 +595,8 @@ def plan_action(pid: str, body: m.ActionIn, who=Depends(user)):
                 # as never synced makes the next tick (2 s) start one; a resync already running absorbs the request
                 v["last_sync_at"] = 0
             elif a == "discard":
+                if MODE == "live":   # D8d: delete the test VM in the background
+                    worker.launch(doc, v, ["discard-test"], lambda p_, vm_, r: None)
                 v["test_vm_id"] = None
                 v["status"] = "Ready to Cutover"
             else:

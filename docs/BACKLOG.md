@@ -22,7 +22,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D7 | P3 | Upgrades: no signing key is installed on the lab appliances yet (unsigned bundles still accepted) and key custody is undecided; backups are pruned only by hand (`ev2ahv-upgrade prune`). | appliance, server |
 | D8b | P2 | No "Edit Cutover Settings" (Move's button was never clicked in the reference, so its fields are unknown; see docs/move-reference). Needs a look at a real Move first. | web, server |
 | D8c | P2 | Network step is VLAN only: subnets are listed without their type and overlay (VPC) subnets are untested as NIC targets. Needs a VPC subnet in the lab. | web, server/live.py, builder |
-| D8d | P2 | "Test migration" works in mock mode only; the engine has no isolated-subnet test clone. | engine, server |
 | D9 | P3 | Windows on SCSI costs downtime: the guest boots on PCI (virtio-blk) and is converted to SCSI after cutover, which added 182 s in the 2026-11-24 run. Binding `vioscsi` during guest prep, before cutover, could remove that step (not tried). | engine, ev2ahv/guest.py |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
 | D13 | P3 | LDAP sign-in is built and tested against OpenLDAP, not yet against the lab Active Directory (needs a bind account). The default certificate is self-signed (the Health page can replace it). | server |
@@ -68,6 +67,12 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
   qcow2 stays the default. Same fake source (6 GiB/3 GiB written + 2 GiB/1 GiB) on `ev2ahv-writer-root`: space check
   8 GiB vs 14 GiB, peak use +4.00 vs +7.00 GiB, image upload 224.2 vs 246.4 s, downtime 276.2 vs 299.4 s. raw sends the
   full virtual size, so qcow2 can still win on very sparse disks or slow links. 2 new tests.
+- 2026-11-27: D8d. Test migration works in live mode and the CLI (`ev2ahv test` / `discard-test`): the staging disks
+  (hot-add) are flushed and offlined on the writer and cloned into `<target>-test` with new MACs on the plan's test
+  subnet, then powered on; the source keeps running. Discard deletes only that VM; the next resync brings the staging
+  disks back. Lab on `ev2ahv-writer-root`: test VM ON 15 s after the request with both disks (2 GiB, 1 GiB) and a new
+  MAC; discard removed it; a resync after an 8 MiB source change sent exactly 2 chunks. Image mode is refused (nothing
+  to clone). 4 unit tests.
 - 2026-11-27: D14 run on a real writer (`ev2ahv-writer-root`): prep-check asked 14 GiB (old rule 16), peak use 7.00 GiB
   (raw staging + one qcow2), never two qcow2 at once, none left behind, staging sha256-identical to the source.
   Downtime 299.4 s, of which 246.4 s image upload: the upload, not the space, is now the cost of image mode.

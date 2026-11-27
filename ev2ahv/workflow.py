@@ -1,6 +1,6 @@
 """The migration workflow. Every step is idempotent and records progress in SQLite.
 The source is only ever read, stopped and started. It is never modified or deleted."""
-import base64, fcntl, logging, os, re, shlex, socket, subprocess, time
+import base64, copy, fcntl, logging, os, re, shlex, socket, subprocess, time
 
 from . import builder, cbt, engine, guest as guestlib, target as tgt
 from .readers import make_reader
@@ -712,6 +712,63 @@ class Migration:
         path = os.path.join(self.dir, "known_hosts")
         if os.path.exists(path):
             os.remove(path)
+
+    # ---- test migration (D8d) ----------------------------------------------
+    def test_name(self):
+        return self.p["target"]["vm_name"] + "-test"
+
+    def test_subnet(self):
+        t = self.p["target"]
+        nics = self.p.get("nics") or []
+        return t.get("test_subnet") or (nics[0]["subnet"] if nics else None)
+
+    def test(self):
+        """Boot a copy of the last synced data on the test subnet while the source keeps running. The staging disks are
+        flushed and offlined on the writer (the next resync brings them back), cloned into <target>-test with new
+        MACs, and the clone is powered on. It shows the data as of the last sync, crash-consistent."""
+        self.lock()
+        if self.image_mode:
+            raise RuntimeError("test migration needs target.transfer: hotadd (image mode has no disks to clone)")
+        staging = self.staging()
+        if not staging or any(d["name"] not in staging for d in self.p["disks"]):
+            raise RuntimeError("nothing seeded yet. Run seed first")
+        name = self.test_name()
+        self.prism.extra_owned.add(name)
+        existing = self.prism.vm_by_name(name)
+        if existing:
+            raise RuntimeError(f"test VM {name} already exists. Discard it first")
+        subnet = self.test_subnet()
+        if self.dry_run:
+            log.info("[dry-run] clone %d staging disk(s) into %s on %s and power it on", len(staging), name, subnet)
+            return {"dry_run": True}
+        writer_vm = self.writer_vm()
+        for d in self.p["disks"]:
+            tgt.quiesce_device(self.writer, self.device_for(staging[d["name"]]))
+        cluster = self.prism.cluster_id(self.p["target"]["cluster"])
+        p = copy.deepcopy(self.p)
+        p["target"]["vm_name"] = name
+        p["nics"] = [dict(n, subnet=subnet, keep_mac=False, mac=None) for n in p.get("nics") or []]
+        subnets = {subnet: self.prism.subnet_id(subnet, cluster)} if subnet else {}
+        sources = [(staging[d["name"]]["size"], self.prism.disk_ref(writer_vm, staging[d["name"]]["disk_id"]))
+                   for d in self.p["disks"]]
+        payload = builder.vm_payload(p, cluster, sources, subnets)
+        payload["description"] = f"ev2ahv TEST migration of plan {self.p['name']} (discard when done)"
+        vm_id = self.prism.create_vm(payload)
+        self.state.set("test_vm", vm_id)
+        self.prism.power(vm_id, "power-on")
+        self.state.event("test", vm=vm_id, subnet=subnet)
+        return {"test_vm": vm_id, "name": name, "subnet": subnet}
+
+    def discard_test(self):
+        """Delete the test VM (never the target or anything else)."""
+        self.lock()
+        name = self.test_name()
+        self.prism.extra_owned.add(name)
+        vm = self.prism.vm_by_name(name)
+        if vm and not self.dry_run:
+            self.prism.delete_vm(vm["extId"])
+        self.state.set("test_vm", None)
+        return {"discarded": vm["extId"] if vm else None, "dry_run": self.dry_run}
 
     def discard_target(self):
         """Delete the migrated VM after a rollback, keeping staging disks so resync stays incremental."""

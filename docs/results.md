@@ -560,3 +560,18 @@ disk b 2 GiB with 1 GiB written), plan `image_format: raw`.
 
 Test VM and images deleted afterwards (`cleanup --delete-target`). On a much sparser disk, or a slow writer-to-bastion
 link, qcow2 may still be faster because raw sends the holes as zeros.
+
+## D8d: test migration, 2026-11-27
+
+Plan `d8d` (hot-add) on `ev2ahv-writer-root`, fake source 2 GiB (512 MiB written) + 1 GiB (256 MiB written), test
+subnet VLAN136, CLI from the bastion.
+
+| Step | Result |
+|---|---|
+| seed | staging vdisks hot-added to the writer, synced |
+| `ev2ahv test` | 15 s: `ev2ahv-d8d-target-test` created and ON, SCSI 0 2,147,483,648 B, SCSI 1 1,073,741,824 B, new MAC 50:6b:8d:a8:2e:34 on VLAN136 |
+| `ev2ahv discard-test` | test VM deleted (Prism no longer finds it) |
+| resync after 8 MiB written on the source | offlined staging devices came back; sent 2 chunks (8,388,608 B), skipped 510 + 256 |
+| cleanup | both staging disks removed from the writer; fake source deleted |
+
+Not checked: booting a real guest from the test clone (the fake disks are not bootable).
