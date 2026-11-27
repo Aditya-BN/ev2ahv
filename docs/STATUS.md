@@ -39,6 +39,7 @@ Tests: 175 unit tests, CI green on main (see the commit status below).
 | `ev2ahv-win22-app3` (AHV) | ON, 10.12.136.161, migrated from appliance-3 through the UI on 2026-11-27 (plan `win22-ui-t4`, Completed, downtime 877 s). Never start the everRun source |
 | `ev2ahv-src-win22` (everRun) | **STOPPED** (since the T3/T4 cutover). Never run both. It still holds test files in C:\ev2ahv-root and F:\ev2ahv-data and the load script C:\ev2ahv\guest-load.ps1 |
 | `ev2ahv-writer` | **Deleted** on purpose (2026-11-27); bastion live mode (:8444) has no writer until a new one is made |
+| `ev2ahv-writer-root` | New lab writer (2026-11-27, D14): Rocky 9, 2 vCPU, 4 GiB, 20 GiB `/data` (`/data/staging` for image mode), VLAN136 10.12.136.211, user `nutanix` (sudo, bastion key authorized). Unclaimed |
 | Bastion | Mock UI :8443, live UI :8444; shared board `/var/tmp/ev2ahv-collab/` |
 | Prism images | `ev2ahv-appliance-0.3.2` and `-0.3.5` (the old 0.2.0 images were deleted) |
 
