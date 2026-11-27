@@ -14,7 +14,7 @@ from ev2ahv.prism import Prism  # noqa: E402
 from ev2ahv.workflow import Migration  # noqa: E402
 
 ACTIONS = ("prep-check", "guest-prep", "seed", "resync", "cutover", "rollback", "discard-target", "guest-cleanup",
-           "cleanup", "status", "test", "discard-test")
+           "cleanup", "status", "test", "discard-test", "cleanup-staging")
 
 
 def emit(**kw):
@@ -71,6 +71,8 @@ def main():
             r = m.cutover(assume_stopped="--assume-stopped" in sys.argv, force="--force" in sys.argv)
         elif action == "cleanup":
             r = m.cleanup(delete_target=True)
+        elif action == "cleanup-staging":   # D24: staging disks only, the migrated VM is kept
+            r = m.cleanup(delete_target=False)
         else:
             r = getattr(m, action.replace("-", "_"))()
         emit(result=r)

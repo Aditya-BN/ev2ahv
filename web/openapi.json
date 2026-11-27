@@ -1124,6 +1124,7 @@
             },
             "delete": {
                 "summary": "Delete Plan",
+                "description": "D24: in live mode a plan whose VMs were seeded has staging disks on the writer (or appliance). Deleting it\nthen needs cleanup=true, which removes them first (engine `cleanup`, target VMs are kept) and deletes the plan\nwhen every VM is done; without it the call is refused instead of leaving disks behind.",
                 "operationId": "delete_plan_api_v2_plans__pid__delete",
                 "parameters": [
                     {
@@ -1133,6 +1134,16 @@
                         "schema": {
                             "type": "string",
                             "title": "Pid"
+                        }
+                    },
+                    {
+                        "name": "cleanup",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false,
+                            "title": "Cleanup"
                         }
                     },
                     {

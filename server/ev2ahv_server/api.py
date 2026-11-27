@@ -527,16 +527,50 @@ def patch_vm_settings(pid: str, vid: str, body: m.VmSettingsPatch, who=Depends(u
     return _plan_out(doc)
 
 
+# VM states that may have staging disks on the writer (seeding started)
+STAGED = ("Seeding", "Ready to Cutover", "Scheduled for Cutover", "Tested", "Completed", "Failed", "Paused",
+          "Rolling Back")
+
+
 @app.delete("/api/v2/plans/{pid}")
-def delete_plan(pid: str, who=Depends(user)):
+def delete_plan(pid: str, cleanup: bool = False, who=Depends(user)):
+    """D24: in live mode a plan whose VMs were seeded has staging disks on the writer (or appliance). Deleting it
+    then needs cleanup=true, which removes them first (engine `cleanup`, target VMs are kept) and deletes the plan
+    when every VM is done; without it the call is refused instead of leaving disks behind."""
     p = finish(_plan(pid))
-    busy = [v["name"] for v in p["vms"] if v["status"] in ("Cutover in Progress", "Testing")]
+    busy = [v["name"] for v in p["vms"] if v["status"] in ("Cutover in Progress", "Testing", "Rolling Back")
+            or (MODE == "live" and worker.jobs.get((pid, v["id"])))]
     if busy:
         raise HTTPException(409, "Wait for these VMs to finish: " + ", ".join(busy))
+    staged = [v for v in p["vms"] if v["status"] in STAGED and not v.get("cleaned")] if MODE == "live" else []
+    if staged and not cleanup:
+        raise HTTPException(409, {"message": "These VMs have staging disks on the writer: "
+                                  + ", ".join(v["name"] for v in staged) + ". Delete with cleanup to remove them "
+                                  "(target VMs are kept; rollback is no longer possible afterwards).",
+                                  "staging": [v["name"] for v in staged]})
+    if staged:
+        names = {v["id"] for v in staged}
+        with lock:
+            doc = _plan(pid)
+            doc["deleting"] = True
+            for v in doc["vms"]:
+                if v["id"] in names:
+                    v["cleanup_pending"] = True
+            store.put("plan", doc)
+        store.event("warning", f"{who} is deleting plan {p['name']}: removing staging disks first", plan=p["name"])
+        for v in staged:
+            worker.launch(doc, v, ["cleanup-staging"], _staging_cleaned)
+        bump()
+        return {"cleanup_started": [v["name"] for v in staged]}
     store.delete("plan", pid)
     store.event("info", f"{who} deleted plan {p['name']} (target VMs are kept)", plan=p["name"])
     bump()
     return {}
+
+
+def _staging_cleaned(p, v, r):
+    """Job callback (runs inside the worker's plan update): mark the VM clean; the worker deletes the plan."""
+    v.update(cleanup_pending=None, cleaned=True)
 
 
 def _start(doc, who):
