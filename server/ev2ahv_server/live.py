@@ -102,6 +102,21 @@ def probe(body):
     return {"version": "everRun"}
 
 
+def subnet_list(pr):
+    """Subnets with their type and, for overlay subnets, the VPC name (D8c). VPC names are best effort."""
+    try:
+        vpcs = {v["extId"]: v.get("name") for v in pr._all("/networking/v4.0/config/vpcs")}
+    except Exception:
+        vpcs = {}
+    out = []
+    for s in pr._all("/networking/v4.0/config/subnets"):
+        typ = s.get("subnetType") if s.get("subnetType") in ("VLAN", "OVERLAY") else ""
+        vpc = s.get("vpcReference") or (s.get("vpc") or {}).get("extId")
+        out.append({"id": s["extId"], "name": s["name"], "type": typ,
+                    "vpc": (vpcs.get(vpc) or vpc) if typ == "OVERLAY" and vpc else None})
+    return sorted(out, key=lambda x: (x["type"] != "VLAN", x["name"].lower()))
+
+
 def refresh(doc, secret, settings=None):
     t = doc["type"]
     if t == "aos":
@@ -111,7 +126,7 @@ def refresh(doc, secret, settings=None):
         doc["containers"] = [{"id": c["containerExtId"], "name": c["name"], "cluster": c.get("clusterExtId")}
                              for c in pr._all("/clustermgmt/v4.2/config/storage-containers")
                              if not c["name"].startswith(("NutanixManagementShare", "SelfServiceContainer"))]
-        doc["subnets"] = [{"id": s["extId"], "name": s["name"]} for s in pr._all("/networking/v4.0/config/subnets")]
+        doc["subnets"] = subnet_list(pr)
         try:
             doc["projects"] = pr.projects()
         except Exception as e:   # a key without project rights still works for everything else

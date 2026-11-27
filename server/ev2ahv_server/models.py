@@ -36,6 +36,12 @@ class Named(BaseModel):
     name: str
 
 
+class Subnet(Named):
+    """A Prism subnet (D8c): VLAN or OVERLAY (a VPC subnet); vpc is the VPC name for overlay subnets."""
+    type: Literal["VLAN", "OVERLAY", ""] = ""
+    vpc: Optional[str] = None
+
+
 class ProviderIn(BaseModel):
     name: str
     type: ProviderType
@@ -62,7 +68,7 @@ class Provider(BaseModel):
     node_addresses: List[str] = Field(default_factory=list)
     clusters: List[Named] = Field(default_factory=list)
     containers: List[Named] = Field(default_factory=list)
-    subnets: List[Named] = Field(default_factory=list)
+    subnets: List[Subnet] = Field(default_factory=list)
     projects: List[Named] = Field(default_factory=list, description="Prism projects (target environments)")
 
 

@@ -575,3 +575,9 @@ subnet VLAN136, CLI from the bastion.
 | cleanup | both staging disks removed from the writer; fake source deleted |
 
 Not checked: booting a real guest from the test clone (the fake disks are not bootable).
+
+## D8c: VPC (overlay) subnets, 2026-11-27
+
+Lab PC: 12 VLAN and 4 overlay subnets in VPCs `Test-VPC` and `vpc-prd`; `subnet_list` reports type and VPC name for all.
+A disk-less, powered-off VM `ev2ahv-d8c-test` was created with `builder.nic_entries` for overlay subnet `overlay`
+(vpc-prd) and MAC 50:6b:8d:ee:d8:0c: accepted, NIC on the subnet with that MAC. Deleted right after.
