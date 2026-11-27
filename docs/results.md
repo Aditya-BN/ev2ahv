@@ -529,3 +529,18 @@ Not checked: failed units and SELinux from inside (console admin needs an intera
 `bash appliance/build.sh && bash appliance/scripts/scan.sh` on branch `root/D10-leftovers`: trivy HIGH/CRITICAL 0 (was 1, the
 pip-vendored setuptools false positive), pip-audit "No known vulnerabilities found", OpenSCAP CIS L1 195 pass / 61 fail.
 The venv in the image has no pip (site-packages has no `pip*`); `pip.list` is written before pip is removed.
+
+## D13: LDAP sign-in against OpenLDAP, 2026-11-27
+
+Throw-away `osixia/openldap:1.5.0` container on 127.0.0.1 (removed afterwards), users alice (in ev2ahv-admins), bob (in
+ev2ahv-viewers), carol (in no group); `ldap_login` with the real `ldap3` client:
+
+| Case | LDAPS (636) | StartTLS (389) |
+|---|---|---|
+| alice, right password | admin | admin |
+| bob, right password | viewer | viewer |
+| carol (no group) | refused | refused |
+| alice, wrong password | refused | refused |
+| username `*` | refused | refused |
+
+With certificate verification on, the self-signed server is refused. Not tested: the lab Active Directory.
