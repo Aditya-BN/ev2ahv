@@ -303,4 +303,13 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BrokenPipeError:
+        # the client stopped reading (a sample verify closes the stream early): not a failure; point stdout at
+        # /dev/null so the exit-time flush cannot fail the unit with status 120
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        except OSError:
+            pass
+        sys.exit(0)
