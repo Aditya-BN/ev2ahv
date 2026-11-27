@@ -10,6 +10,7 @@ export type CheckStatus = 'PASS' | 'WARN' | 'FAIL';
 
 export interface AppInfo { name: string; version: string; build: string; mode: 'mock' | 'live'; user: string | null; role?: 'admin' | 'viewer' | null; must_change?: boolean; appliance?: boolean }
 export interface UiUser { username: string; role: 'admin' | 'viewer'; must_change: boolean; source: string; created_at?: number | null }
+export interface Subnet { id: string; name: string; type?: 'VLAN' | 'OVERLAY' | ''; vpc?: string | null }
 export interface Named { id: string; name: string }
 export interface ProviderIn {
   name: string; type: ProviderType; address: string; username: string;
@@ -19,7 +20,7 @@ export interface Provider {
   id: string; name: string; type: ProviderType; role: 'source' | 'target'; address: string; username: string;
   auth: 'password' | 'api_key'; status: 'Connected' | 'Refreshing' | 'Error'; error?: string | null;
   vm_count: number; last_refreshed?: number | null; version?: string | null; node_addresses: string[];
-  clusters: Named[]; containers: Named[]; subnets: Named[]; projects?: Named[];
+  clusters: Named[]; containers: Named[]; subnets: Subnet[]; projects?: Named[];
 }
 export interface Nic { network: string; mac: string; ip?: string | null }
 export interface Workload {

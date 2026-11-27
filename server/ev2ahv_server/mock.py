@@ -9,8 +9,9 @@ GiB = 1 << 30
 
 CLUSTERS = [{"id": "c-136", "name": "NTNX-136"}]
 CONTAINERS = [{"id": "ct-default", "name": "default-container"}, {"id": "ct-ssd", "name": "ssd-container"}]
-SUBNETS = [{"id": "sn-136", "name": "vlan136"}, {"id": "sn-135", "name": "vlan135"},
-           {"id": "sn-test", "name": "ev2ahv-test-isolated"}]
+SUBNETS = [{"id": "sn-136", "name": "vlan136", "type": "VLAN"}, {"id": "sn-135", "name": "vlan135", "type": "VLAN"},
+           {"id": "sn-test", "name": "ev2ahv-test-isolated", "type": "VLAN"},
+           {"id": "sn-ov", "name": "app-overlay", "type": "OVERLAY", "vpc": "vpc-prd"}]
 
 
 def _vm(id_, name, os_type, os_name, avail, node, cpu, mem, disks, gib, ip, mac, power="On", warnings=(),

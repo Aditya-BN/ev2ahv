@@ -7,6 +7,10 @@ import { PrepScripts } from '../components/VmParts';
 import { typeLabel } from '../components/EnvDialogs';
 import { SessionCtx } from '../App';
 
+// D8c: VPC (overlay) subnets are labelled with their VPC; the engine attaches either kind the same way.
+const subnetLabel = (s: { name: string; type?: string; vpc?: string | null }) =>
+  s.type === 'OVERLAY' ? `${s.name} (VPC ${s.vpc || 'overlay'})` : s.type === 'VLAN' ? `${s.name} (VLAN)` : s.name;
+
 const STEPS = ['Source & Target', "Select VM's", 'Network and Policy', 'VM Preparation', 'VM Settings', 'Summary'];
 const RESYNC = [5, 15, 30, 60, 120, 240, 720, 1440];
 
@@ -331,9 +335,9 @@ function Step3({ ws, set, networks, target }: SP & { networks: string[]; target?
         <tbody>{networks.map((n) => (
           <tr key={n}><td>{n}</td><td>VLAN</td>
             <td><select aria-label={`Target subnet for ${n}`} value={ws.netMap[n] || ''} onChange={(e) => set({ netMap: { ...ws.netMap, [n]: e.target.value } })}>
-              <option value="">Select Subnet</option>{subnets.map((s) => <option key={s.id}>{s.name}</option>)}</select></td>
+              <option value="">Select Subnet</option>{subnets.map((s) => <option key={s.id} value={s.name}>{subnetLabel(s)}</option>)}</select></td>
             {ws.testNet && <td><select aria-label={`Test subnet for ${n}`} value={ws.testMap[n] || ''} onChange={(e) => set({ testMap: { ...ws.testMap, [n]: e.target.value } })}>
-              <option value="">Select Subnet</option>{subnets.map((s) => <option key={s.id}>{s.name}</option>)}</select></td>}
+              <option value="">Select Subnet</option>{subnets.map((s) => <option key={s.id} value={s.name}>{subnetLabel(s)}</option>)}</select></td>}
           </tr>))}</tbody></table>
       <hr />
       <h4 className="section">Test Network (Optional)</h4>

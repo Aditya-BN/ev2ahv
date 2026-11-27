@@ -509,3 +509,9 @@ Real Prism Central (adit's API key): `Prism.projects()` returned 9 projects. A d
 `ev2ahv-d8a-test` (e9066136-...) was created with v4, then `set_project(vm, <Testing>)` updated it through v3:
 GET `/api/nutanix/v3/vms/{uuid}` afterwards shows `project_reference` = Testing (21dd8ccd-...). A second call returned
 "no change". Not yet run inside a full migration (the step runs right after create, before power-on).
+
+## D8c: VPC (overlay) subnets, 2026-11-27
+
+Lab PC: 12 VLAN and 4 overlay subnets in VPCs `Test-VPC` and `vpc-prd`; `subnet_list` reports type and VPC name for all.
+A disk-less, powered-off VM `ev2ahv-d8c-test` was created with `builder.nic_entries` for overlay subnet `overlay`
+(vpc-prd) and MAC 50:6b:8d:ee:d8:0c: accepted, NIC on the subnet with that MAC. Deleted right after.

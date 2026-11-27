@@ -21,7 +21,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D5 | P2 | Changed-block tracking works on real everRun: HA win22 and, since 2026-11-27, the FT Rocky guest (8 resyncs under load, idle dirty pass 26 s against 72 s, fallback after bitmap loss works; docs/cbt.md). Per-VM setting `cbt` in the API and wizard (0.3.5, default off). 0.3.6: the bitmap does not give a safe final sync on everRun (QEMU exits with the guest, QMP stop does not hold, guest writes after disk silence; docs/cbt.md), so the final sync stays a source pass; `final_verify` full/sample/none shortens it (downtime 422-474 s -> 208 s sample, 161 s none). Left: a real failover or guest restart (only simulated by removing the bitmaps), ask Stratus about customer FT guests, a guest-side halt signal or a read-only `blockdev-reopen` if a bitmap final is wanted, and a changed `cbt` is not applied while the engine plan is reused after a rollback (refresh the environment first). | engine, ev2ahv/cbt.py, workflow.py, server/live.py |
 | D7 | P2 | Upgrades are CLI only (no UI upload or apply); bundles are checksummed but not signed. Backups are pruned with `ev2ahv-upgrade prune --keep N` (0.3.5, manual, not scheduled); appliance-2 holds 2. The automatic restore on a real failing upgrade has still only been run in unit tests. | appliance, server |
 | D8b | P2 | No "Edit Cutover Settings" (Move's button was never clicked in the reference, so its fields are unknown; see docs/move-reference). Needs a look at a real Move first. | web, server |
-| D8c | P2 | Network step is VLAN only: subnets are listed without their type and overlay (VPC) subnets are untested as NIC targets. Needs a VPC subnet in the lab. | web, server/live.py, builder |
 | D8d | P2 | "Test migration" works in mock mode only; the engine has no isolated-subnet test clone. | engine, server |
 | D9 | P3 | Windows on SCSI costs downtime: the guest boots on PCI (virtio-blk) and is converted to SCSI after cutover, which added 182 s in the 2026-11-24 run. Binding `vioscsi` during guest prep, before cutover, could remove that step (not tried). | engine, ev2ahv/guest.py |
 | D10 | P3 | Security scan leftovers: `ensure_pam_wheel_group_empty` is not explained in docs/security.md; the pip-vendored trivy false positive remains (drop pip from the venv or record an exception). The sysctl/module rules pass on a booted instance (2026-11-27). | appliance, docs/security.md |
@@ -49,6 +48,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: D8c. Target refresh reports each subnet's type and, for overlay subnets, its VPC name; the wizard's
+  network step labels them ("app (VPC vpc-prd)", "VLAN136 (VLAN)"). Lab: the engine's unchanged NIC payload (with a kept
+  MAC) attached a VM to overlay subnet `overlay` (VPC vpc-prd) on the first try; test VM deleted right away. Not
+  covered: keeping the source IP on an overlay subnet (needs VPC IPAM reservation) and a guest booted in a VPC.
 - 2026-11-27: D14 run on a real writer (`ev2ahv-writer-root`): prep-check asked 14 GiB (old rule 16), peak use 7.00 GiB
   (raw staging + one qcow2), never two qcow2 at once, none left behind, staging sha256-identical to the source.
   Downtime 299.4 s, of which 246.4 s image upload: the upload, not the space, is now the cost of image mode.

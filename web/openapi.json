@@ -3078,7 +3078,7 @@
                     },
                     "subnets": {
                         "items": {
-                            "$ref": "#/components/schemas/Named"
+                            "$ref": "#/components/schemas/Subnet"
                         },
                         "type": "array",
                         "title": "Subnets"
@@ -3198,6 +3198,46 @@
                 },
                 "type": "object",
                 "title": "Schedule"
+            },
+            "Subnet": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "VLAN",
+                            "OVERLAY",
+                            ""
+                        ],
+                        "title": "Type",
+                        "default": ""
+                    },
+                    "vpc": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vpc"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "name"
+                ],
+                "title": "Subnet",
+                "description": "A Prism subnet (D8c): VLAN or OVERLAY (a VPC subnet); vpc is the VPC name for overlay subnets."
             },
             "ValidationError": {
                 "properties": {
