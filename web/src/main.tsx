@@ -5,6 +5,9 @@ import App from './App';
 import { DialogProvider } from './components/ui';
 import './tokens.css';
 import './styles.css';
+import { getDensity, setDensity } from './util';
+
+setDensity(getDensity());
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

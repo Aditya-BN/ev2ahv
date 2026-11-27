@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api';
+import { pageZoom } from '../util';
 
 // ---------- Modal ----------
 export function Modal(props: {
@@ -101,8 +102,8 @@ export function Tip(props: { text: ReactNode; children: ReactNode; wide?: boolea
   const w = props.wide ? 320 : 240;
   return (
     <span className="tip" onMouseEnter={(e) => {
-      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      setPos({ x: Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)), y: r.bottom + 6 });
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect(), z = pageZoom();
+      setPos({ x: Math.max(8, Math.min(window.innerWidth / z - w - 8, (r.left + r.width / 2) / z - w / 2)), y: r.bottom / z + 6 });
     }} onMouseLeave={() => setPos(null)}>
       {props.children}
       {pos && <span className="tip-box" style={{ left: pos.x, top: pos.y, width: w }} role="tooltip">{props.text}</span>}

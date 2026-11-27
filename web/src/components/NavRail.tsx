@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useSession } from '../App';
 import { Modal, PasswordInput, useDialogs, Field } from './ui';
 import { Icon } from './Icons';
+import { Density, getDensity, setDensity } from '../util';
 
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   const { info } = useSession();
@@ -50,6 +51,7 @@ export function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
 export default function NavRail() {
   const { info, logout } = useSession();
   const [dlg, setDlg] = useState<'' | 'about' | 'pw'>('');
+  const [density, setDens] = useState<Density>(getDensity());
   const nav = useNavigate();
   const item = (to: string, icon: Parameters<typeof Icon>[0]['n'], label: string) => (
     <NavLink to={to} className={({ isActive }) => 'rail-item' + (isActive ? ' active' : '')}><Icon n={icon} /><span className="lbl">{label}</span></NavLink>
@@ -74,6 +76,10 @@ export default function NavRail() {
         <a className="rail-item mini" href={api.docsUrl} target="_blank" rel="noreferrer"><Icon n="help" /><span className="lbl">REST API docs</span></a>
         <button className="rail-item mini" onClick={() => setDlg('about')}><Icon n="info" /><span className="lbl">About ev2ahv</span></button>
         <button className="rail-item mini" onClick={() => setDlg('pw')}><Icon n="key" /><span className="lbl">Change password</span></button>
+        <label className="rail-item mini density" title="Interface size"><Icon n="settings" /><span className="lbl">Size</span>
+          <select aria-label="Interface size" value={density} onChange={(e) => { const d = e.target.value as Density; setDensity(d); setDens(d); }}>
+            <option value="">Auto</option><option value="comfortable">Comfortable</option><option value="compact">Compact</option><option value="dense">Dense</option>
+          </select></label>
         <div className="rail-user">
           <span className="avatar" aria-hidden="true">{(info.user || '?')[0]}</span>
           <span className="who" id="user-menu">{info.user}{info.role === 'viewer' && <span className="muted small"> (viewer)</span>}</span>
