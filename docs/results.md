@@ -608,3 +608,21 @@ plan file and fake source deleted, the temporary key line removed from the write
 - **appliance-2 0.3.7 -> 0.3.8** with the signed bundle (lab key; no keys installed, so not enforced): the 0.3.7 tool
   refuses `manifest.json.sig` as unknown, so the bundled tool was run once (documented bootstrap); 23 s including the
   venv rebuild (ldap3 added), UI upgrade path unit enabled, 0 AVC.
+
+## Rocky retest under writes (0.3.8 on appliance-2), 2026-11-27 evening
+
+Plan `app-rocky-stageB` (Rocky 9 FT, 4 disks, 40 GiB), `final_verify: sample`, cbt off. Load: a journaled writer in the guest
+(`/ext4/ev2ahv-w`, `/span/ev2ahv-w`; random 1-4 MiB files, fsync, then the file's sha256 appended to an fsynced journal), about
+1.2 files per second per directory, left running through the cutover until the guest shut down.
+
+| Step | Result |
+|---|---|
+| "Resync now" under load | resync started 4 s after the click, ran 131 s, sent 219 chunks (918 MB: vda 12, vdc 0, vdd 201, vde 6) |
+| Cutover with the load running (discard-target + resync + cutover) | wall 426 s; **downtime 220.7 s**, final sync 153.4 s, last resync 157.3 s |
+| Compare: same plan, guest idle at cutover (run 4 above) | downtime 208.0 s, final sync 152.9 s |
+| AHV copy | sys_vendor Nutanix, MAC 00:e0:09:a4:d7:40, ssh on 10.12.136.162 |
+| Static data | `/ext4/ev2ahv` and `/span/ev2ahv` 438 of 438 OK |
+| Journaled writes | `/span`: 100 of 100 files match their last journal hash; `/ext4`: 99 of 100, the one that differs (`w-9`) is the file being written when the guest shut down (loop counter 609, last journal entry `w-8` in both dirs) |
+
+So writes up to the shutdown cost about 13 s more downtime than an idle guest, and every write that completed (fsync + journal)
+before the shutdown is on AHV.
