@@ -509,3 +509,75 @@ Real Prism Central (adit's API key): `Prism.projects()` returned 9 projects. A d
 `ev2ahv-d8a-test` (e9066136-...) was created with v4, then `set_project(vm, <Testing>)` updated it through v3:
 GET `/api/nutanix/v3/vms/{uuid}` afterwards shows `project_reference` = Testing (21dd8ccd-...). A second call returned
 "no change". Not yet run inside a full migration (the step runs right after create, before power-on).
+## T5: appliance boot under UEFI, 2026-11-27
+
+VM `ev2ahv-appliance-uefi` (75e95bb1-...), image `ev2ahv-appliance-0.3.5`, 2 vCPU, 4 GiB, v4 `UefiBoot` with secure boot off,
+VLAN135-IPAM static 10.12.135.161 (checked free: no Prism NIC, no ping, neighbour INCOMPLETE, no PTR).
+
+| Step | Result |
+|---|---|
+| Power-on to UI (`/api/v2/appinfo` 200, version 0.3.5, live, appliance) | 60 s |
+| First login | must_change true; `/plans` 403 until the password was changed, 200 after |
+| Prism environment | Connected, 92 VMs visible |
+| Health | VM UUID found, AHV VM `ev2ahv-appliance-uefi`, self-signed certificate |
+| Self-test | PASS, 5 steps (hot-add 1 GiB disk as /dev/sdb, helper read 1073741824 bytes, offline, remove via Prism) |
+
+Not checked: failed units and SELinux from inside (console admin needs an interactive password change), secure boot.
+
+## D10 closed: rebuilt image without pip, 2026-11-27
+
+`bash appliance/build.sh && bash appliance/scripts/scan.sh` on branch `root/D10-leftovers`: trivy HIGH/CRITICAL 0 (was 1, the
+pip-vendored setuptools false positive), pip-audit "No known vulnerabilities found", OpenSCAP CIS L1 195 pass / 61 fail.
+The venv in the image has no pip (site-packages has no `pip*`); `pip.list` is written before pip is removed.
+
+## D13: LDAP sign-in against OpenLDAP, 2026-11-27
+
+Throw-away `osixia/openldap:1.5.0` container on 127.0.0.1 (removed afterwards), users alice (in ev2ahv-admins), bob (in
+ev2ahv-viewers), carol (in no group); `ldap_login` with the real `ldap3` client:
+
+| Case | LDAPS (636) | StartTLS (389) |
+|---|---|---|
+| alice, right password | admin | admin |
+| bob, right password | viewer | viewer |
+| carol (no group) | refused | refused |
+| alice, wrong password | refused | refused |
+| username `*` | refused | refused |
+
+With certificate verification on, the self-signed server is refused. Not tested: the lab Active Directory.
+
+## D14: raw image upload vs qcow2, 2026-11-27
+
+Same writer (`ev2ahv-writer-root`) and the same fake source as the qcow2 run above (disk a 6 GiB with 3 GiB written,
+disk b 2 GiB with 1 GiB written), plan `image_format: raw`.
+
+| Measure | qcow2 (default) | raw |
+|---|---|---|
+| prep-check staging need | 15,032,385,536 B (14 GiB) | 8,589,934,592 B (8 GiB) |
+| Peak `/data` use over baseline | +7.00 GiB | +4.00 GiB |
+| Image conversion + upload | 246.4 s | 224.2 s (8 GiB virtual sent) |
+| Downtime | 299.4 s | 276.2 s |
+| Seed / final sync | 139.7 s / 40.8 s | 132.5 s / 40.2 s |
+
+Test VM and images deleted afterwards (`cleanup --delete-target`). On a much sparser disk, or a slow writer-to-bastion
+link, qcow2 may still be faster because raw sends the holes as zeros.
+
+## D8d: test migration, 2026-11-27
+
+Plan `d8d` (hot-add) on `ev2ahv-writer-root`, fake source 2 GiB (512 MiB written) + 1 GiB (256 MiB written), test
+subnet VLAN136, CLI from the bastion.
+
+| Step | Result |
+|---|---|
+| seed | staging vdisks hot-added to the writer, synced |
+| `ev2ahv test` | 15 s: `ev2ahv-d8d-target-test` created and ON, SCSI 0 2,147,483,648 B, SCSI 1 1,073,741,824 B, new MAC 50:6b:8d:a8:2e:34 on VLAN136 |
+| `ev2ahv discard-test` | test VM deleted (Prism no longer finds it) |
+| resync after 8 MiB written on the source | offlined staging devices came back; sent 2 chunks (8,388,608 B), skipped 510 + 256 |
+| cleanup | both staging disks removed from the writer; fake source deleted |
+
+Not checked: booting a real guest from the test clone (the fake disks are not bootable).
+
+## D8c: VPC (overlay) subnets, 2026-11-27
+
+Lab PC: 12 VLAN and 4 overlay subnets in VPCs `Test-VPC` and `vpc-prd`; `subnet_list` reports type and VPC name for all.
+A disk-less, powered-off VM `ev2ahv-d8c-test` was created with `builder.nic_entries` for overlay subnet `overlay`
+(vpc-prd) and MAC 50:6b:8d:ee:d8:0c: accepted, NIC on the subnet with that MAC. Deleted right after.

@@ -56,6 +56,9 @@ passwd -l root
 # CIS no_empty_passwords: no account may log in with an empty password (all accounts here have one or are locked)
 sed -i 's/ nullok\b//' /etc/pam.d/system-auth /etc/pam.d/password-auth
 install -d -m 0750 -o ev2ahv -g ev2ahv /var/lib/ev2ahv /var/lib/ev2ahv/tls /var/lib/ev2ahv/config /var/log/ev2ahv
+# D7: upgrade spool (the app writes, root applies) and trusted signing keys (empty: unsigned bundles allowed)
+install -d -m 0770 -o ev2ahv -g ev2ahv /var/lib/ev2ahv/upgrade
+install -d -m 0755 /etc/ev2ahv/upgrade-keys
 install -d -m 0750 -o root -g ev2ahv /etc/ev2ahv
 chown root:ev2ahv /etc/ev2ahv/ev2ahv.env; chmod 0640 /etc/ev2ahv/ev2ahv.env
 install -d -m 0755 /var/log/journal
@@ -64,7 +67,7 @@ ln -sf /usr/local/sbin/ev2ahv-upgrade /usr/sbin/ev2ahv-upgrade   # in sudo secur
 ln -sf /dev/null /etc/systemd/system/getty@tty1.service
 ln -sf /usr/lib/systemd/system/ev2ahv-tls.path /etc/systemd/system/multi-user.target.wants/ev2ahv-tls.path 2>/dev/null || true
 for u in chronyd sshd firewalld NetworkManager nginx auditd cloud-init-local cloud-init cloud-config cloud-final \
-         ev2ahv ev2ahv-boot ev2ahv-blockd.socket ev2ahv-firstboot ev2ahv-tls.path ev2ahv-console ev2ahv-issue; do
+         ev2ahv ev2ahv-boot ev2ahv-blockd.socket ev2ahv-firstboot ev2ahv-tls.path ev2ahv-upgrade.path ev2ahv-console ev2ahv-issue; do
   systemctl enable $u.service 2>/dev/null || systemctl enable $u
 done
 systemctl set-default multi-user.target
@@ -166,6 +169,9 @@ setfiles -F -r $ROOT /etc/selinux/targeted/contexts/files/file_contexts $ROOT 2>
 setfiles -F -r $ROOT $ROOT/etc/selinux/targeted/contexts/files/file_contexts $ROOT/boot/efi 2>/dev/null || true
 chroot $ROOT rpm -qa --qf '%{NAME}\t%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort > /out/rpm.list
 chroot $ROOT /opt/ev2ahv/venv/bin/pip list --format=freeze > /out/pip.list
+# D10: nothing installs packages at runtime (upgrades rebuild the venv), so pip does not ship. This also removes
+# the vendored setuptools 70.3.0 metadata that trivy reported as a HIGH false positive.
+chroot $ROOT /opt/ev2ahv/venv/bin/python -m pip uninstall -q -y pip
 du -sh $ROOT --exclude=proc --exclude=sys --exclude=dev || true
 # tree for scanners
 rm -rf /out/tree; mkdir /out/tree   # constant path inside the builder container

@@ -28,17 +28,20 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D11 | P3 | (owner 2026-11-27: the owner enters the credentials with `bash tools/prism-userpass.sh`, which saves ~/.config/ev2ahv/prism-userpass.env (600) and tests the login.) Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
 | D13 | P4 | (owner 2026-11-27: low priority.) LDAP / AD sign-in is a stub (design in docs/security.md). The default certificate is self-signed (the Health page can replace it). | server |
 | D14 | P3 | The image fallback (`target.transfer: image`) still needs the total disk size plus the largest disk free on the writer, and the upload adds to downtime. Going lower needs uploading straight from the raw file (no qcow2 copy). | engine |
+| D5 | P2 | Changed-block tracking works on real everRun: HA win22 and, since 2026-11-27, the FT Rocky guest (8 resyncs under load, idle dirty pass 26 s against 72 s, fallback after bitmap loss works; docs/cbt.md). Per-VM setting `cbt` in the API and wizard (0.3.5, default off). 0.3.6: the bitmap does not give a safe final sync on everRun (QEMU exits with the guest, QMP stop does not hold, guest writes after disk silence; docs/cbt.md), so the final sync stays a source pass; `final_verify` full/sample/none shortens it (downtime 422-474 s -> 208 s sample, 161 s none). Left: a real failover or guest restart (only simulated by removing the bitmaps), ask Stratus about customer FT guests, a guest-side halt signal or a read-only `blockdev-reopen` if a bitmap final is wanted, and a changed `cbt` is not applied while the engine plan is reused after a rollback (refresh the environment first). | engine, ev2ahv/cbt.py, workflow.py, server/live.py |
+| D7 | P3 | Upgrades: no signing key is installed on the lab appliances yet (unsigned bundles still accepted) and key custody is undecided; backups are pruned only by hand (`ev2ahv-upgrade prune`). | appliance, server |
+| D8b | P2 | No "Edit Cutover Settings" (Move's button was never clicked in the reference, so its fields are unknown; see docs/move-reference). Needs a look at a real Move first. | web, server |
+| D9 | P3 | Windows on SCSI costs downtime: the guest boots on PCI (virtio-blk) and is converted to SCSI after cutover, which added 182 s in the 2026-11-24 run. Binding `vioscsi` during guest prep, before cutover, could remove that step (not tried). | engine, ev2ahv/guest.py |
+| D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
+| D13 | P3 | LDAP sign-in is built and tested against OpenLDAP, not yet against the lab Active Directory (needs a bind account). The default certificate is self-signed (the Health page can replace it). | server |
 | D15 | P2 | Production impact and backups are untested. ev2ahv takes no snapshots and does not use VSS, but: (a) seeds and full-disk resyncs add read I/O and about one CPU core per disk on the everRun node, and that load has never been measured; (b) reading while an everRun snapshot exists is unverified; (c) D5 dirty bitmaps may clash with any QEMU-level backup on the same VM; (d) after cutover the everRun-side backup job fails, and in-guest agents usually need one full backup because disk IDs change; (e) running scripts as root on the nodes may not be covered by Stratus support. Update 2026-11-27: (a) measured, see docs/runbook.md section 7 (about 1 core, +3 ms disk latency, recommended `max_mbps: 100`); (b) (c) (d) (e) still untested. | docs/runbook.md, engine |
-| D19 | P3 | Environment details show memory as `5.990234375 GiB` and the everRun version as just `everRun`. | web, server |
-| D20 | P3 | Seed ETA is wrong on sparse disks (34 min shown, done in 12.6 min); prep-check badge shows WARN while the check still runs; cutover shows only "cutover NN%" with no stage (final sync, shutdown, conversion). | web, server/live.py |
-| D21 | P3 | Lab shortcut: appliance-3 uses the bastion key as its app key (same as appliance-2). Needs the appliance key authorised on the everRun nodes and the UI to show its public key with a copy hint. | appliance, docs |
-| D22 | P3 | Discovery lists only guests libvirt knows, so a stopped everRun guest (undefined in libvirt) is missing from the environment and the wizard. The DOH `watch` lists it (name, state, FT/HA); disk details would need the everRun API or the guest started. | server/live.py |
+| D21 | P3 | appliance-2 still uses the bastion key as its app key (appliance-3 fixed 2026-11-27). Linux guests that use automatic prep over SSH need the appliance key too (not added to `ev2ahv-src-rocky9`). | appliance, docs |
 
 ## What to test
 
 | ID | Test | How | Pass when |
 |---|---|---|---|
-| T5 | UEFI: appliance boot, and a UEFI guest | Create the VM with UEFI boot | Boots, self-test PASS |
+| T5 | UEFI guest (the appliance itself boots under UEFI, 2026-11-27) | Migrate an everRun UEFI guest | Boots on AHV with UEFI, checksums match |
 | T6 | Console TUI: static IP, hostname, NTP on AHV | `ev2ahv-config --console` on tty1 | Settings survive a reboot; UI reachable on the new IP |
 | T7 | OVA export and ConfigDrive network | — | Deploys from OVA; ConfigDrive sets the network |
 | T8 | Appliance reboot mid-seed (mid-cutover already passes) | Reboot during a seed | Seed resumes, nothing marked Failed |
@@ -49,6 +52,38 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: D21 for appliance-3. Its own key (`ev2ahv-appliance`, SHA256:CzvWC2PB...) was appended to root's
+  authorized_keys on both everRun nodes with `from="10.12.135.160",no-agent-forwarding,no-port-forwarding,no-X11-forwarding`
+  (backups `authorized_keys.bak-ev2ahv-<UTC>` on each node), tested as the `ev2ahv` user, then made the app key; the
+  bastion key is kept on the appliance as `id_ed25519.bastion-lab` for a revert. everRun environment refresh: Connected.
+- 2026-11-27: D10 closed. pip is no longer shipped in the venv (mkimage.sh and ev2ahv-upgrade remove it after
+  installing), so trivy's only HIGH (pip's vendored setuptools 70.3.0) is gone: rebuilt image, trivy 0 HIGH/CRITICAL,
+  pip-audit clean, CIS L1 195 pass / 61 fail (all 61 explained in docs/security.md; `ensure_pam_wheel_group_empty`
+  accepted: root is locked, wheel is the admin sudo group).
+- 2026-11-27: D7 UI upgrade and signing (0.3.7). Health page uploads a bundle; a root path unit applies it
+  (`ev2ahv-upgrade apply-request`) and writes status for the page. Bundles can be Ed25519-signed; signatures are
+  required once `/etc/ev2ahv/upgrade-keys/*.pub` exist. Lab on `ev2ahv-appliance-3`: CLI 0.3.5 -> 0.3.7 (5 s), then the
+  same bundle through `PUT /api/v2/upgrade`: applied by the path unit, status "done" 6 s after the trigger, 0 AVC,
+  no failed units. Found and fixed on the way: files copied out of `/var/lib` kept the `var_lib_t` label, so systemd
+  could not run the tool (now `restorecon`); a misplaced block had left the routes unregistered. 12 new tests.
+- 2026-11-27: D13 LDAP. Directory sign-in (Appliance Settings): service bind, user search with escaped filter, user
+  bind, role from admin/viewer group membership, write-only bind password, clear text refused. 7 tests on ldap3's mock
+  directory; end to end against an OpenLDAP 2.4 container over LDAPS and StartTLS: admin and viewer roles right, user
+  in no group, wrong password and `*` refused, self-signed server refused with verification on.
+- 2026-11-27: D14 closed. `target.image_format: raw` uploads the staging file itself (no qemu-img, no second copy);
+  qcow2 stays the default. Same fake source (6 GiB/3 GiB written + 2 GiB/1 GiB) on `ev2ahv-writer-root`: space check
+  8 GiB vs 14 GiB, peak use +4.00 vs +7.00 GiB, image upload 224.2 vs 246.4 s, downtime 276.2 vs 299.4 s. raw sends the
+  full virtual size, so qcow2 can still win on very sparse disks or slow links. 2 new tests.
+- 2026-11-27: D8d. Test migration works in live mode and the CLI (`ev2ahv test` / `discard-test`): the staging disks
+  (hot-add) are flushed and offlined on the writer and cloned into `<target>-test` with new MACs on the plan's test
+  subnet, then powered on; the source keeps running. Discard deletes only that VM; the next resync brings the staging
+  disks back. Lab on `ev2ahv-writer-root`: test VM ON 15 s after the request with both disks (2 GiB, 1 GiB) and a new
+  MAC; discard removed it; a resync after an 8 MiB source change sent exactly 2 chunks. Image mode is refused (nothing
+  to clone). 4 unit tests.
+- 2026-11-27: D8c. Target refresh reports each subnet's type and, for overlay subnets, its VPC name; the wizard's
+  network step labels them ("app (VPC vpc-prd)", "VLAN136 (VLAN)"). Lab: the engine's unchanged NIC payload (with a kept
+  MAC) attached a VM to overlay subnet `overlay` (VPC vpc-prd) on the first try; test VM deleted right away. Not
+  covered: keeping the source IP on an overlay subnet (needs VPC IPAM reservation) and a guest booted in a VPC.
 - 2026-11-27: D14 run on a real writer (`ev2ahv-writer-root`): prep-check asked 14 GiB (old rule 16), peak use 7.00 GiB
   (raw staging + one qcow2), never two qcow2 at once, none left behind, staging sha256-identical to the source.
   Downtime 299.4 s, of which 246.4 s image upload: the upload, not the space, is now the cost of image mode.
@@ -67,6 +102,18 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
   the wizard offers them (None by default); the engine puts the new AHV VM in the chosen project right after create
   (v3 `metadata.project_reference`, owned VMs only, no-op if already there). Lab: `ev2ahv-d8a-test` was put in project
   `Testing` and read back through v3; a second call changed nothing. 4 unit tests. Not yet run as part of a migration.
+- 2026-11-27: T5 (appliance part). `ev2ahv-appliance-uefi` from image `ev2ahv-appliance-0.3.5` with v4 `UefiBoot`
+  (secure boot off) booted and served the UI 60 s after power-on; forced password change (403 before, 200 after);
+  Prism environment Connected; self-test PASS (5 steps: found itself, hot-added 1 GiB as /dev/sdb, helper read it,
+  offlined, removed via Prism). Not checked from inside (failed units, SELinux) and not with secure boot.
+- 2026-11-27: D19. Environment details show memory with the shared formatter (`6 GiB`, not `5.990234375 GiB`), and
+  an everRun environment shows its release (`everRun 8.1.1-285`, read from `supernova/version` in the web API's watch
+  output, seen on the lab system). 1 new test.
+- 2026-11-27: D20. Cutover shows its stage next to the phase (stopping source, final sync, image upload or preparing
+  disks, creating AHV VM, powering on, verifying, converting to SCSI): the runner emits it after each engine step and
+  live mode stores it as `stage`. The prep-check badge shows "Checking…" while prep-check or guest prep runs instead
+  of the old result. ETA uses the rate of the last 120 s instead of the since-start average, which was far off on
+  sparse disks (holes pass fast). 4 tests; not yet watched on a real cutover.
 - 2026-11-27: T3 and T4 done together: win22 HA migrated from appliance-3 by clicking through the UI (Playwright, 49 screenshots in docs/appliance-shots/t4/). Downtime 877.2 s, final sync 678.6 s, PCI to SCSI 78.9 s, seed about 12.6 min, resync 188 s; boots, same IP and MAC, 3389/5985 open, 400+399 of 400+399 manifest files match. See docs/results.md. D9 note: the conversion cost 79 s this time. New debt D18 to D21.
 - 2026-11-27: v0.3.5 released (commit 3585d22, tag v0.3.5). Both appliances upgraded 0.3.4 -> 0.3.5 in 3 s each; self-test PASS, `running`, 0 AVC, 0 failed units afterwards (the blockd exit-flush fix, fa865b8, is confirmed). Image `ev2ahv-appliance-0.3.5` in Prism (0.3.2 kept; 0.2.0 images and `ev2ahv-writer` were deleted the same morning on purpose).
   - D7 prune: `ev2ahv-upgrade prune --keep N [--dry-run]`, guarded like the rest (own backup names only, needs `app/`, no symlinks, keep >= 1), 2 unit tests. Used on appliance-2: 5 backups -> 2.

@@ -2122,6 +2122,103 @@
                     }
                 }
             }
+        },
+        "/api/v2/upgrade": {
+            "get": {
+                "summary": "Upgrade Status",
+                "operationId": "upgrade_status_api_v2_upgrade_get",
+                "parameters": [
+                    {
+                        "name": "ev2ahv_session",
+                        "in": "cookie",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Ev2Ahv Session"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "summary": "Upgrade Upload",
+                "description": "Admin only (the role middleware refuses writes from viewers). Streams the bundle into the spool and asks\nev2ahv-upgrade.path (root) to apply it. Root re-verifies everything; nothing here is trusted.",
+                "operationId": "upgrade_upload_api_v2_upgrade_put",
+                "parameters": [
+                    {
+                        "name": "force",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false,
+                            "title": "Force"
+                        }
+                    },
+                    {
+                        "name": "ev2ahv_session",
+                        "in": "cookie",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Ev2Ahv Session"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -2826,6 +2923,18 @@
                         "title": "Phase",
                         "description": "engine step running now, e.g. guest-prep, seed, resync, cutover"
                     },
+                    "stage": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Stage",
+                        "description": "part of the cutover running now, e.g. final sync, image upload"
+                    },
                     "sync_progress": {
                         "anyOf": [
                             {
@@ -3078,7 +3187,7 @@
                     },
                     "subnets": {
                         "items": {
-                            "$ref": "#/components/schemas/Named"
+                            "$ref": "#/components/schemas/Subnet"
                         },
                         "type": "array",
                         "title": "Subnets"
@@ -3198,6 +3307,46 @@
                 },
                 "type": "object",
                 "title": "Schedule"
+            },
+            "Subnet": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "VLAN",
+                            "OVERLAY",
+                            ""
+                        ],
+                        "title": "Type",
+                        "default": ""
+                    },
+                    "vpc": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vpc"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "name"
+                ],
+                "title": "Subnet",
+                "description": "A Prism subnet (D8c): VLAN or OVERLAY (a VPC subnet); vpc is the VPC name for overlay subnets."
             },
             "ValidationError": {
                 "properties": {

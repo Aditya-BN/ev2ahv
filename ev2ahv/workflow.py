@@ -1,6 +1,6 @@
 """The migration workflow. Every step is idempotent and records progress in SQLite.
 The source is only ever read, stopped and started. It is never modified or deleted."""
-import base64, fcntl, logging, os, re, shlex, socket, subprocess, time
+import base64, copy, fcntl, logging, os, re, shlex, socket, subprocess, time
 
 from . import builder, cbt, engine, guest as guestlib, target as tgt
 from .readers import make_reader
@@ -28,11 +28,12 @@ def safe_staging_file(path, staging_dir=None):
     return path
 
 
-def image_space_needed(sizes):
+def image_space_needed(sizes, image_format="qcow2"):
     """Worst-case free bytes the writer needs for target.transfer: image: a raw staging file per disk (sparse, but
-    worst case fully written) plus one qcow2 at a time while it is converted and uploaded (worst case the largest
-    disk). Before 2026-11-26 the check asked for twice the total."""
-    return sum(sizes) + max(sizes, default=0)
+    worst case fully written) plus, for qcow2, one qcow2 at a time while it is converted and uploaded (worst case the
+    largest disk). raw uploads the staging file itself, so it needs no extra copy (D14). Before 2026-11-26 the check
+    asked for twice the total."""
+    return sum(sizes) + (max(sizes, default=0) if image_format == "qcow2" else 0)
 
 
 class Migration:
@@ -154,6 +155,24 @@ class Migration:
             images.pop(disk["name"], None)
             self.state.set("images", images)
             raw = safe_staging_file(self.staging()[disk["name"]]["file"], self.p["target"].get("staging_dir"))
+            if self.p["target"].get("image_format", "qcow2") == "raw":
+                # D14: no conversion and no second copy; uploads the full virtual size (holes as zeros)
+                q_raw = shlex.quote(raw)
+                self.writer.run(f"sync {q_raw}")
+                size = int(self.writer.run(f"stat -c %s {q_raw}").strip())
+                proc = subprocess.Popen(self.writer.argv(f"cat {q_raw}"), stdout=subprocess.PIPE)
+                try:
+                    image = self.prism.upload_image(name, proc.stdout, size, cluster,
+                                                    f"ev2ahv staging, plan {self.p['name']}")
+                finally:
+                    proc.stdout.close()
+                    rc = proc.wait()
+                if rc:
+                    self.prism.delete_image(image)
+                    raise RuntimeError(f"reading {raw} on the writer failed (rc {rc})")
+                images[disk["name"]] = image
+                self.state.set("images", images)
+                continue
             qcow = raw[:-4] + ".qcow2"
             q_raw, q_qcow = shlex.quote(raw), shlex.quote(qcow)
             # one qcow2 at a time, removed after upload or failure, so the writer needs the raw files plus the largest
@@ -244,7 +263,7 @@ class Migration:
                         sizes.append(builder.align(r.size()))
                     finally:
                         r.close()
-                need = image_space_needed(sizes)
+                need = image_space_needed(sizes, self.p["target"].get("image_format", "qcow2"))
                 base = self.p["target"]["staging_dir"]
                 free = int(self.writer.run(f"mkdir -p {shlex.quote(base)}; df -B1 --output=avail {shlex.quote(base)} | tail -1").strip())
                 if free < need:
@@ -693,6 +712,63 @@ class Migration:
         path = os.path.join(self.dir, "known_hosts")
         if os.path.exists(path):
             os.remove(path)
+
+    # ---- test migration (D8d) ----------------------------------------------
+    def test_name(self):
+        return self.p["target"]["vm_name"] + "-test"
+
+    def test_subnet(self):
+        t = self.p["target"]
+        nics = self.p.get("nics") or []
+        return t.get("test_subnet") or (nics[0]["subnet"] if nics else None)
+
+    def test(self):
+        """Boot a copy of the last synced data on the test subnet while the source keeps running. The staging disks are
+        flushed and offlined on the writer (the next resync brings them back), cloned into <target>-test with new
+        MACs, and the clone is powered on. It shows the data as of the last sync, crash-consistent."""
+        self.lock()
+        if self.image_mode:
+            raise RuntimeError("test migration needs target.transfer: hotadd (image mode has no disks to clone)")
+        staging = self.staging()
+        if not staging or any(d["name"] not in staging for d in self.p["disks"]):
+            raise RuntimeError("nothing seeded yet. Run seed first")
+        name = self.test_name()
+        self.prism.extra_owned.add(name)
+        existing = self.prism.vm_by_name(name)
+        if existing:
+            raise RuntimeError(f"test VM {name} already exists. Discard it first")
+        subnet = self.test_subnet()
+        if self.dry_run:
+            log.info("[dry-run] clone %d staging disk(s) into %s on %s and power it on", len(staging), name, subnet)
+            return {"dry_run": True}
+        writer_vm = self.writer_vm()
+        for d in self.p["disks"]:
+            tgt.quiesce_device(self.writer, self.device_for(staging[d["name"]]))
+        cluster = self.prism.cluster_id(self.p["target"]["cluster"])
+        p = copy.deepcopy(self.p)
+        p["target"]["vm_name"] = name
+        p["nics"] = [dict(n, subnet=subnet, keep_mac=False, mac=None) for n in p.get("nics") or []]
+        subnets = {subnet: self.prism.subnet_id(subnet, cluster)} if subnet else {}
+        sources = [(staging[d["name"]]["size"], self.prism.disk_ref(writer_vm, staging[d["name"]]["disk_id"]))
+                   for d in self.p["disks"]]
+        payload = builder.vm_payload(p, cluster, sources, subnets)
+        payload["description"] = f"ev2ahv TEST migration of plan {self.p['name']} (discard when done)"
+        vm_id = self.prism.create_vm(payload)
+        self.state.set("test_vm", vm_id)
+        self.prism.power(vm_id, "power-on")
+        self.state.event("test", vm=vm_id, subnet=subnet)
+        return {"test_vm": vm_id, "name": name, "subnet": subnet}
+
+    def discard_test(self):
+        """Delete the test VM (never the target or anything else)."""
+        self.lock()
+        name = self.test_name()
+        self.prism.extra_owned.add(name)
+        vm = self.prism.vm_by_name(name)
+        if vm and not self.dry_run:
+            self.prism.delete_vm(vm["extId"])
+        self.state.set("test_vm", None)
+        return {"discarded": vm["extId"] if vm else None, "dry_run": self.dry_run}
 
     def discard_target(self):
         """Delete the migrated VM after a rollback, keeping staging disks so resync stays incremental."""

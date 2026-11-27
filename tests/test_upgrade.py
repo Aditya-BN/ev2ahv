@@ -34,7 +34,8 @@ class Base(unittest.TestCase):
         a = os.path.join(t, "appl")
         up.P.update(app=f"{a}/opt/app", venv=f"{a}/opt/venv", data=f"{a}/var", state=f"{a}/var/state",
                     env=f"{a}/etc/ev2ahv.env", sock=f"{a}/run/app.sock", self=f"{a}/sbin/ev2ahv-upgrade",
-                    link=f"{a}/usrsbin/ev2ahv-upgrade", cookie=f"{a}/run/health.cookie")
+                    link=f"{a}/usrsbin/ev2ahv-upgrade", cookie=f"{a}/run/health.cookie",
+                    keys=f"{a}/etc/upgrade-keys", spool=f"{a}/var/upgrade", units=f"{a}/units")
         os.makedirs(f"{a}/usrsbin", exist_ok=True)
         write(f"{a}/opt/app/VERSION", "0.2.0\n")
         write(f"{a}/opt/app/ev2ahv/__init__.py", "v = 'old'\n")
@@ -254,6 +255,96 @@ class ApplyTest(Base):
         up.prune(1)
         self.assertTrue(os.path.exists(f"{victim}/app/VERSION"))
         self.assertEqual(len(os.listdir(f"{self.a}/var/backups")), 2)
+
+
+def keypair(d):
+    import subprocess
+    k, pub = os.path.join(d, "sign.key"), os.path.join(d, "sign.pub")
+    subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", k], check=True, capture_output=True)
+    subprocess.run(["openssl", "pkey", "-in", k, "-pubout", "-out", pub], check=True, capture_output=True)
+    return k, pub
+
+
+class SignatureTest(Base):
+    """D7: signed bundles. Keys installed = signature required; no keys = unsigned accepted (as before)."""
+    def install_key(self, pub):
+        os.makedirs(up.P["keys"], exist_ok=True)
+        with open(pub) as src, open(os.path.join(up.P["keys"], "owner.pub"), "w") as dst:
+            dst.write(src.read())
+
+    def test_signed_bundle_with_trusted_key_applies(self):
+        k, pub = keypair(self.tmp.name)
+        b, _ = make_bundle.build(os.path.join(self.tmp.name, "dist-s"), "0.2.0", root=self.src, sign_key=k)
+        self.install_key(pub)
+        up.apply(b, ops=self.ops())
+        self.assertEqual(up.current_version(), "0.3.0")
+
+    def test_unsigned_bundle_refused_when_keys_installed(self):
+        _, pub = keypair(self.tmp.name)
+        self.install_key(pub)
+        with self.assertRaises(up.UpgradeError):
+            up.apply(self.bundle, ops=self.ops())
+        self.assertEqual(self.calls, [])
+
+    def test_wrong_key_refused(self):
+        k, _ = keypair(self.tmp.name)
+        other = os.path.join(self.tmp.name, "other")
+        os.makedirs(other)
+        _, pub2 = keypair(other)
+        b, _ = make_bundle.build(os.path.join(self.tmp.name, "dist-s"), "0.2.0", root=self.src, sign_key=k)
+        self.install_key(pub2)
+        with self.assertRaises(up.UpgradeError):
+            up.apply(b, ops=self.ops())
+        self.assertEqual(self.calls, [])
+
+    def test_bundle_carries_and_installs_the_upgrade_units(self):
+        write(os.path.join(self.src, "appliance/rootfs/usr/lib/systemd/system/ev2ahv-upgrade.path"), "[Path]\n")
+        b, man = make_bundle.build(os.path.join(self.tmp.name, "dist-u"), "0.2.0", root=self.src)
+        self.assertIn("systemd/ev2ahv-upgrade.path", man["files"])
+        os.makedirs(up.P["units"], exist_ok=True)
+        up.apply(b, ops=self.ops())
+        self.assertTrue(os.path.exists(os.path.join(up.P["units"], "ev2ahv-upgrade.path")))
+
+
+class ApplyRequestTest(Base):
+    """D7: the UI drops bundle.tar.gz + request.json in the spool; root applies them."""
+    def spool(self, bundle=None, req=None):
+        os.makedirs(up.P["spool"], exist_ok=True)
+        if bundle:
+            import shutil
+            shutil.copy(bundle, os.path.join(up.P["spool"], "bundle.tar.gz"))
+        with open(os.path.join(up.P["spool"], "request.json"), "w") as fh:
+            json.dump(req or {"by": "nutanix"}, fh)
+
+    def status(self):
+        with open(os.path.join(up.P["spool"], "status.json")) as fh:
+            return json.load(fh)
+
+    def test_no_request_is_a_no_op(self):
+        self.assertIsNone(up.apply_request(ops=self.ops()))
+
+    def test_request_is_applied_and_consumed(self):
+        self.spool(self.bundle)
+        self.assertTrue(up.apply_request(ops=self.ops()))
+        self.assertEqual(up.current_version(), "0.3.0")
+        self.assertFalse(os.path.exists(os.path.join(up.P["spool"], "request.json")))
+        self.assertFalse(os.path.exists(os.path.join(up.P["spool"], "bundle.tar.gz")))
+        self.assertEqual((self.status()["state"], self.status()["by"]), ("done", "nutanix"))
+
+    def test_failure_is_reported_in_status(self):
+        write(f"{self.a}/opt/app/VERSION", "0.4.0\n")          # downgrade without force
+        self.spool(self.bundle)
+        self.assertFalse(up.apply_request(ops=self.ops()))
+        self.assertEqual(self.status()["state"], "failed")
+        self.assertIn("older", self.status()["message"])
+
+    def test_symlinked_bundle_is_not_followed(self):
+        os.makedirs(up.P["spool"], exist_ok=True)
+        os.symlink(self.bundle, os.path.join(up.P["spool"], "bundle.tar.gz"))
+        self.spool()
+        self.assertFalse(up.apply_request(ops=self.ops()))
+        self.assertEqual(self.status()["state"], "failed")
+        self.assertEqual(up.current_version(), "0.2.0")
 
 
 class MigrateTest(unittest.TestCase):

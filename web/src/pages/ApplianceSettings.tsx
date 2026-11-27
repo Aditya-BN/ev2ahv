@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, LdapSettings } from '../api';
 import { Field, Spinner, useDialogs } from '../components/ui';
 import { setDisplayTz, timezones, useLive } from '../util';
 
@@ -56,6 +56,40 @@ export default function ApplianceSettings() {
           <div className="form-actions"><button className="btn primary" onClick={save}>Save</button></div>
         </div>
       )}
+      {data && <LdapCard initial={data.ldap} reload={reload} />}
+    </div>
+  );
+}
+
+// D13: directory sign-in. Local accounts are tried first; directory users get admin or viewer from group membership
+// at every login. The bind password is write-only (stored encrypted, never shown again).
+function LdapCard({ initial, reload }: { initial?: LdapSettings; reload: () => void }) {
+  const { showError, toast } = useDialogs();
+  const [c, setC] = useState<LdapSettings>({ enabled: false, verify_tls: true, user_filter: '(sAMAccountName={username})', ...(initial || {}) });
+  const [pw, setPw] = useState('');
+  const set = (p: Partial<LdapSettings>) => setC({ ...c, ...p });
+  const text = (k: keyof LdapSettings, label: string, ph: string, hint?: string) => (
+    <Field label={label} hint={hint}><input value={(c[k] as string) || ''} placeholder={ph} onChange={(e) => set({ [k]: e.target.value } as Partial<LdapSettings>)} /></Field>);
+  const save = async () => {
+    try { await api.putSettings({ ldap: { ...c, ...(pw ? { bind_password: pw } : {}) } }); setPw(''); toast('Directory sign-in saved'); reload(); }
+    catch (e) { showError(e, 'Directory sign-in'); }
+  };
+  return (
+    <div className="card form-card">
+      <h4 className="section">Directory sign-in (LDAP / Active Directory)</h4>
+      <label className="cb"><input type="checkbox" checked={!!c.enabled} onChange={(e) => set({ enabled: e.target.checked })} /> Allow directory users to sign in</label>
+      {c.enabled && (<>
+        {text('url', 'Server URL', 'ldaps://dc1.example.com', 'Use ldaps://, or ldap:// with StartTLS. Clear-text ldap:// is refused.')}
+        <label className="cb"><input type="checkbox" checked={!!c.start_tls} onChange={(e) => set({ start_tls: e.target.checked })} /> StartTLS (for ldap://)</label>
+        <label className="cb"><input type="checkbox" checked={c.verify_tls !== false} onChange={(e) => set({ verify_tls: e.target.checked })} /> Verify the server certificate</label>
+        {text('bind_dn', 'Service account (bind DN)', 'CN=svc-ev2ahv,OU=Service,DC=example,DC=com')}
+        <Field label="Service account password" hint="Write-only. Leave empty to keep the stored one."><input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" /></Field>
+        {text('user_base', 'User search base', 'OU=Users,DC=example,DC=com')}
+        {text('user_filter', 'User filter', '(sAMAccountName={username})', 'Must contain {username}. OpenLDAP: (uid={username}).')}
+        {text('admin_group', 'Admin group (DN)', 'CN=ev2ahv-admins,OU=Groups,DC=example,DC=com', 'Members get the admin role.')}
+        {text('viewer_group', 'Viewer group (DN)', 'CN=ev2ahv-viewers,OU=Groups,DC=example,DC=com', 'Members get the read-only viewer role. Users in neither group cannot sign in.')}
+      </>)}
+      <div className="form-actions"><button className="btn primary" onClick={save}>Save</button></div>
     </div>
   );
 }

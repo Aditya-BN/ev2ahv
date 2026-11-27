@@ -102,6 +102,21 @@ def probe(body):
     return {"version": "everRun"}
 
 
+def subnet_list(pr):
+    """Subnets with their type and, for overlay subnets, the VPC name (D8c). VPC names are best effort."""
+    try:
+        vpcs = {v["extId"]: v.get("name") for v in pr._all("/networking/v4.0/config/vpcs")}
+    except Exception:
+        vpcs = {}
+    out = []
+    for s in pr._all("/networking/v4.0/config/subnets"):
+        typ = s.get("subnetType") if s.get("subnetType") in ("VLAN", "OVERLAY") else ""
+        vpc = s.get("vpcReference") or (s.get("vpc") or {}).get("extId")
+        out.append({"id": s["extId"], "name": s["name"], "type": typ,
+                    "vpc": (vpcs.get(vpc) or vpc) if typ == "OVERLAY" and vpc else None})
+    return sorted(out, key=lambda x: (x["type"] != "VLAN", x["name"].lower()))
+
+
 def refresh(doc, secret, settings=None):
     t = doc["type"]
     if t == "aos":
@@ -111,7 +126,7 @@ def refresh(doc, secret, settings=None):
         doc["containers"] = [{"id": c["containerExtId"], "name": c["name"], "cluster": c.get("clusterExtId")}
                              for c in pr._all("/clustermgmt/v4.2/config/storage-containers")
                              if not c["name"].startswith(("NutanixManagementShare", "SelfServiceContainer"))]
-        doc["subnets"] = [{"id": s["extId"], "name": s["name"]} for s in pr._all("/networking/v4.0/config/subnets")]
+        doc["subnets"] = subnet_list(pr)
         try:
             doc["projects"] = pr.projects()
         except Exception as e:   # a key without project rights still works for everything else
@@ -184,6 +199,12 @@ def _fill_availability(doc, secret, api=everrun_api.EverRun, settings=None):
     except Exception as e:
         log.warning("everRun %s: cannot read FT/HA from the web API: %s", doc["address"], e)
         return
+    try:   # D19: "everRun 8.1.1-285" instead of just "everRun"
+        ver = client.system_version() if hasattr(client, "system_version") else ""
+        if ver:
+            doc["version"] = f"everRun {ver}"
+    except Exception as e:
+        log.warning("everRun %s: cannot read the version: %s", doc["address"], e)
     workloads = doc.setdefault("workloads", [])
     seen = {w["name"] for w in workloads}
     for w in workloads:
@@ -267,6 +288,9 @@ def engine_plan(plan, vm, src, wl, secret, settings):
         t["vm_name"] = vs["target_name"]
     if plan.get("project") and plan["project"] != "None":
         t["project"] = plan["project"]
+    tests = [m.get("test_subnet") for m in plan.get("network_map") or [] if m.get("test_subnet")]
+    if tests:   # D8d: test migration boots the clone here (new MACs)
+        t["test_subnet"] = tests[0]
     for k_ui, k_eng in (("vcpus", "cores"), ("memory_mib", "memory_mib"), ("firmware", "firmware"),
                         ("disk_bus", "disk_bus"), ("convert_to_scsi", "convert_to_scsi")):
         if vs.get(k_ui) is not None:
@@ -327,7 +351,7 @@ def _write(plan, vm, p):
 
 # Steps that run while the source is (or may be) stopped. everRun undefines a stopped guest in libvirt, so discovery
 # cannot see it; these steps reuse the engine plan written when the VM was seeded (same disks, same source).
-REUSE_PLAN_STEPS = {"rollback", "cutover", "discard-target", "guest-cleanup", "cleanup", "status"}
+REUSE_PLAN_STEPS = {"rollback", "cutover", "discard-target", "guest-cleanup", "cleanup", "status", "discard-test"}
 # After a rollback the source is stopped or still booting, so its first resyncs also reuse the seeded plan (D16),
 # and a failed one is retried a few times (the source may not answer yet) instead of marking the VM Failed.
 ROLLBACK_RESYNC_RETRIES = 20
@@ -350,6 +374,21 @@ def cutover_summary(r, now=None):
 
 
 # ------------------------------------------------------------------ jobs and the worker loop
+
+ETA_WINDOW = 120   # seconds of recent progress the ETA is based on
+
+
+def eta_seconds(hist, now, frac, window=ETA_WINDOW):
+    """Remaining seconds from the progress rate over the last `window` seconds (D20). A since-start average was far off
+    on sparse disks, where holes go by fast and allocated data slowly. hist is a list of (time, fraction), updated."""
+    hist.append((now, frac))
+    while len(hist) > 2 and now - hist[1][0] >= window:
+        hist.pop(0)
+    t0, f0 = hist[0]
+    if frac < 0.02 or now - t0 < 10 or frac <= f0:
+        return None
+    return int((1 - frac) * (now - t0) / (frac - f0))
+
 
 class Live:
     def __init__(self, store, lock, finish, bump):
@@ -421,7 +460,7 @@ class Live:
 
                     job["action"] = step
                     ran.append(step)
-                    self._update(plan["id"], vm["id"], lambda p, v: v.update(phase=step))
+                    self._update(plan["id"], vm["id"], lambda p, v: v.update(phase=step, stage=None))
                     argv = [sys.executable, "-m", "ev2ahv_server.runner", path, step]
                     if force and step == "cutover":
                         argv.append("--force")
@@ -438,6 +477,8 @@ class Live:
                             msg = json.loads(line[7:])
                             if "progress" in msg:
                                 self._progress(plan["id"], vm["id"], step, msg["progress"], job)
+                            if "stage" in msg:
+                                self._update(plan["id"], vm["id"], lambda p, v, s=msg["stage"]: v.update(stage=s))
                             result, error = msg.get("result", result), msg.get("error", error)
                         rc = proc.wait()
                     if job["cancelled"]:
@@ -466,10 +507,10 @@ class Live:
                 self.store.event("error", f"{job['action']} failed: {error}", plan=plan["name"], vm=vm["name"])
                 self._update(plan["id"], vm["id"],
                              lambda p, v: v.update(fail_from=v["status"], status="Failed", error=f"{job['action']}: {error}",
-                                                  phase=None))
+                                                  phase=None, stage=None))
             else:
                 self.store.event("info", f"{' + '.join(ran)} finished", plan=plan["name"], vm=vm["name"])
-                self._update(plan["id"], vm["id"], lambda p, v: (on_done(p, v, result), v.update(phase=None)))
+                self._update(plan["id"], vm["id"], lambda p, v: (on_done(p, v, result), v.update(phase=None, stage=None)))
 
         threading.Thread(target=run, daemon=True, name=f"job-{vm['name']}").start()
 
@@ -496,8 +537,7 @@ class Live:
 
     def _progress(self, pid, vid, step, pr, job):
         frac = pr["done"] / max(pr["total"], 1)
-        el = time.time() - job["started"]
-        eta = int(el / frac * (1 - frac)) if frac > 0.02 else None
+        eta = eta_seconds(job.setdefault("hist", []), time.time(), frac)
 
         def fn(p, v):
             if step == "seed":
@@ -561,6 +601,8 @@ class Live:
                     self.launch(p, v, steps, self._cut, force=bool(v.get("force")))
                 elif s == "Rolling Back":
                     self.launch(p, v, ["rollback"], self._rolled_back)
+                elif s == "Testing":
+                    self.launch(p, v, ["test"], self._tested)
 
     @staticmethod
     def _prepared(p, v, checks):
@@ -579,6 +621,10 @@ class Live:
         if r.get("vm"):
             v["target_vm_id"] = r["vm"]
             v["target_vm_url"] = f"https://{tgt.get('address')}:9440/console/#page/explore/s/vms"
+
+    @staticmethod
+    def _tested(p, v, r):
+        v.update(status="Tested", test_vm_id=(r or {}).get("test_vm"))
 
     @staticmethod
     def _rolled_back(p, v, r):

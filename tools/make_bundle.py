@@ -43,10 +43,25 @@ def collect(root=ROOT):
         if not os.path.realpath(p).startswith(top):
             raise SystemExit(f"refusing to bundle {p}: it resolves outside {root}")
     out.append(("ev2ahv-upgrade", os.path.join(root, "appliance", "rootfs", "usr", "local", "sbin", "ev2ahv-upgrade")))
+    units = os.path.join(root, "appliance", "rootfs", "usr", "lib", "systemd", "system")
+    for n in ("ev2ahv-upgrade.path", "ev2ahv-upgrade.service"):   # UI upgrades (D7), installed by apply
+        if os.path.exists(os.path.join(units, n)):
+            out.append(("systemd/" + n, os.path.join(units, n)))
     return out
 
 
-def build(out_dir, min_from="0.2.0", root=ROOT):
+def sign(data, key):
+    """Ed25519 signature over data with an openssl private key file (D7). The appliance verifies with the matching
+    public key in /etc/ev2ahv/upgrade-keys/."""
+    import tempfile
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(data)
+        f.flush()
+        return subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", key, "-rawin", "-in", f.name],
+                              check=True, capture_output=True).stdout
+
+
+def build(out_dir, min_from="0.2.0", root=ROOT, sign_key=None):
     with open(os.path.join(root, "VERSION")) as fh:
         version = fh.read().strip()
     with open(os.path.join(root, "appliance", "requirements.txt"), "rb") as fh:
@@ -81,6 +96,11 @@ def build(out_dir, min_from="0.2.0", root=ROOT):
         ti = tarfile.TarInfo("manifest.json")
         ti.size, ti.mtime = len(data), int(time.time())
         tf.addfile(ti, io.BytesIO(data))
+        if sign_key:
+            sig = sign(data, sign_key)
+            ti = tarfile.TarInfo("manifest.json.sig")
+            ti.size, ti.mtime = len(sig), int(time.time())
+            tf.addfile(ti, io.BytesIO(sig))
     with open(bundle, "rb") as fh:
         digest = sha256_bytes(fh.read())
     with open(bundle + ".sha256", "w") as fh:
@@ -92,6 +112,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--min-from", default="0.2.0", help="oldest installed version this bundle can upgrade")
     ap.add_argument("--out", default=os.path.join(ROOT, "dist"))
+    ap.add_argument("--sign", metavar="KEY", help="Ed25519 private key (PEM) to sign the manifest with")
     a = ap.parse_args()
-    path, man = build(a.out, a.min_from)
-    print(f"{path}: version {man['version']}, {len(man['files'])} files")
+    path, man = build(a.out, a.min_from, sign_key=a.sign)
+    print(f"{path}: version {man['version']}, {len(man['files'])} files" + (", signed" if a.sign else ""))

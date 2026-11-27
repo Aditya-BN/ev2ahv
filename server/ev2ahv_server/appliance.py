@@ -1,7 +1,7 @@
 """Appliance health: who am I on AHV, can I hot-add and remove my own disks, TLS certificate, SSH key."""
-import datetime, hashlib, os, subprocess, threading, time
+import datetime, hashlib, json, os, subprocess, threading, time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ev2ahv import target as tgt  # noqa: E402
@@ -10,6 +10,8 @@ from ev2ahv.transport import BlockdTransport  # noqa: E402
 DATA = os.path.expanduser(os.environ.get("EV2AHV_DATA", "~/.local/share/ev2ahv"))
 TLS = os.path.join(DATA, "tls")
 BOOT_UUID = "/run/ev2ahv-boot/vm-uuid"
+SPOOL = os.path.join(DATA, "upgrade")          # D7: the app writes bundle.tar.gz + request.json; root applies
+MAX_BUNDLE = 512 << 20
 GiB = 1 << 30
 
 
@@ -143,6 +145,51 @@ def router(store, user, bump):
             os.replace(os.path.join(TLS, name + ".tmp"), os.path.join(TLS, name))
         store.event("info", f"{who} replaced the TLS certificate ({cert.subject.rfc4514_string()})")
         return cert_info()
+
+    # ---- D7: upgrade from the UI ----------------------------------------------
+    def upgrade_state():
+        st = {}
+        try:
+            with open(os.path.join(SPOOL, "status.json")) as fh:
+                st = json.load(fh)
+        except (OSError, ValueError):
+            pass
+        pending = os.path.exists(os.path.join(SPOOL, "request.json"))
+        return {"enabled": os.path.isdir(SPOOL), "pending": pending, "status": st}
+
+    @r.get("/upgrade")
+    def upgrade_status(who=Depends(user)):
+        return upgrade_state()
+
+    @r.put("/upgrade")
+    async def upgrade_upload(request: Request, force: bool = False, who=Depends(user)):
+        """Admin only (the role middleware refuses writes from viewers). Streams the bundle into the spool and asks
+        ev2ahv-upgrade.path (root) to apply it. Root re-verifies everything; nothing here is trusted."""
+        if not os.path.isdir(SPOOL):
+            raise HTTPException(409, "This appliance cannot upgrade from the UI (no upgrade spool). Use ev2ahv-upgrade")
+        cur = upgrade_state()
+        if cur["pending"] or cur["status"].get("state") == "running":
+            raise HTTPException(409, "An upgrade is already pending or running")
+        part, final = os.path.join(SPOOL, "bundle.tar.gz.part"), os.path.join(SPOOL, "bundle.tar.gz")
+        size = 0
+        with open(part, "wb") as fh:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_BUNDLE:
+                    fh.close()
+                    os.remove(part)
+                    raise HTTPException(413, f"Bundle larger than {MAX_BUNDLE >> 20} MiB")
+                fh.write(chunk)
+        if size < 1024:
+            os.remove(part)
+            raise HTTPException(400, "Empty or truncated upload")
+        os.replace(part, final)
+        with open(os.path.join(SPOOL, "request.json.tmp"), "w") as fh:
+            json.dump({"by": who, "force": bool(force), "bytes": size, "time": time.time()}, fh)
+        os.replace(os.path.join(SPOOL, "request.json.tmp"), os.path.join(SPOOL, "request.json"))
+        store.event("warning", f"{who} uploaded an upgrade bundle ({size >> 20} MiB){' with force' if force else ''}; "
+                    "the appliance applies it and restarts the app")
+        return upgrade_state()
 
     return r
 

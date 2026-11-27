@@ -14,12 +14,30 @@ from ev2ahv.prism import Prism  # noqa: E402
 from ev2ahv.workflow import Migration  # noqa: E402
 
 ACTIONS = ("prep-check", "guest-prep", "seed", "resync", "cutover", "rollback", "discard-target", "guest-cleanup",
-           "cleanup", "status")
+           "cleanup", "status", "test", "discard-test")
 
 
 def emit(**kw):
     sys.stdout.write("EV2AHV " + json.dumps(kw, default=str) + "\n")
     sys.stdout.flush()
+
+
+def next_stage(step, image_mode=False, converts=False):
+    """The cutover stage that starts after engine step `step` is marked done (D20)."""
+    return {"stopped": "final sync", "synced": "image upload" if image_mode else "preparing disks",
+            "quiesced": "creating AHV VM", "created": "powering on", "powered": "verifying",
+            "verified": "converting to SCSI" if converts else "finishing"}.get(step, "finishing")
+
+
+def watch_stages(m):
+    """Emit EV2AHV {"stage": ...} as the cutover moves on, so the UI can say what it is doing."""
+    mark = m.mark
+
+    def marked(step):
+        mark(step)
+        emit(stage=next_stage(step, m.image_mode, m.wants_conversion()))
+    m.mark = marked
+    emit(stage="stopping source")
 
 
 def main():
@@ -44,6 +62,8 @@ def main():
                            "sent_chunks": sum(sent.values()), "chunk_mib": int(p["sync"]["chunk_mib"])})
 
     m = Migration(p, Prism(credentials.load()), progress=progress)
+    if action == "cutover":
+        watch_stages(m)
     try:
         if action == "prep-check":
             r = m.prep_check()

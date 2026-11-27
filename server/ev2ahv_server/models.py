@@ -36,6 +36,12 @@ class Named(BaseModel):
     name: str
 
 
+class Subnet(Named):
+    """A Prism subnet (D8c): VLAN or OVERLAY (a VPC subnet); vpc is the VPC name for overlay subnets."""
+    type: Literal["VLAN", "OVERLAY", ""] = ""
+    vpc: Optional[str] = None
+
+
 class ProviderIn(BaseModel):
     name: str
     type: ProviderType
@@ -62,7 +68,7 @@ class Provider(BaseModel):
     node_addresses: List[str] = Field(default_factory=list)
     clusters: List[Named] = Field(default_factory=list)
     containers: List[Named] = Field(default_factory=list)
-    subnets: List[Named] = Field(default_factory=list)
+    subnets: List[Subnet] = Field(default_factory=list)
     projects: List[Named] = Field(default_factory=list, description="Prism projects (target environments)")
 
 
@@ -193,6 +199,7 @@ class PlanVm(BaseModel):
     checks: List[Check] = Field(default_factory=list)
     error: Optional[str] = None
     phase: Optional[str] = Field(None, description="engine step running now, e.g. guest-prep, seed, resync, cutover")
+    stage: Optional[str] = Field(None, description="part of the cutover running now, e.g. final sync, image upload")
     sync_progress: Optional[float] = Field(None, description="percent of the running sync pass (resync, cutover)")
     cutover_result: Optional[CutoverResult] = Field(None, description="set when a cutover completes, cleared on rollback")
     actions: List[PlanAction] = Field(default_factory=list)

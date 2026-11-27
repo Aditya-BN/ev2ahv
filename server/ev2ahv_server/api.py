@@ -15,7 +15,7 @@ from ev2ahv import __version__, web as oldweb  # noqa: E402  (login file + hashi
 
 from . import models as m  # noqa: E402
 from .store import Store  # noqa: E402
-from .users import UserError, Users, ldap_login, public as users_public, write_allowed  # noqa: E402
+from .users import UserError, Users, ldap_login, ldap_settings_ok, public as users_public, write_allowed  # noqa: E402
 
 MODE = os.environ.get("EV2AHV_SERVER_MODE", "mock")
 DIST = os.path.join(ROOT, "web", "dist")
@@ -88,13 +88,13 @@ async def force_password_change(request: Request, call_next):
 def login(body: m.Login, response: Response):
     _ensure_users()
     u = users.check(body.username, body.password) or ldap_login(store.get("settings", "settings"), body.username,
-                                                               body.password)
+                                                               body.password, secret=store.secret)
     if not u:
         store.event("warning", f"failed login for {body.username!r}")
         raise HTTPException(401, "Invalid username or password")
     tok = secrets.token_urlsafe(32)
     must = bool(u.get("must_change"))
-    sessions[tok] = {"user": u["username"], "role": u["role"], "exp": time.time() + SESSION_SECONDS,
+    sessions[tok] = {"user": u["username"], "role": u["role"], "source": u.get("source", "local"), "exp": time.time() + SESSION_SECONDS,
                      "must_change": must}
     response.set_cookie(COOKIE, tok, httponly=True, secure=True, samesite="strict", max_age=SESSION_SECONDS)
     store.event("info", f"{u['username']} logged in")
@@ -109,7 +109,9 @@ def logout(response: Response, ev2ahv_session: Optional[str] = Cookie(None)):
 
 
 @app.post("/api/v2/password")
-def change_password(body: dict, who=Depends(user)):
+def change_password(body: dict, who=Depends(user), ev2ahv_session: Optional[str] = Cookie(None)):
+    if (sessions.get(ev2ahv_session or "") or {}).get("source") == "ldap":
+        raise HTTPException(400, "This account comes from the directory (LDAP); change its password there")
     try:
         users.change_own(who, str(body.get("current", "")), str(body.get("new", "")), banned=(DEFAULT_PASSWORD,))
     except UserError as e:
@@ -332,8 +334,8 @@ VM_ACTIONS = {
 }
 
 
-# Test migration needs an isolated-subnet clone, which the engine does not do yet.
-LIVE_UNSUPPORTED = {"test", "discard"} if MODE == "live" else set()
+# Test migration (D8d) works in live mode too: the engine clones the staging disks onto the test subnet.
+LIVE_UNSUPPORTED = set()
 
 
 def finish(plan):
@@ -593,6 +595,8 @@ def plan_action(pid: str, body: m.ActionIn, who=Depends(user)):
                 # as never synced makes the next tick (2 s) start one; a resync already running absorbs the request
                 v["last_sync_at"] = 0
             elif a == "discard":
+                if MODE == "live":   # D8d: delete the test VM in the background
+                    worker.launch(doc, v, ["discard-test"], lambda p_, vm_, r: None)
                 v["test_vm_id"] = None
                 v["status"] = "Ready to Cutover"
             else:
@@ -685,6 +689,16 @@ def put_settings(body: dict, who=Depends(user)):
     for k in ("resync_minutes", "bandwidth_policies", "timezone", "writer"):
         if k in body:
             doc[k] = body[k]
+    if "ldap" in body:   # D13; the bind password is write-only and goes to the secret store
+        cfg = dict(body["ldap"] or {})
+        pw = cfg.pop("bind_password", None)
+        try:
+            doc["ldap"] = ldap_settings_ok(cfg)
+        except UserError as e:
+            raise HTTPException(422, str(e))
+        if pw:
+            store.set_secret("ldap:bind_password", str(pw))
+        store.event("warning", f"{who} changed the LDAP sign-in settings (enabled: {doc['ldap'].get('enabled')})")
     if "source_name_prefix" in body:
         new = body["source_name_prefix"]
         if not isinstance(new, str) or len(new) > 64:

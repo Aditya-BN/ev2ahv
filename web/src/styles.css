@@ -276,6 +276,7 @@ table.grid tr.total td { font-weight: 700; background: var(--md-surface-containe
 .chk-badge.pass { background: var(--md-success); color: var(--md-on-success); }
 .chk-badge.warn { background: var(--md-warning); color: var(--md-on-warning); }
 .chk-badge.fail { background: var(--md-error); color: var(--md-on-error); }
+.chk-badge.running { background: var(--md-surface-container-highest); color: var(--md-on-surface-variant); }
 .chk-badge.sm { font-size: 10.5px; padding: 1px 8px; margin-right: 10px; flex: none; }
 .popover-wrap { position: relative; display: inline-block; }
 .popover-trigger { background: none; border: 0; padding: 0; border-radius: var(--sh-full); }

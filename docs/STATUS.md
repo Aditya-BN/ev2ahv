@@ -58,3 +58,5 @@ Admin over ssh: key `~/.config/ev2ahv/id_ed25519`, admin passwords in `appliance
 1. D5: a real everRun failover of the FT guest (node maintenance moves both lab guests, `ev2ahv-src-win22` included), and Stratus' view, before anyone turns `sync.cbt` on for a customer guest. Done: release 0.3.5, the FT test, the cleanup.
 2. A properly scoped Prism key for the colleague (the prism.env key sees nothing); he currently uses adit's credentials.
 3. Still open from the backlog: D8a-d (UI gaps against Move), D9 (Windows SCSI boot), D11 (Prism user/password auth), D13 LDAP, D15/T13 (backup agents, snapshots), T3-T9, and applying a changed `cbt` while the engine plan is reused (D5).
+
+appliance-3 app key (2026-11-27): its own `ev2ahv-appliance` key, authorized on both everRun nodes (from 10.12.135.160 only). Revert: copy `id_ed25519.bastion-lab` back over `id_ed25519` in `/var/lib/ev2ahv/config`.

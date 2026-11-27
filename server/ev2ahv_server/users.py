@@ -7,7 +7,7 @@ Roles:
 The first start imports the single account from ui.json (the 0.2.0 login) as an admin, so upgrades keep their login.
 LDAP is a stub: see docs/security.md, "UI users and roles".
 """
-import hmac, json, os, re, secrets, time
+import hmac, json, logging, os, re, secrets, ssl, time
 
 from ev2ahv import web as oldweb
 
@@ -131,6 +131,89 @@ class Users:
             raise UserError(f"Password must be at least {MIN_PASSWORD} characters")
 
 
-def ldap_login(settings, username, password):
-    """Stub. LDAP is not implemented; see docs/security.md. Returns None (no LDAP user)."""
-    return None
+LDAP_KEYS = ("enabled", "url", "bind_dn", "user_base", "user_filter", "admin_group", "viewer_group", "start_tls",
+             "verify_tls", "ca_file", "allow_plain")
+log = logging.getLogger("ev2ahv.users")
+
+
+def ldap_settings_ok(cfg):
+    """Validate an LDAP settings dict (D13). Returns the cleaned dict or raises UserError."""
+    out = {k: cfg[k] for k in LDAP_KEYS if k in cfg}
+    if not out.get("enabled"):
+        return dict(out, enabled=False)
+    url = str(out.get("url") or "")
+    if not re.match(r"^ldaps?://[A-Za-z0-9.\-\[\]:]+(:\d+)?/?$", url):
+        raise UserError("LDAP URL must look like ldaps://dc1.example.com or ldap://host:389")
+    if url.startswith("ldap://") and not out.get("start_tls") and not out.get("allow_plain"):
+        raise UserError("ldap:// without StartTLS sends passwords in clear text. Use ldaps://, turn on StartTLS, "
+                        "or set allow_plain for a lab")
+    for k in ("bind_dn", "user_base"):
+        if not str(out.get(k) or "").strip():
+            raise UserError(f"LDAP {k} is required")
+    if not (out.get("admin_group") or out.get("viewer_group")):
+        raise UserError("Set at least one of admin_group and viewer_group: membership decides the role")
+    flt = out.get("user_filter") or "(sAMAccountName={username})"
+    if "{username}" not in flt or not (flt.startswith("(") and flt.endswith(")")):
+        raise UserError("user_filter must be an LDAP filter containing {username}, e.g. (uid={username})")
+    out["user_filter"] = flt
+    return out
+
+
+def ldap_login(settings, username, password, secret=None, server=None, strategy=None):
+    """Sign in a directory user (D13). Local accounts are checked first by the caller. Flow: bind with the service
+    account, find exactly one entry with user_filter under user_base, bind as that DN with the given password, then
+    read the role from membership of admin_group / viewer_group (member, uniqueMember or memberUid). No password is
+    stored and the role is decided again at every login. Returns a user dict, or None."""
+    cfg = (settings or {}).get("ldap") or {}
+    if not cfg.get("enabled") or not cfg.get("url") or not NAME.match(username or "") or not password:
+        return None
+    try:
+        import ldap3
+        from ldap3.utils.conv import escape_filter_chars
+    except ImportError:
+        log.warning("LDAP is enabled but the ldap3 module is missing")
+        return None
+    if server is None:
+        tls = ldap3.Tls(validate=ssl.CERT_REQUIRED if cfg.get("verify_tls", True) else ssl.CERT_NONE,
+                        ca_certs_file=cfg.get("ca_file") or None)
+        server = ldap3.Server(cfg["url"], use_ssl=cfg["url"].startswith("ldaps://"), tls=tls, get_info=ldap3.NONE,
+                              connect_timeout=10)
+    bind_pw = secret("ldap:bind_password") if secret else None
+    try:
+        kw = {"client_strategy": strategy} if strategy else {}   # tests use ldap3's offline mock
+        svc = ldap3.Connection(server, cfg.get("bind_dn"), bind_pw, receive_timeout=10, raise_exceptions=False, **kw)
+        svc.open()
+        if cfg.get("start_tls") and not cfg["url"].startswith("ldaps://"):
+            svc.start_tls()
+        if not svc.bind():
+            log.warning("LDAP service bind as %s failed: %s", cfg.get("bind_dn"), svc.result.get("description"))
+            return None
+        flt = cfg.get("user_filter", "(sAMAccountName={username})").replace("{username}",
+                                                                          escape_filter_chars(username))
+        svc.search(cfg["user_base"], flt, attributes=[])
+        if len(svc.entries) != 1:
+            return None
+        dn = svc.entries[0].entry_dn
+        user = ldap3.Connection(server, dn, password, receive_timeout=10, raise_exceptions=False, **kw)
+        user.open()
+        if cfg.get("start_tls") and not cfg["url"].startswith("ldaps://"):
+            user.start_tls()
+        ok = user.bind()
+        user.unbind()
+        if not ok:
+            return None
+        member = "(|(member={0})(uniqueMember={0})(memberUid={1}))".format(escape_filter_chars(dn),
+                                                                           escape_filter_chars(username))
+        role = None
+        for r, group in (("admin", cfg.get("admin_group")), ("viewer", cfg.get("viewer_group"))):
+            if group and svc.search(group, member, search_scope=ldap3.BASE, attributes=[]) and svc.entries:
+                role = r
+                break
+        svc.unbind()
+    except Exception as e:   # a directory outage must not break local logins
+        log.warning("LDAP login for %s failed: %s", username, e)
+        return None
+    if not role:
+        log.info("LDAP user %s is in neither the admin nor the viewer group", username)
+        return None
+    return {"username": username, "role": role, "must_change": False, "source": "ldap"}

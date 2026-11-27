@@ -10,6 +10,7 @@ export type CheckStatus = 'PASS' | 'WARN' | 'FAIL';
 
 export interface AppInfo { name: string; version: string; build: string; mode: 'mock' | 'live'; user: string | null; role?: 'admin' | 'viewer' | null; must_change?: boolean; appliance?: boolean }
 export interface UiUser { username: string; role: 'admin' | 'viewer'; must_change: boolean; source: string; created_at?: number | null }
+export interface Subnet { id: string; name: string; type?: 'VLAN' | 'OVERLAY' | ''; vpc?: string | null }
 export interface Named { id: string; name: string }
 export interface ProviderIn {
   name: string; type: ProviderType; address: string; username: string;
@@ -19,7 +20,7 @@ export interface Provider {
   id: string; name: string; type: ProviderType; role: 'source' | 'target'; address: string; username: string;
   auth: 'password' | 'api_key'; status: 'Connected' | 'Refreshing' | 'Error'; error?: string | null;
   vm_count: number; last_refreshed?: number | null; version?: string | null; node_addresses: string[];
-  clusters: Named[]; containers: Named[]; subnets: Named[]; projects?: Named[];
+  clusters: Named[]; containers: Named[]; subnets: Subnet[]; projects?: Named[];
 }
 export interface Nic { network: string; mac: string; ip?: string | null }
 export interface Workload {
@@ -45,7 +46,7 @@ export interface PlanVm {
   id: string; name: string; os_type: string; status: VmStatus; seed_percent: number; data_transferred_bytes: number;
   total_bytes: number; eta_seconds?: number | null; last_sync_at?: number | null; target_vm_id?: string | null;
   target_vm_url?: string | null; test_vm_id?: string | null; checks: Check[]; error?: string | null; actions: PlanAction[];
-  phase?: string | null; sync_progress?: number | null; cutover_result?: CutoverResult | null;
+  phase?: string | null; stage?: string | null; sync_progress?: number | null; cutover_result?: CutoverResult | null;
 }
 export interface CutoverResult {
   completed_at?: number | null; target_vm_id?: string | null; downtime_seconds?: number | null; final_sync_seconds?: number | null;
@@ -68,7 +69,11 @@ export interface ActionIn { action: PlanAction; vm_ids: string[]; force: boolean
 export interface EventRow { time: number; severity: 'info' | 'warning' | 'error'; plan?: string | null; vm?: string | null; message: string }
 export interface BandwidthPolicy { id: string; name: string; source_id: string; source_name: string; frequency: string; limit_mbps: number }
 export interface Writer { vm?: string | null; host?: string | null; user?: string | null }
-export interface Settings { id?: string; resync_minutes: number; bandwidth_policies: BandwidthPolicy[]; timezone: string; writer?: Writer | null; source_name_prefix?: string }
+export interface Settings { id?: string; resync_minutes: number; bandwidth_policies: BandwidthPolicy[]; timezone: string; writer?: Writer | null; source_name_prefix?: string; ldap?: LdapSettings }
+export interface LdapSettings {
+  enabled: boolean; url?: string; bind_dn?: string; bind_password?: string; user_base?: string; user_filter?: string;
+  admin_group?: string; viewer_group?: string; start_tls?: boolean; verify_tls?: boolean; ca_file?: string; allow_plain?: boolean;
+}
 export interface SelfTestStep { time: number | string; message: string }
 export interface SelfTest { status: 'never run' | 'running' | 'PASS' | 'FAIL'; steps?: SelfTestStep[]; error?: string | null; started?: number | null; ended?: number | null }
 export interface Health {
@@ -89,6 +94,10 @@ export class ApiError extends Error {
 }
 
 const BASE = '/api/v2';
+export interface UpgradeState {
+  enabled: boolean; pending: boolean;
+  status: { state?: 'running' | 'done' | 'failed'; message?: string; by?: string; version?: string; from_version?: string; time?: number };
+}
 export const authEvents = new EventTarget();
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -172,6 +181,17 @@ export const api = {
   settings: () => req<Settings>('GET', '/settings'),
   putSettings: (b: Partial<Settings>) => req<Settings>('PUT', '/settings', b),
   supportBundleUrl: () => `${BASE}/supportbundle`,
+  upgradeStatus: () => req<UpgradeState>('GET', '/upgrade'),
+  uploadUpgrade: async (file: File, force = false): Promise<UpgradeState> => {
+    const res = await fetch(`${BASE}/upgrade${force ? '?force=true' : ''}`, {
+      method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/octet-stream' }, body: file,
+    });
+    const text = await res.text();
+    let data: { detail?: unknown; message?: string } & Partial<UpgradeState> = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { /* not JSON */ }
+    if (!res.ok) throw new ApiError(res.status, typeof data.detail === 'string' ? data.detail : data.message || res.statusText);
+    return data as UpgradeState;
+  },
   logs: async (lines = 300) => {
     const res = await fetch(`${BASE}/logs?lines=${lines}`, { credentials: 'same-origin' });
     if (res.status === 401) authEvents.dispatchEvent(new Event('unauthorized'));
