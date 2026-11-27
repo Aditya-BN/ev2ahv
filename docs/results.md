@@ -442,3 +442,13 @@ UI problems found (no code change was needed to finish; none fixed yet, see BACK
 3. Seed ETA is unreliable on sparse disks (34 min shown, finished in 12.6 min).
 4. The prep-check badge shows WARN while the check is still running.
 5. Cutover shows no stage text beyond "cutover NN%"; a 15 min wait with no hint of final sync versus conversion.
+
+## T12: FT/HA from the everRun web API, 2026-11-27
+
+Read-only: `EverRun(...).vms()` on `ev2ahv-appliance-3` (0.3.5) with its stored everRun credentials, plus an environment
+refresh through the appliance API.
+
+| Guest | everRun state | raw `availability` | `availability_level` | Shown after refresh |
+|---|---|---|---|---|
+| ev2ahv-src-rocky9 | running | `FT` | FT | FT |
+| ev2ahv-src-win22 | stopped | `HA` | HA | not listed: a stopped guest is undefined in libvirt (D22) |
