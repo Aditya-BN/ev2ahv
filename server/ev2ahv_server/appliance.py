@@ -146,15 +146,6 @@ def router(store, user, bump):
         store.event("info", f"{who} replaced the TLS certificate ({cert.subject.rfc4514_string()})")
         return cert_info()
 
-    return r
-
-
-def redact(text, secrets_=()):
-    """For support bundles: drop known secret values and anything that looks like one."""
-    import re
-    for sv in secrets_:
-        if sv and len(sv) >= 4:
-            text = text.replace(sv, "<redacted>")
     # ---- D7: upgrade from the UI ----------------------------------------------
     def upgrade_state():
         st = {}
@@ -200,6 +191,15 @@ def redact(text, secrets_=()):
                     "the appliance applies it and restarts the app")
         return upgrade_state()
 
+    return r
+
+
+def redact(text, secrets_=()):
+    """For support bundles: drop known secret values and anything that looks like one."""
+    import re
+    for sv in secrets_:
+        if sv and len(sv) >= 4:
+            text = text.replace(sv, "<redacted>")
     return re.sub(r"(?i)(password|passwd|api[_-]?key|token|secret|authorization)(\W{1,3})\S+", r"\1\2<redacted>", text)
 
 
