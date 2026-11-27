@@ -36,8 +36,8 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | ID | Test | How | Pass when |
 |---|---|---|---|
 | T5 | UEFI guest (the appliance itself boots under UEFI, 2026-11-27) | Migrate an everRun UEFI guest | Boots on AHV with UEFI, checksums match |
-| T6 | Console TUI: static IP, hostname, NTP on AHV | `ev2ahv-config --console` on tty1 | Settings survive a reboot; UI reachable on the new IP |
-| T7 | OVA export and ConfigDrive network | — | Deploys from OVA; ConfigDrive sets the network |
+| T6 | Console TUI: static IP, hostname, NTP on AHV | `ev2ahv-config --console` on tty1 | **Done 2026-11-28 over an ssh pty on appliance-4 (settings survive a reboot, UI on the new IP); real tty1 console not driven**, see results.md |
+| T7 | OVA export and ConfigDrive network | — | **Done 2026-11-28:** OVA builds (`EV2AHV_OVA=1`), its disk boots on AHV; PC OVA import not tested (needs the PC UI or a URL the PC can reach). ConfigDrive network works from 0.3.10 via the `ev2ahv:` user-data key, see docs/appliance.md |
 | T9 | Several VMs in one plan at once | Two `ev2ahv-src-*` guests | Both complete; resyncs do not starve each other |
 | T11 | Unit tests (D12) | `tools/check.sh` or the GitHub `ci` workflow | All pass, every run (flaky `Text file busy` fixed in 0.3.3, see Done) |
 | T13 | Production impact and backups (D15) | On lab everRun: seed and resync a production-sized disk while watching node I/O latency and CPU at several bandwidth limits; run an in-guest backup agent during a seed; seed while an everRun snapshot exists; cutover, then back up the AHV VM | Node latency acceptable at a documented bandwidth limit; backup job and ev2ahv both succeed; data read under a snapshot is correct; runbook has a Backups and throttling section |
@@ -45,6 +45,8 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | T15 | Later: MySQL / MariaDB on Linux: same as T14 (InnoDB crash recovery clean, CHECKSUM TABLE) | MariaDB on a Rocky test guest with sysbench | DB consistent on AHV; latency impact measured |
 
 ## Done (recent)
+
+- 2026-11-28: v0.3.9 released (unsigned bundle), v0.3.10 adds the ConfigDrive `ev2ahv:` network/hostname/NTP opt-in, `ev2ahv-config --set-*` flags and the OVA build; T6 and T7 done (see Tests). Open: sign upgrade bundles (no key on the bastion), import the OVA in the PC UI.
 
 - 2026-11-27: D11/T10 done: Prism username/password works end to end (CLI test, engine create/disk/delete with ETag, appliance environment validate/refresh with matching counts, disk hot-add self-test PASS, password stored as `v1:` and absent from logs, journal and support bundle). Self-test now takes `provider`. Not run: a full migration with it. See docs/results.md.
 

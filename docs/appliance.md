@@ -50,6 +50,34 @@ nginx serves the static UI directly, holds port 443 without giving the Python ap
 capability set and listens only on a unix socket), reloads certificates without restarting the app (`ev2ahv-tls.path`) and costs about 2 MB.
 There is no port 80 listener.
 
+## Deploy options
+
+| Option | How | Status (lab, 2026-11-28) |
+|---|---|---|
+| qcow2 image | Prism image upload, then a VM cloned from it (below) | Verified: 0.3.9 on `ev2ahv-appliance-4`, 0.3.10 on the ConfigDrive test VM |
+| OVA | `EV2AHV_OVA=1 bash appliance/build.sh` (or `python3 tools/make_ova.py`) writes `dist/ev2ahv-<ver>.ova`: OVF 1.0 (2 vCPU, 4 GiB, 1 NIC, 1 disk of 20 GiB, SCSI), manifest `.mf` and a stream-optimized VMDK, in a tar with the OVF first | Built and checked. The Prism v4 API has `createOva`, but only from a URL the Prism Central must fetch; the lab PC could not reach the bastion, so the OVA was **not imported through the API**. Import it in the PC UI (Compute, VM, OVAs, Upload) or from a web server the PC can reach. The VMDK disk inside the OVA was uploaded as an image and booted on AHV, self-test PASS |
+| ConfigDrive / cloud-init (Prism guest customization, "custom script") | Provide user-data with an `ev2ahv:` key (below) | Verified on 0.3.10: static IP, hostname, DNS and NTP applied on first boot and kept after reboot. On 0.3.9 and older the same settings in plain cloud-config are ignored |
+| Console menu | `ev2ahv-config` on tty1, or `sudo /usr/local/sbin/ev2ahv-config --console` over ssh | Verified over an ssh pty on 0.3.9 (same functions): static IP, hostname, NTP, DNS; kept after reboot, chrony synced, UI on the new IP. The real VM console (tty1) was not driven |
+
+### Network and hostname from ConfigDrive user-data (0.3.10)
+
+cloud-init network rendering stays disabled and AHV's ConfigDrive carries no `network_data.json`, so `network:` and `hostname:` in user-data have
+no effect. Instead, `ev2ahv-cloudinit.service` runs `ev2ahv-config --from-cloud-init` once per cloud-init instance id (marker
+`/etc/ev2ahv/.cloudinit-applied`). It reads an optional `ev2ahv:` key and uses the same code as the console menu. Without the key it does nothing.
+
+    #cloud-config
+    ev2ahv:
+      hostname: ev2ahv-appliance-5
+      network: {address: 10.1.2.3/24, gateway: 10.1.2.1, dns: [10.1.2.2]}   # or  dhcp: true
+      ntp: [pool.ntp.org]
+    users:
+      - default
+      - {name: admin, lock_passwd: false, ssh_authorized_keys: ["ssh-ed25519 AAAA..."]}
+
+Do not list `admin` under `users:` without `lock_passwd: false`: cloud-init locks the password of a listed user and the forced first-login change then fails.
+The same actions exist as flags: `ev2ahv-config --set-network ADDR/PREFIX GATEWAY [DNS...]`, `--set-dhcp`, `--set-hostname NAME`, `--set-ntp SERVER...` (root).
+The static address must not be registered in the AHV IPAM of the NIC's subnet for another VM; the NIC itself can keep an IPAM address used only for the first boot.
+
 ## Deploy on AHV
 
 1. Prism: Settings, Image Configuration, upload `ev2ahv-<VERSION>.qcow2` as a DISK image (or `acli image.create ev2ahv type=kDiskImage source_url=...`).

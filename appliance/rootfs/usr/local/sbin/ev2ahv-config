@@ -4,6 +4,20 @@
   ev2ahv-config --console      menu on tty1 (root, restricted to the actions below)
   ev2ahv-config --write-issue  refresh /etc/issue.d/50-ev2ahv.issue with the URL and exit
   ev2ahv-config --status       print status and exit
+  ev2ahv-config --set-network ADDR/PREFIX GATEWAY [DNS...]   static IPv4 on the primary NIC, non-interactive
+  ev2ahv-config --set-dhcp                                   DHCP on the primary NIC
+  ev2ahv-config --set-hostname NAME
+  ev2ahv-config --set-ntp SERVER [SERVER...]
+  ev2ahv-config --from-cloud-init   once per instance: apply the `ev2ahv:` key of the cloud-init user-data (opt-in, see below)
+
+Opt-in network and hostname from a ConfigDrive/NoCloud user-data (AHV "custom script", Prism guest customization); cloud-init
+itself does not render the network here, and AHV's ConfigDrive carries no network_data.json. Without an `ev2ahv:` key nothing happens:
+
+  #cloud-config
+  ev2ahv:
+    hostname: ev2ahv-appliance-5
+    network: {address: 10.1.2.3/24, gateway: 10.1.2.1, dns: [10.1.2.2]}   # or `dhcp: true`
+    ntp: [pool.ntp.org]
 """
 import ipaddress
 import os
@@ -137,6 +151,97 @@ def _ipv4(s, what):
         raise ValueError("%s: not an IPv4 address: %r" % (what, s))
 
 
+def _apply_nm(nic, args):
+    # replace every ethernet profile with the single managed one
+    rc, out, _ = run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"])
+    for l in out.splitlines():
+        name, _, typ = l.rpartition(":")
+        if typ == "802-3-ethernet" and name != PRIMARY_CON:
+            run(["nmcli", "connection", "delete", name])
+    rc, out, _ = run(["nmcli", "-t", "-f", "NAME", "connection", "show"])
+    if PRIMARY_CON not in out.split():
+        run(["nmcli", "connection", "add", "type", "ethernet", "ifname", nic, "con-name", PRIMARY_CON,
+             "connection.autoconnect", "yes"], check=True)
+    run(["nmcli", "connection", "modify", PRIMARY_CON, "connection.interface-name", nic] + args, check=True)
+    print("Applying...")
+    run(["nmcli", "connection", "up", PRIMARY_CON], check=True, timeout=90)
+    run(["nm-online", "-q", "-t", "20"])
+
+
+def _static_args(ipp, gw, dnsl):
+    if "/" not in ipp:
+        raise ValueError("prefix length required, e.g. 10.1.2.3/24")
+    iface = ipaddress.IPv4Interface(ipp)
+    _ipv4(gw, "gateway")
+    for d in dnsl:
+        _ipv4(d, "dns")
+    return ["ipv4.method", "manual", "ipv4.addresses", str(iface), "ipv4.gateway", gw,
+            "ipv4.dns", " ".join(dnsl), "ipv4.ignore-auto-dns", "yes" if dnsl else "no"]
+
+
+DHCP_ARGS = ["ipv4.method", "auto", "ipv4.addresses", "", "ipv4.gateway", "", "ipv4.dns", "", "ipv4.ignore-auto-dns", "no"]
+
+
+def apply_network(args):
+    nic = primary_nic()
+    if not nic:
+        raise RuntimeError("No ethernet interface found.")
+    _apply_nm(nic, args)
+    after_network()
+
+
+def apply_ntp(srv):
+    if not srv or not all(re.fullmatch(r"[A-Za-z0-9.:-]+", x) for x in srv):
+        raise ValueError("invalid NTP server list")
+    _write_ntp(open(CHRONY).read(), srv)
+
+
+CLOUD_CFG = "/var/lib/cloud/instance/cloud-config.txt"
+CLOUD_ID = "/var/lib/cloud/data/instance-id"
+APPLIED = "/etc/ev2ahv/.cloudinit-applied"
+
+
+def from_cloud_init():
+    """Opt-in, once per cloud-init instance id: apply the `ev2ahv:` key of the user-data (hostname, network, ntp)."""
+    try:
+        iid = open(CLOUD_ID).read().strip()
+        import yaml
+        cfg = yaml.safe_load(open(CLOUD_CFG)) or {}
+    except Exception as e:  # no cloud-init data: nothing to do
+        print("no cloud-init user-data to apply (%s)" % e)
+        return 0
+    c = cfg.get("ev2ahv") if isinstance(cfg, dict) else None
+    if not isinstance(c, dict):
+        return 0
+    try:
+        if open(APPLIED).read().strip() == iid:
+            print("cloud-init settings already applied for instance %s" % iid)
+            return 0
+    except OSError:
+        pass
+    # mark first: a bad value must not be retried on every boot
+    with open(APPLIED, "w") as f:
+        f.write(iid + "\n")
+    rc = 0
+    try:
+        if c.get("hostname"):
+            _apply_hostname(str(c["hostname"]))
+        n = c.get("network")
+        if isinstance(n, dict) and n.get("dhcp"):
+            apply_network(DHCP_ARGS)
+        elif isinstance(n, dict):
+            dns = n.get("dns") or []
+            dns = dns.split() if isinstance(dns, str) else [str(d) for d in dns]
+            apply_network(_static_args(str(n.get("address", "")), str(n.get("gateway", "")), dns))
+        if c.get("ntp"):
+            ntp = c["ntp"]
+            apply_ntp(ntp.split() if isinstance(ntp, str) else [str(x) for x in ntp])
+    except (ValueError, RuntimeError) as e:
+        print("cloud-init ev2ahv settings: %s" % e)
+        rc = 1
+    return rc
+
+
 def set_network():
     nic = primary_nic()
     if not nic:
@@ -164,20 +269,7 @@ def set_network():
         else:
             print("Cancelled.")
             return
-        # replace every ethernet profile with the single managed one
-        rc, out, _ = run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"])
-        for l in out.splitlines():
-            name, _, typ = l.rpartition(":")
-            if typ == "802-3-ethernet" and name != PRIMARY_CON:
-                run(["nmcli", "connection", "delete", name])
-        rc, out, _ = run(["nmcli", "-t", "-f", "NAME", "connection", "show"])
-        if PRIMARY_CON not in out.split():
-            run(["nmcli", "connection", "add", "type", "ethernet", "ifname", nic, "con-name", PRIMARY_CON,
-                 "connection.autoconnect", "yes"], check=True)
-        run(["nmcli", "connection", "modify", PRIMARY_CON, "connection.interface-name", nic] + args, check=True)
-        print("Applying...")
-        run(["nmcli", "connection", "up", PRIMARY_CON], check=True, timeout=90)
-        run(["nm-online", "-q", "-t", "20"])
+        _apply_nm(nic, args)
     except (ValueError, RuntimeError) as e:
         print("Error: %s" % e)
         return
@@ -186,33 +278,23 @@ def set_network():
 
 def set_hostname():
     cur = socket.gethostname()
-    h = ask("Hostname", cur)
+    try:
+        _apply_hostname(ask("Hostname", cur))
+    except (ValueError, RuntimeError) as e:
+        print("Error: %s" % e)
+
+
+def _apply_hostname(h):
     if not re.fullmatch(r"[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", h or ""):
-        print("Invalid hostname.")
-        return
+        raise ValueError("invalid hostname %r" % h)
     rc, _, err = run(["hostnamectl", "set-hostname", h])
     if rc:
-        print("Error: %s" % err.strip())
-        return
+        raise RuntimeError(err.strip() or "hostnamectl failed")
     after_network()
     print("Hostname set to %s" % h)
 
 
-def set_ntp():
-    try:
-        txt = open(CHRONY).read()
-    except OSError as e:
-        print("Cannot read %s: %s" % (CHRONY, e))
-        return
-    cur = re.findall(r"^(?:server|pool)\s+(\S+)", txt, re.M)
-    print("Current NTP sources: %s" % (", ".join(cur) or "none"))
-    s = ask("NTP servers (comma or space separated, empty = cancel)", "")
-    srv = [x for x in re.split(r"[,\s]+", s) if x]
-    if not srv:
-        return
-    if not all(re.fullmatch(r"[A-Za-z0-9.:-]+", x) for x in srv):
-        print("Invalid server name.")
-        return
+def _write_ntp(txt, srv):
     out = []
     skip = False
     for l in txt.splitlines():
@@ -232,6 +314,24 @@ def set_ntp():
         f.write("\n".join(out) + "\n")
     rc, _, err = run(["systemctl", "restart", "chronyd"])
     print("chronyd restarted with: %s" % ", ".join(srv) if rc == 0 else "chronyd restart failed: " + err.strip())
+
+
+def set_ntp():
+    try:
+        txt = open(CHRONY).read()
+    except OSError as e:
+        print("Cannot read %s: %s" % (CHRONY, e))
+        return
+    cur = re.findall(r"^(?:server|pool)\s+(\S+)", txt, re.M)
+    print("Current NTP sources: %s" % (", ".join(cur) or "none"))
+    s = ask("NTP servers (comma or space separated, empty = cancel)", "")
+    srv = [x for x in re.split(r"[,\s]+", s) if x]
+    if not srv:
+        return
+    if not all(re.fullmatch(r"[A-Za-z0-9.:-]+", x) for x in srv):
+        print("Invalid server name.")
+        return
+    _write_ntp(txt, srv)
 
 
 def toggle_ssh_password():
@@ -331,6 +431,26 @@ def main():
         write_issue()
     elif a == ["--status"]:
         show_status()
+    elif a == ["--from-cloud-init"]:
+        if os.geteuid() != 0:
+            sys.exit("must run as root")
+        sys.exit(from_cloud_init())
+    elif a and a[0] in ("--set-network", "--set-dhcp", "--set-hostname", "--set-ntp"):
+        if os.geteuid() != 0:
+            sys.exit("must run as root")
+        try:
+            if a[0] == "--set-network" and len(a) >= 3:
+                apply_network(_static_args(a[1], a[2], a[3:]))
+            elif a[0] == "--set-dhcp" and len(a) == 1:
+                apply_network(DHCP_ARGS)
+            elif a[0] == "--set-hostname" and len(a) == 2:
+                _apply_hostname(a[1])
+            elif a[0] == "--set-ntp" and len(a) >= 2:
+                apply_ntp(a[1:])
+            else:
+                sys.exit(__doc__)
+        except (ValueError, RuntimeError) as e:
+            sys.exit("Error: %s" % e)
     elif a == ["--console"] or not a:
         if os.geteuid() != 0:
             sys.exit("must run as root")

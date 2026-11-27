@@ -31,4 +31,6 @@ json.dump({"version":v,"git_commit":subprocess.check_output(["git","rev-parse","
  "rpm_count":len(rpms),"rpms":rpms,"pip":pips},open("dist/MANIFEST.json","w"),indent=1)
 P
 docker run --rm -v "$REPO/build/tree:/t:ro" anchore/syft:latest dir:/t -q -o spdx-json > "dist/ev2ahv-$VER.sbom.spdx.json" || echo "syft failed"
+# Optional OVA (T7): EV2AHV_OVA=1 bash appliance/build.sh -> dist/ev2ahv-<ver>.ova (+ .sha256)
+[ "${EV2AHV_OVA:-0}" = 1 ] && python3 tools/make_ova.py --version "$VER"
 ls -l dist

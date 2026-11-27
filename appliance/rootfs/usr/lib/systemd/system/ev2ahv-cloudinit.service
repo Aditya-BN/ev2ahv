@@ -1,0 +1,13 @@
+[Unit]
+Description=Apply the optional ev2ahv: key of the cloud-init user-data (hostname, network, NTP), once per instance
+After=cloud-config.service NetworkManager.service chronyd.service
+Wants=cloud-config.service
+Before=ev2ahv-issue.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/ev2ahv-config --from-cloud-init
+
+[Install]
+WantedBy=multi-user.target

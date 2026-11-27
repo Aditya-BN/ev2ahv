@@ -677,3 +677,21 @@ Mid-run 401: basic auth has no session or token, every request carries the heade
 Not tested: a full migration (seed, cutover) with a username/password environment (the same `prism_for` object is used for every Prism call, and the writes above went through it, but no plan was run); an account without create rights; PC session lockout after repeated wrong passwords (one wrong try only).
 
 Left in the lab: nothing. `PC-userpass` was removed after the test (it duplicated the same PC and the self-test pick depends on update order). `ev2ahv-d11-test` was deleted.
+
+## Release 0.3.9 and 0.3.10, T6 and T7 (2026-11-28)
+
+| Item | Result |
+|---|---|
+| Build 0.3.9 (tag `v0.3.9`, commit 5a3c6e0) | complete: qcow2 305,528,832 bytes, sha256 `5bccbe961de9794cd5d130ac418f387e060fa89bce60b6a60906ea0e52a4d15a`, MANIFEST, SBOM; upgrade bundle `ev2ahv-upgrade-0.3.9.tar.gz` **unsigned** (no signing key on the bastion) |
+| Build 0.3.10 (ConfigDrive opt-in, OVA flag) | qcow2 304,283,648 bytes, sha256 `d23bb3e98025d3d25db7403445ce43a6b88648881919c0e5963bff0c65c77763`; OVA 289,146,880 bytes; bundle unsigned |
+| Image upload | Prism v4 image from URL failed twice (the PC never contacted the bastion web server); uploaded with the v3 image file API (56 s for 291 MB). Images `ev2ahv-appliance-0.3.9`, `ev2ahv-appliance-0.3.10` |
+| T6: `ev2ahv-appliance-4` (0.3.9, BIOS, 2 vCPU, 4 GiB, VLAN135-IPAM) | Booted with the IPAM address 10.12.135.163, then set with `ev2ahv-config --console` over ssh (pty, scripted): hostname, NTP `pool.ntp.org`, static 10.12.135.164/24, gateway .1, DNS 10.12.135.193 and 1.1.1.1. UI 200 on the new IP; after reboot the hostname, address, DNS, chrony (stratum 3, normal) all persist, no failed units, SELinux Enforcing. Forced UI password change worked, AOS environment added, self-test PASS. Passwords in `~/.config/ev2ahv/appliance4-{ui,admin}.pw` (0600) |
+| T6 not done | The real VM console (tty1) was not driven; the same menu functions were used over ssh |
+| T7 OVA | `tools/make_ova.py` builds it (qemu-img in the builder image). `createOva` by URL failed (PC could not fetch). The OVA's VMDK was uploaded as an image, VM `ev2ahv-appliance-ova` booted, UI password change and self-test PASS; VM and image deleted. OVF import by the PC itself was **not tested** |
+| T7 ConfigDrive on 0.3.9 | Guest customization user-data with `network:` and `hostname:`: ignored (cloud-init network disabled by system config, AHV gives no network_data.json, preserve_hostname). The VM stayed on its IPAM address |
+| T7 ConfigDrive on 0.3.10 | user-data with the `ev2ahv:` key: hostname, static 10.12.135.172/24 (gateway, DNS) and NTP applied on first boot, same after reboot; no failed units; UI 200; test VM deleted |
+| Lab IPs (checked free: no ping, ARP INCOMPLETE, not on any PC VM NIC, outside IPAM pools) | .163, .164, .165, .166, .172 |
+
+Gotcha found: listing `admin` under cloud-config `users:` locks its password unless `lock_passwd: false` is set.
+Left running: `ev2ahv-appliance-4` (10.12.135.164, 0.3.9). Deleted: `ev2ahv-appliance-ova`, `ev2ahv-appliance-cd`, the OVA VMDK image.
+
