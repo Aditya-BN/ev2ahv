@@ -50,7 +50,29 @@ class FillTest(unittest.TestCase):
     def test_fills_from_api(self):
         d = self.doc()
         self.live._fill_availability(d, lambda k: "pw", api=FakeEverRun)
-        self.assertEqual([w["availability"] for w in d["workloads"]], ["FT", ""])
+        self.assertEqual([w["availability"] for w in d["workloads"]][:2], ["FT", ""])
+
+    def test_stopped_guest_is_listed_with_a_warning(self):
+        """D22: everRun undefines a stopped guest in libvirt; the web API still lists it."""
+        d = self.doc()
+        self.live._fill_availability(d, lambda k: "pw", api=FakeEverRun)
+        names = [w["name"] for w in d["workloads"]]
+        self.assertEqual(names, ["ev2ahv-src-rocky9", "ev2ahv-src-new", "ev2ahv-src-win22"])
+        w = d["workloads"][-1]
+        self.assertEqual((w["power_state"], w["availability"], w["disks"]), ("Off", "HA", 0))
+        self.assertIn("Stopped on everRun", w["warnings"][-1])
+        from ev2ahv_server import models as m
+        m.Workload(**w)                                  # valid for the API
+
+    def test_running_guest_missing_from_virsh_is_not_added(self):
+        d = self.doc()
+        self.live._fill_availability(d, lambda k: "pw", api=FakeEverRun)
+        self.assertNotIn("ev2ahv-src-other", [w["name"] for w in d["workloads"]])   # running: virsh is the truth
+
+    def test_stopped_guest_outside_the_name_guard_says_so(self):
+        d = self.doc()
+        self.live._fill_availability(d, lambda k: "pw", api=FakeEverRun, settings={"source_name_prefix": "prod-"})
+        self.assertTrue(d["workloads"][-1]["warnings"][0].startswith("Name guard"))
 
     def test_no_password_leaves_blank_and_does_not_call(self):
         d = self.doc()
