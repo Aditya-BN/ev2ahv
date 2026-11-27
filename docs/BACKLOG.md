@@ -39,7 +39,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 | ID | Test | How | Pass when |
 |---|---|---|---|
-| T5 | UEFI: appliance boot, and a UEFI guest | Create the VM with UEFI boot | Boots, self-test PASS |
+| T5 | UEFI guest (the appliance itself boots under UEFI, 2026-11-27) | Migrate an everRun UEFI guest | Boots on AHV with UEFI, checksums match |
 | T6 | Console TUI: static IP, hostname, NTP on AHV | `ev2ahv-config --console` on tty1 | Settings survive a reboot; UI reachable on the new IP |
 | T7 | OVA export and ConfigDrive network | — | Deploys from OVA; ConfigDrive sets the network |
 | T8 | Appliance reboot mid-seed (mid-cutover already passes) | Reboot during a seed | Seed resumes, nothing marked Failed |
@@ -51,6 +51,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: T5 (appliance part). `ev2ahv-appliance-uefi` from image `ev2ahv-appliance-0.3.5` with v4 `UefiBoot`
+  (secure boot off) booted and served the UI 60 s after power-on; forced password change (403 before, 200 after);
+  Prism environment Connected; self-test PASS (5 steps: found itself, hot-added 1 GiB as /dev/sdb, helper read it,
+  offlined, removed via Prism). Not checked from inside (failed units, SELinux) and not with secure boot.
 - 2026-11-27: T3 and T4 done together: win22 HA migrated from appliance-3 by clicking through the UI (Playwright, 49 screenshots in docs/appliance-shots/t4/). Downtime 877.2 s, final sync 678.6 s, PCI to SCSI 78.9 s, seed about 12.6 min, resync 188 s; boots, same IP and MAC, 3389/5985 open, 400+399 of 400+399 manifest files match. See docs/results.md. D9 note: the conversion cost 79 s this time. New debt D18 to D21.
 - 2026-11-27: v0.3.5 released (commit 3585d22, tag v0.3.5). Both appliances upgraded 0.3.4 -> 0.3.5 in 3 s each; self-test PASS, `running`, 0 AVC, 0 failed units afterwards (the blockd exit-flush fix, fa865b8, is confirmed). Image `ev2ahv-appliance-0.3.5` in Prism (0.3.2 kept; 0.2.0 images and `ev2ahv-writer` were deleted the same morning on purpose).
   - D7 prune: `ev2ahv-upgrade prune --keep N [--dry-run]`, guarded like the rest (own backup names only, needs `app/`, no symlinks, keep >= 1), 2 unit tests. Used on appliance-2: 5 backups -> 2.
