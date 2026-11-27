@@ -169,7 +169,7 @@ Without tracking, every resync hashes every allocated chunk of every disk on the
 - It only accelerates resyncs. The final sync does not use it.
 - It adds a bitmap to the running guest's QEMU, in memory only. Nothing is written to the guest's disks. After the migration the bitmaps are removed.
 - The bitmap is lost when QEMU restarts or an FT guest fails over. ev2ahv notices, does one full pass, starts tracking again, and the resync after that is a dirty-only pass again. We tested this with a real FT failover.
-- Stratus has not been asked whether it supports this on customer FT guests. Treat it as experimental and ask Stratus before enabling it in production. Chapter 9 has measured gains.
+- It works by sending QEMU monitor commands to the guest. Stratus's public documentation says everRun users should make no changes to the QEMU virtualization engine, and we have not asked Stratus whether this use is acceptable. Treat it as experimental and as outside what Stratus documents; get Stratus's agreement before you enable it on a production guest. Chapter 9 has measured gains.
 
 ## 2.6 Failure handling and resume
 
@@ -251,7 +251,7 @@ Automatic preparation of Windows guests uses WinRM on port 5985 with NTLM authen
 | Local console accounts | The appliance | The `nutanix` web account and the `admin` shell account, both with a forced password change |
 
 <div class="callout warn" markdown="1"><b>Permissions we did not narrow</b><br>
-We tested with administrator-level Prism and everRun accounts. We have not tried a reduced Prism role, so we cannot tell you the smallest set of permissions that works. If your policy requires least privilege, build the role by testing a throw-away plan against a test VM, and expect to add what the errors name. The root SSH requirement on the everRun nodes is inherent: the guests' disk files are only readable by root. Running scripts as root on the nodes may fall outside your Stratus support terms; ask Stratus.</div>
+We tested with administrator-level Prism and everRun accounts. We have not tried a reduced Prism role, so we cannot tell you the smallest set of permissions that works. If your policy requires least privilege, build the role by testing a throw-away plan against a test VM, and expect to add what the errors name. The root SSH requirement on the everRun nodes is inherent: the guests' disk files are only readable by root. Stratus documents root SSH to the nodes for its own procedures, but recommends a non-root account for third-party tools and warns that such tools can destabilize a node. Running ev2ahv's helper as root may fall outside your Stratus support terms; ask Stratus before you start.</div>
 
 ## 3.5 Before you start
 
@@ -970,7 +970,7 @@ Two more rules from the lab: never touch the appliance's disks while a plan is r
 | Backups and snapshots are untested: everRun snapshot while seeding, in-guest agents, QEMU-level backups | Avoid them during the migration |
 | Running scripts as root on the everRun nodes may not be covered by Stratus support | Ask Stratus before you start |
 | The appliance must run on the target cluster | Deploy one per target cluster |
-| Change tracking is experimental, and Stratus has not been asked about it on FT guests | Leave it off for production guests until then |
+| Change tracking is experimental. It sends QEMU monitor commands, which Stratus's documentation advises against, and Stratus has not been asked | Leave it off for production guests until Stratus agrees |
 | Several VMs migrating at once is untested | Start with one or two at a time |
 | One appliance, no high availability. A restart signs users out | Plans resume. The source is never at risk |
 | No notifications | Monitor through the API or Prism (11.6) |
