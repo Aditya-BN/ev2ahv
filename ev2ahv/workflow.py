@@ -242,6 +242,9 @@ class Migration:
         def target_free():
             vm = self.prism.vm_by_name(t["vm_name"])
             if vm and not self.step_done("created"):
+                if vm.get("extId") and vm["extId"] == self.state.get("target_vm"):
+                    # after a rollback: our own earlier copy, which the next cutover discards first
+                    return "the copy from the rolled-back cutover; the next cutover discards it first"
                 raise RuntimeError(f"VM {t['vm_name']} already exists")
             return "free" if not vm else "created by this plan"
         check("Target VM name", target_free)
