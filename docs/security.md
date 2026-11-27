@@ -99,3 +99,16 @@ LDAP / Active Directory: **not implemented** (`users.ldap_login` is a stub that 
 settings `ldap: {url, bind_dn, bind_password (secret store), user_base, user_filter, admin_group, viewer_group}`;
 login tries the local account first, then an LDAPS simple bind as the user, and maps group membership to the role
 at every login (no local copy of the password). Needs a directory in the lab to build and test against.
+
+## Booted-instance check (2026-11-27, `ev2ahv-appliance-3`, 0.3.5 on AHV)
+
+The sysctl and kernel-module rules fail under `oscap-chroot` because it reads the build container's kernel. Read on the
+running appliance instead (read-only, `sysctl -n`, `modprobe -n -v`, `lsmod`):
+
+- all 18 sysctl keys from the CIS rules have the required values (ipv4 forward/redirects/source route/martians/rp_filter,
+  ipv6 accept_ra/redirects/forwarding, `kernel.yama.ptrace_scope=1`);
+- cramfs, freevxfs, hfs, hfsplus, jffs2, usb-storage and squashfs resolve to `install /bin/false` and none is loaded;
+- `nullok` is gone from system-auth and password-auth; SELinux Enforcing.
+
+So the 22 sysctl/module "fails" in the chroot scan are passes on a real instance.
+
