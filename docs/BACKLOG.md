@@ -26,6 +26,8 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D13 | P3 | LDAP sign-in is built and tested against OpenLDAP, not yet against the lab Active Directory (needs a bind account). The default certificate is self-signed (the Health page can replace it). | server |
 | D15 | P2 | Production impact and backups are untested. ev2ahv takes no snapshots and does not use VSS, but: (a) seeds and full-disk resyncs add read I/O and about one CPU core per disk on the everRun node, and that load has never been measured; (b) reading while an everRun snapshot exists is unverified; (c) D5 dirty bitmaps may clash with any QEMU-level backup on the same VM; (d) after cutover the everRun-side backup job fails, and in-guest agents usually need one full backup because disk IDs change; (e) running scripts as root on the nodes may not be covered by Stratus support. Update 2026-11-27: (a) measured, see docs/runbook.md section 7 (about 1 core, +3 ms disk latency, recommended `max_mbps: 100`); (b) (c) (d) (e) still untested. | docs/runbook.md, engine |
 | D21 | P3 | appliance-2 still uses the bastion key as its app key (appliance-3 fixed 2026-11-27). Linux guests that use automatic prep over SSH need the appliance key too (not added to `ev2ahv-src-rocky9`). | appliance, docs |
+| D23 | P3 | The wizard keeps "Retain MAC" on for plan-file sources that have no MAC, so prep-check fails with the engine message `nics[0].mac is required when keep_mac is true`. Turn it off (or explain) when the source NIC has no MAC. | web, server |
+| D24 | P2 | Deleting (or cancelling) a plan leaves its staging disks attached to the writer or appliance; they have to be removed with the engine's `cleanup`. Delete should offer to clean up (or refuse while staging exists). | server/api.py, live.py |
 
 ## What to test
 
@@ -34,7 +36,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | T5 | UEFI guest (the appliance itself boots under UEFI, 2026-11-27) | Migrate an everRun UEFI guest | Boots on AHV with UEFI, checksums match |
 | T6 | Console TUI: static IP, hostname, NTP on AHV | `ev2ahv-config --console` on tty1 | Settings survive a reboot; UI reachable on the new IP |
 | T7 | OVA export and ConfigDrive network | — | Deploys from OVA; ConfigDrive sets the network |
-| T8 | Appliance reboot mid-seed (mid-cutover already passes) | Reboot during a seed | Seed resumes, nothing marked Failed |
 | T9 | Several VMs in one plan at once | Two `ev2ahv-src-*` guests | Both complete; resyncs do not starve each other |
 | T10 | Prism username/password auth (D11) | Environment with a user and password | Validate, refresh and migrate work |
 | T11 | Unit tests (D12) | `tools/check.sh` or the GitHub `ci` workflow | All pass, every run (flaky `Text file busy` fixed in 0.3.3, see Done) |
@@ -42,6 +43,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: T8 passed. Appliance rebooted mid-seed (`ev2ahv-appliance-3`, 0.3.7, plan-file source 12 GiB with 10 GiB
+  written on `ev2ahv-writer-root`): reboot at 31.2 %, UI back 30 s later, seed resumed from 31.2 % (not from 0), VM Ready
+  to Cutover 179 s after the reboot; events "seed interrupted by a service stop; it resumes on restart" then "seed
+  finished"; nothing marked Failed; no failed units, SELinux enforcing, 0 AVC. Found D23 and D24 on the way.
 - 2026-11-27: D21 for appliance-3. Its own key (`ev2ahv-appliance`, SHA256:CzvWC2PB...) was appended to root's
   authorized_keys on both everRun nodes with `from="10.12.135.160",no-agent-forwarding,no-port-forwarding,no-X11-forwarding`
   (backups `authorized_keys.bak-ev2ahv-<UTC>` on each node), tested as the `ev2ahv` user, then made the app key; the

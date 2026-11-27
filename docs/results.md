@@ -581,3 +581,21 @@ Not checked: booting a real guest from the test clone (the fake disks are not bo
 Lab PC: 12 VLAN and 4 overlay subnets in VPCs `Test-VPC` and `vpc-prd`; `subnet_list` reports type and VPC name for all.
 A disk-less, powered-off VM `ev2ahv-d8c-test` was created with `builder.nic_entries` for overlay subnet `overlay`
 (vpc-prd) and MAC 50:6b:8d:ee:d8:0c: accepted, NIC on the subnet with that MAC. Deleted right after.
+
+## T8: appliance reboot mid-seed, 2026-11-27
+
+`ev2ahv-appliance-3` (0.3.7) as its own writer, "plans" environment with one plan file; source a 12 GiB raw file with
+10 GiB of random data on `ev2ahv-writer-root` (read over SSH with the appliance's own key). Plan started through the API
+(manual prep, guest operations bypassed, retain MAC/IP off).
+
+| Step | Result |
+|---|---|
+| Seed to 31.2 % | 94 s after start |
+| `systemctl reboot` of the appliance at 31.2 % | UI answered again 30 s later |
+| Seed after restart | resumed at 31.2 % (32.3, 34.4, 36.5 % ...), not from 0 |
+| Ready to Cutover | 179 s after the reboot; nothing marked Failed |
+| Events | seed started, "seed interrupted by a service stop; it resumes on restart", seed started, seed finished |
+| Appliance after reboot | no failed units, SELinux Enforcing, 0 AVC denials |
+
+Cleanup: staging disk removed with the engine's `cleanup` (deleting the plan does not do it: D24), plan, environment,
+plan file and fake source deleted, the temporary key line removed from the writer.
