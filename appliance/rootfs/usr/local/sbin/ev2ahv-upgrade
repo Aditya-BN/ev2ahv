@@ -246,6 +246,7 @@ def install_venv(wheels, requirements):
     rm_tree(tmp)
     sh("python3.12", "-m", "venv", tmp)
     sh(os.path.join(tmp, "bin", "pip"), "install", "-q", "--no-index", "--find-links", wheels, "-r", requirements)
+    sh(os.path.join(tmp, "bin", "python"), "-m", "pip", "uninstall", "-q", "-y", "pip")   # pip does not ship (D10)
     rm_tree(P["venv"])   # the new venv is complete at this point
     os.rename(tmp, P["venv"])
     # the venv's scripts point at the temporary path; rewrite them to the final one
