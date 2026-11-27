@@ -112,6 +112,11 @@ def refresh(doc, secret, settings=None):
                              for c in pr._all("/clustermgmt/v4.2/config/storage-containers")
                              if not c["name"].startswith(("NutanixManagementShare", "SelfServiceContainer"))]
         doc["subnets"] = [{"id": s["extId"], "name": s["name"]} for s in pr._all("/networking/v4.0/config/subnets")]
+        try:
+            doc["projects"] = pr.projects()
+        except Exception as e:   # a key without project rights still works for everything else
+            log.warning("Prism %s: cannot list projects: %s", doc.get("address"), e)
+            doc["projects"] = []
         doc["vm_count"] = len(pr.list_vms(select="name"))
     elif t == "plans":
         doc["workloads"] = _plan_file_workloads(os.path.expanduser(doc["address"]), settings)
@@ -260,6 +265,8 @@ def engine_plan(plan, vm, src, wl, secret, settings):
     t = p["target"]
     if vs.get("target_name"):
         t["vm_name"] = vs["target_name"]
+    if plan.get("project") and plan["project"] != "None":
+        t["project"] = plan["project"]
     for k_ui, k_eng in (("vcpus", "cores"), ("memory_mib", "memory_mib"), ("firmware", "firmware"),
                         ("disk_bus", "disk_bus"), ("convert_to_scsi", "convert_to_scsi")):
         if vs.get(k_ui) is not None:

@@ -244,6 +244,43 @@ class Prism:
             raise PrismError(f"{len(rows)} images are named {name!r}")
         return rows[0] if rows else None
 
+    # ---- projects (D8a; v4 has no project assignment, so this uses v3) -------
+    def projects(self):
+        """[{"id", "name"}] of every Prism project."""
+        out, offset = [], 0
+        while True:
+            d = self._call("POST", "/projects/list", {"kind": "project", "length": 100, "offset": offset},
+                           base="/api/nutanix/v3")[0]
+            ents = d.get("entities") or []
+            out += [{"id": e["metadata"]["uuid"], "name": (e.get("status") or e.get("spec") or {}).get("name", "")}
+                    for e in ents]
+            offset += len(ents)
+            if not ents or offset >= int((d.get("metadata") or {}).get("total_matches") or 0):
+                return sorted(out, key=lambda p: p["name"].lower())
+
+    def project_id(self, name):
+        rows = [p for p in self.projects() if p["name"] == name]
+        if len(rows) != 1:
+            raise PrismError(f"project {name!r}: found {len(rows)}")
+        return rows[0]["id"]
+
+    def set_project(self, vm_id, project_id):
+        """Put an ev2ahv-owned VM into a project (v3 metadata.project_reference). No-op if it is already there."""
+        self._owned_vm(vm_id)
+        doc = self._call("GET", f"/vms/{vm_id}", base="/api/nutanix/v3")[0]
+        md = doc["metadata"]
+        if (md.get("project_reference") or {}).get("uuid") == project_id:
+            return False
+        if self.dry_run:
+            log.info("[dry-run] set project of %s to %s", vm_id, project_id)
+            return False
+        md["project_reference"] = {"kind": "project", "uuid": project_id}
+        body = {"api_version": doc.get("api_version", "3.1"), "metadata": md, "spec": doc["spec"]}
+        r = self._call("PUT", f"/vms/{vm_id}", body, base="/api/nutanix/v3")[0]
+        self._wait_v3(r["status"]["execution_context"]["task_uuid"])
+        log.info("VM %s is now in project %s", vm_id, project_id)
+        return True
+
     def _wait_v3(self, task_uuid, timeout=900):
         deadline = time.time() + timeout
         while time.time() < deadline:

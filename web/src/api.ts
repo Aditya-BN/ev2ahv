@@ -19,7 +19,7 @@ export interface Provider {
   id: string; name: string; type: ProviderType; role: 'source' | 'target'; address: string; username: string;
   auth: 'password' | 'api_key'; status: 'Connected' | 'Refreshing' | 'Error'; error?: string | null;
   vm_count: number; last_refreshed?: number | null; version?: string | null; node_addresses: string[];
-  clusters: Named[]; containers: Named[]; subnets: Named[];
+  clusters: Named[]; containers: Named[]; subnets: Named[]; projects?: Named[];
 }
 export interface Nic { network: string; mac: string; ip?: string | null }
 export interface Workload {
