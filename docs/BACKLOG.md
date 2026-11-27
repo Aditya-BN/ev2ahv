@@ -34,6 +34,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D19 | P3 | Environment details show memory as `5.990234375 GiB` and the everRun version as just `everRun`. | web, server |
 | D20 | P3 | Seed ETA is wrong on sparse disks (34 min shown, done in 12.6 min); prep-check badge shows WARN while the check still runs; cutover shows only "cutover NN%" with no stage (final sync, shutdown, conversion). | web, server/live.py |
 | D21 | P3 | Lab shortcut: appliance-3 uses the bastion key as its app key (same as appliance-2). Needs the appliance key authorised on the everRun nodes and the UI to show its public key with a copy hint. | appliance, docs |
+| D22 | P3 | Discovery lists only guests libvirt knows, so a stopped everRun guest (undefined in libvirt) is missing from the environment and the wizard. The DOH `watch` lists it (name, state, FT/HA); disk details would need the everRun API or the guest started. | server/live.py |
 
 ## What to test
 
@@ -46,11 +47,17 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | T9 | Several VMs in one plan at once | Two `ev2ahv-src-*` guests | Both complete; resyncs do not starve each other |
 | T10 | Prism username/password auth (D11) | Environment with a user and password | Validate, refresh and migrate work |
 | T11 | Unit tests (D12) | `tools/check.sh` or the GitHub `ci` workflow | All pass, every run (flaky `Text file busy` fixed in 0.3.3, see Done) |
-| T12 | FT/HA in discovery (D6) against the real everRun DOH API | `EV2AHV_EVERRUN_PASS=... python3 ev2ahv/everrun_api.py --host <portal> list`, then refresh the everRun environment in the UI | `ev2ahv-src-rocky9` shows FT and `ev2ahv-src-win22` HA; if the raw text is something else, extend `availability_level` |
 | T13 | Production impact and backups (D15) | On lab everRun: seed and resync a production-sized disk while watching node I/O latency and CPU at several bandwidth limits; run an in-guest backup agent during a seed; seed while an everRun snapshot exists; cutover, then back up the AHV VM | Node latency acceptable at a documented bandwidth limit; backup job and ev2ahv both succeed; data read under a snapshot is correct; runbook has a Backups and throttling section |
 
 ## Done (recent)
 
+- 2026-11-27: D14 run on a real writer (`ev2ahv-writer-root`): prep-check asked 14 GiB (old rule 16), peak use 7.00 GiB
+  (raw staging + one qcow2), never two qcow2 at once, none left behind, staging sha256-identical to the source.
+  Downtime 299.4 s, of which 246.4 s image upload: the upload, not the space, is now the cost of image mode.
+- 2026-11-27: T12 passed. everRun 8.1.1 DOH `watch` gives `availability` as `FT` for `ev2ahv-src-rocky9` and `HA` for
+  `ev2ahv-src-win22`; `availability_level` maps both. A refresh on `ev2ahv-appliance-3` (0.3.5) shows rocky9 as FT. Found:
+  a stopped guest is missing from discovery (everRun undefines it in libvirt), so its FT/HA and the guest itself do not
+  show in the wizard until it runs (D22).
 - 2026-11-27: T3 and T4 done together: win22 HA migrated from appliance-3 by clicking through the UI (Playwright, 49 screenshots in docs/appliance-shots/t4/). Downtime 877.2 s, final sync 678.6 s, PCI to SCSI 78.9 s, seed about 12.6 min, resync 188 s; boots, same IP and MAC, 3389/5985 open, 400+399 of 400+399 manifest files match. See docs/results.md. D9 note: the conversion cost 79 s this time. New debt D18 to D21.
 - 2026-11-27: v0.3.5 released (commit 3585d22, tag v0.3.5). Both appliances upgraded 0.3.4 -> 0.3.5 in 3 s each; self-test PASS, `running`, 0 AVC, 0 failed units afterwards (the blockd exit-flush fix, fa865b8, is confirmed). Image `ev2ahv-appliance-0.3.5` in Prism (0.3.2 kept; 0.2.0 images and `ev2ahv-writer` were deleted the same morning on purpose).
   - D7 prune: `ev2ahv-upgrade prune --keep N [--dry-run]`, guarded like the rest (own backup names only, needs `app/`, no symlinks, keep >= 1), 2 unit tests. Used on appliance-2: 5 backups -> 2.
