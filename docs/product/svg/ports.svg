@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="14.5" role="img" aria-label="Network ports and flows">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#37474f"/></marker></defs>
+<rect width="900" height="540" fill="#fff"/>
+<rect x="20" y="170" width="150" height="70" rx="8" fill="#fff" stroke="#37474f"/><text x="95" y="200" text-anchor="middle">Admin browser</text><text x="95" y="220" text-anchor="middle" font-size="12.5" fill="#455a64">and admin SSH client</text>
+<rect x="320" y="120" width="210" height="170" rx="10" fill="#e8f1f2" stroke="#0b6b73" stroke-width="2"/><text x="425" y="150" text-anchor="middle" font-weight="bold" fill="#0b4f55">ev2ahv appliance</text><text x="425" y="172" text-anchor="middle" font-size="12.5" fill="#455a64">inbound: 443 and 22 only</text><text x="425" y="192" text-anchor="middle" font-size="12.5" fill="#455a64">no port 80</text><text x="425" y="230" text-anchor="middle" font-size="12.5" fill="#455a64">Everything else is outbound.</text>
+<line x1="170" y1="195" x2="320" y2="195" stroke="#37474f" stroke-width="1.6" marker-end="url(#a)"/><text x="245" y="187" text-anchor="middle" font-size="13.5">443/tcp  HTTPS</text>
+<line x1="170" y1="222" x2="320" y2="222" stroke="#37474f" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#a)"/><text x="245" y="238" text-anchor="middle" font-size="13.5">22 SSH (optional)</text>
+<!-- targets -->
+<rect x="640" y="10" width="240" height="64" rx="8" fill="#e8f5e9" stroke="#2e7d32"/><text x="760" y="36" text-anchor="middle">Prism Central</text><text x="760" y="56" text-anchor="middle" font-size="12.5" fill="#455a64">management address of the cluster</text>
+<rect x="640" y="100" width="240" height="64" rx="8" fill="#f3e9f7" stroke="#6a1b9a"/><text x="760" y="126" text-anchor="middle">everRun system IP</text><text x="760" y="146" text-anchor="middle" font-size="12.5" fill="#455a64">management address of the pair</text>
+<rect x="640" y="190" width="240" height="64" rx="8" fill="#f3e9f7" stroke="#6a1b9a"/><text x="760" y="216" text-anchor="middle">Both everRun nodes</text><text x="760" y="236" text-anchor="middle" font-size="12.5" fill="#455a64">host network address of each node</text>
+<rect x="640" y="280" width="240" height="64" rx="8" fill="#fff" stroke="#90a4ae"/><text x="760" y="306" text-anchor="middle">Guests (prep and verify)</text><text x="760" y="326" text-anchor="middle" font-size="12.5" fill="#455a64">22/tcp Linux, 5985/tcp Windows</text>
+<rect x="640" y="370" width="240" height="64" rx="8" fill="#fff" stroke="#90a4ae"/><text x="760" y="396" text-anchor="middle">NTP, DNS, directory server</text><text x="760" y="416" text-anchor="middle" font-size="12.5" fill="#455a64">123/udp NTP, 53 DNS, 389 or 636 LDAP</text>
+<path d="M530 150 H585 V42 H640" fill="none" stroke="#2e7d32" stroke-width="1.6" marker-end="url(#a)"/><text x="588" y="96" font-size="13.5" fill="#2e7d32" text-anchor="end">9440/tcp</text>
+<path d="M530 165 H610 V132 H640" fill="none" stroke="#6a1b9a" stroke-width="1.6" marker-end="url(#a)"/><text x="570" y="160" font-size="13.5" fill="#6a1b9a" text-anchor="middle">443/tcp</text>
+<path d="M530 200 H640" stroke="#6a1b9a" stroke-width="1.6" marker-end="url(#a)"/><text x="585" y="194" font-size="13.5" fill="#6a1b9a" text-anchor="middle">22/tcp</text>
+<path d="M530 250 H600 V312 H640" fill="none" stroke="#37474f" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M530 275 H570 V402 H640" fill="none" stroke="#78909c" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#a)"/>
+<text x="20" y="462" font-size="13.5" fill="#37474f">Nothing needs to reach the appliance from the everRun nodes, from Prism or from the guests.</text>
+<text x="20" y="484" font-size="13.5" fill="#37474f">Staging vdisks travel inside AHV (Prism hot-adds them), not over a port you open.</text>
+<text x="20" y="506" font-size="13.5" fill="#37474f">Disk data from the nodes comes back over the SSH connection the appliance opened.</text>
+</svg>
