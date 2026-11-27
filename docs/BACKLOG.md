@@ -32,7 +32,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D15 | P2 | Production impact and backups are untested. ev2ahv takes no snapshots and does not use VSS, but: (a) seeds and full-disk resyncs add read I/O and about one CPU core per disk on the everRun node, and that load has never been measured; (b) reading while an everRun snapshot exists is unverified; (c) D5 dirty bitmaps may clash with any QEMU-level backup on the same VM; (d) after cutover the everRun-side backup job fails, and in-guest agents usually need one full backup because disk IDs change; (e) running scripts as root on the nodes may not be covered by Stratus support. Update 2026-11-27: (a) measured, see docs/runbook.md section 7 (about 1 core, +3 ms disk latency, recommended `max_mbps: 100`); (b) (c) (d) (e) still untested. | docs/runbook.md, engine |
 | D18 | P2 | UI has no "Resync now". The first resync waits for the plan interval (default 1 h, smallest option 15 min); in T4 the started plan had to be edited through the wizard (password asked again). Add a Resync action and a 5 min option. | web, server/live.py |
 | D19 | P3 | Environment details show memory as `5.990234375 GiB` and the everRun version as just `everRun`. | web, server |
-| D20 | P3 | Seed ETA is wrong on sparse disks (34 min shown, done in 12.6 min); prep-check badge shows WARN while the check still runs; cutover shows only "cutover NN%" with no stage (final sync, shutdown, conversion). | web, server/live.py |
 | D21 | P3 | Lab shortcut: appliance-3 uses the bastion key as its app key (same as appliance-2). Needs the appliance key authorised on the everRun nodes and the UI to show its public key with a copy hint. | appliance, docs |
 
 ## What to test
@@ -51,6 +50,11 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: D20. Cutover shows its stage next to the phase (stopping source, final sync, image upload or preparing
+  disks, creating AHV VM, powering on, verifying, converting to SCSI): the runner emits it after each engine step and
+  live mode stores it as `stage`. The prep-check badge shows "Checking…" while prep-check or guest prep runs instead
+  of the old result. ETA uses the rate of the last 120 s instead of the since-start average, which was far off on
+  sparse disks (holes pass fast). 4 tests; not yet watched on a real cutover.
 - 2026-11-27: T3 and T4 done together: win22 HA migrated from appliance-3 by clicking through the UI (Playwright, 49 screenshots in docs/appliance-shots/t4/). Downtime 877.2 s, final sync 678.6 s, PCI to SCSI 78.9 s, seed about 12.6 min, resync 188 s; boots, same IP and MAC, 3389/5985 open, 400+399 of 400+399 manifest files match. See docs/results.md. D9 note: the conversion cost 79 s this time. New debt D18 to D21.
 - 2026-11-27: v0.3.5 released (commit 3585d22, tag v0.3.5). Both appliances upgraded 0.3.4 -> 0.3.5 in 3 s each; self-test PASS, `running`, 0 AVC, 0 failed units afterwards (the blockd exit-flush fix, fa865b8, is confirmed). Image `ev2ahv-appliance-0.3.5` in Prism (0.3.2 kept; 0.2.0 images and `ev2ahv-writer` were deleted the same morning on purpose).
   - D7 prune: `ev2ahv-upgrade prune --keep N [--dry-run]`, guarded like the rest (own backup names only, needs `app/`, no symlinks, keep >= 1), 2 unit tests. Used on appliance-2: 5 backups -> 2.

@@ -34,6 +34,7 @@ export function PrepScripts({ planId, os, mode }: { planId?: string; os: string[
 }
 
 export function ChecksBadge({ vm }: { vm: PlanVm }) {
+  if (vm.phase === 'prep-check' || vm.phase === 'guest-prep') return <span className="chk-badge running" title="Prep-check is running">Checking…</span>;
   const w = worstCheck(vm);
   if (!w) return <span className="muted">-</span>;
   return (
@@ -138,10 +139,10 @@ export function useVmActions(onDone: () => void) {
 }
 
 export function PhaseInfo({ vm }: { vm: PlanVm }) {
-  const showBar = (vm.phase === 'resync' || vm.phase === 'cutover') && vm.sync_progress != null;
+  const showBar = (vm.phase === 'resync' || (vm.phase === 'cutover' && (!vm.stage || vm.stage === 'final sync'))) && vm.sync_progress != null;
   return (
     <>
-      {vm.phase && <div className="phase">{vm.phase}</div>}
+      {vm.phase && <div className="phase">{vm.phase}{vm.stage ? `: ${vm.stage}` : ''}</div>}
       {showBar && <div className="sync-bar" title={`Current sync pass: ${Math.round(vm.sync_progress || 0)}%`}><div style={{ width: `${Math.min(100, vm.sync_progress || 0)}%` }} /></div>}
     </>
   );
