@@ -474,3 +474,10 @@ write load ran during the resyncs, then was stopped to write the manifests). Tim
 - Cleanup: `cbt` set back to `off` and `final_verify` to `full` (PATCH); no bitmaps (the guest is stopped, its QEMU gone), no exports, no
   `/var/tmp/ev2ahv-cbt-*` socket and no probe scripts on either node. Finding: with cbt on, a flag `cbt:<disk>` stayed "tracking" after the final
   sync, so the first resync after a rollback logged a spurious "no bitmap" failure; the final sync now sets it to off.
+
+## D8a: Prism project at VM create, 2026-11-27
+
+Real Prism Central (adit's API key): `Prism.projects()` returned 9 projects. A disk-less, powered-off VM
+`ev2ahv-d8a-test` (e9066136-...) was created with v4, then `set_project(vm, <Testing>)` updated it through v3:
+GET `/api/nutanix/v3/vms/{uuid}` afterwards shows `project_reference` = Testing (21dd8ccd-...). A second call returned
+"no change". Not yet run inside a full migration (the step runs right after create, before power-on).

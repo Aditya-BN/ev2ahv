@@ -62,6 +62,7 @@ class Provider(BaseModel):
     clusters: List[Named] = Field(default_factory=list)
     containers: List[Named] = Field(default_factory=list)
     subnets: List[Named] = Field(default_factory=list)
+    projects: List[Named] = Field(default_factory=list, description="Prism projects (target environments)")
 
 
 class Nic(BaseModel):

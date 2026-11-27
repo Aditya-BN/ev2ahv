@@ -39,12 +39,15 @@ WORKLOADS = [
 ]
 
 
+PROJECTS = [{"id": "pj-default", "name": "default"}, {"id": "pj-migr", "name": "Migrations"}]
+
+
 def fill_provider(doc):
     if doc["type"] == "everrun":
         doc["workloads"] = [dict(w) for w in WORKLOADS]
         doc["vm_count"] = len(WORKLOADS)
     else:
-        doc.update(clusters=CLUSTERS, containers=CONTAINERS, subnets=SUBNETS, vm_count=42)
+        doc.update(clusters=CLUSTERS, containers=CONTAINERS, subnets=SUBNETS, projects=PROJECTS, vm_count=42)
 
 
 def seed(store):
@@ -79,7 +82,7 @@ def seed(store):
                         "actions": []})
         d = {"id": id_, "name": name, "created_by": "nutanix", "created_at": now - age_h * 3600,
              "source": {"id": "p-everrun", "name": "everrun-lab"}, "target": {"id": "p-pc", "name": "PC-136"},
-             "cluster": "NTNX-136", "container": "default-container", "project": "_internal",
+             "cluster": "NTNX-136", "container": "default-container", "project": "default",
              "network_map": [{"source_network": "sharednetwork0", "target_subnet": "vlan136",
                               "test_subnet": "ev2ahv-test-isolated"}], "test_network": True,
              "prep": {"mode": "automatic", "windows_user": "Administrator", "linux_user": "root", "retain_ip": True,
