@@ -509,3 +509,9 @@ Real Prism Central (adit's API key): `Prism.projects()` returned 9 projects. A d
 `ev2ahv-d8a-test` (e9066136-...) was created with v4, then `set_project(vm, <Testing>)` updated it through v3:
 GET `/api/nutanix/v3/vms/{uuid}` afterwards shows `project_reference` = Testing (21dd8ccd-...). A second call returned
 "no change". Not yet run inside a full migration (the step runs right after create, before power-on).
+
+## D10 closed: rebuilt image without pip, 2026-11-27
+
+`bash appliance/build.sh && bash appliance/scripts/scan.sh` on branch `root/D10-leftovers`: trivy HIGH/CRITICAL 0 (was 1, the
+pip-vendored setuptools false positive), pip-audit "No known vulnerabilities found", OpenSCAP CIS L1 195 pass / 61 fail.
+The venv in the image has no pip (site-packages has no `pip*`); `pip.list` is written before pip is removed.
