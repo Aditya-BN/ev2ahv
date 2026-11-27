@@ -164,7 +164,7 @@ export const api = {
   plan: (id: string) => req<Plan>('GET', `/plans/${id}`),
   createPlan: (b: PlanIn) => req<Plan>('POST', '/plans', b),
   editPlan: (id: string, b: PlanIn) => req<Plan>('PUT', `/plans/${id}`, b),
-  deletePlan: (id: string) => req<unknown>('DELETE', `/plans/${id}`),
+  deletePlan: (id: string, cleanup = false) => req<{ cleanup_started?: string[] }>('DELETE', `/plans/${id}${cleanup ? '?cleanup=true' : ''}`),
   startPlan: (id: string) => req<Plan>('POST', `/plans/${id}/start`),
   planAction: (id: string, b: ActionIn) => req<Plan>('POST', `/plans/${id}/action`, b),
   precheck: (id: string) => req<Plan>('POST', `/plans/${id}/precheck`),

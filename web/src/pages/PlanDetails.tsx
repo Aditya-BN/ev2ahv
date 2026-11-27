@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import { Spinner, useDialogs } from '../components/ui';
 import { fmtBytes, fmtDate, fmtDateSec, fmtMem, tzLabel, useLive } from '../util';
 import { PrepScripts } from '../components/VmParts';
@@ -25,7 +25,13 @@ export default function PlanDetails() {
   const start = async () => { try { await api.startPlan(id); toast('Plan started'); nav(`/migrationprogress/${id}`); } catch (e) { showError(e, 'Start plan'); } };
   const del = async () => {
     if (!(await confirm({ title: 'Delete Migration Plan', danger: true, ok: 'Delete', body: <p>Delete plan <b>{p.name}</b>? Target VMs that were already created are kept.</p> }))) return;
-    try { await api.deletePlan(id); nav('/dashboard'); } catch (e) { showError(e, 'Delete plan'); }
+    try { await api.deletePlan(id); nav('/dashboard'); }
+    catch (e) {
+      if (!(e instanceof ApiError && e.status === 409 && /staging disks/.test(e.message))) { showError(e, 'Delete plan'); return; }
+      if (!(await confirm({ title: 'Remove staging disks?', danger: true, ok: 'Remove and delete', body: <p>{e.message}</p> }))) return;
+      try { await api.deletePlan(id, true); toast('Removing staging disks; the plan disappears when that is done'); nav('/dashboard'); }
+      catch (e2) { showError(e2, 'Delete plan'); }
+    }
   };
   return (
     <div className="content narrow">

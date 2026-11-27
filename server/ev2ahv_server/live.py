@@ -308,7 +308,8 @@ def engine_plan(plan, vm, src, wl, secret, settings):
     for n in p.get("nics") or []:
         if subnet:
             n["subnet"] = subnet
-        n["keep_mac"] = bool(prep.get("retain_mac", True))
+        # D23: a NIC without a known MAC (plan-file sources) cannot keep one, whatever the wizard says
+        n["keep_mac"] = bool(prep.get("retain_mac", True)) and bool(n.get("mac"))
     if src["type"] == "plans" and not p.get("guest"):
         p.pop("guest", None)   # plan file without guest handling (e.g. the fake source): keep it that way
         return _write(plan, vm, p)
@@ -351,7 +352,8 @@ def _write(plan, vm, p):
 
 # Steps that run while the source is (or may be) stopped. everRun undefines a stopped guest in libvirt, so discovery
 # cannot see it; these steps reuse the engine plan written when the VM was seeded (same disks, same source).
-REUSE_PLAN_STEPS = {"rollback", "cutover", "discard-target", "guest-cleanup", "cleanup", "status", "discard-test"}
+REUSE_PLAN_STEPS = {"rollback", "cutover", "discard-target", "guest-cleanup", "cleanup", "status", "discard-test",
+                    "cleanup-staging"}
 # After a rollback the source is stopped or still booting, so its first resyncs also reuse the seeded plan (D16),
 # and a failed one is retried a few times (the source may not answer yet) instead of marking the VM Failed.
 ROLLBACK_RESYNC_RETRIES = 20
@@ -572,6 +574,15 @@ class Live:
     def tick(self):
         now = time.time()
         for p in self.store.all("plan"):
+            if p.get("deleting"):   # D24: waiting for staging cleanup; start nothing else, delete when done
+                if not any(v.get("cleanup_pending") for v in p["vms"]) and not any(
+                        (p["id"], v["id"]) in self.jobs for v in p["vms"]):
+                    with self.lock:
+                        self.store.delete("plan", p["id"])
+                    self.store.event("info", f"plan {p['name']} deleted after its staging disks were removed "
+                                     "(target VMs are kept)", plan=p["name"])
+                    self.bump()
+                continue
             if not p.get("started_at"):
                 s = (p.get("schedule") or {}).get("seed_at")
                 if p.get("armed") and s and s <= now:

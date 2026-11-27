@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, Plan, Provider } from '../api';
+import { api, ApiError, Plan, Provider } from '../api';
 import { Kebab, Menu, Modal, Pager, Spinner, SplitButton, useDialogs, usePager } from '../components/ui';
 import { EnvDialog, EnvView, typeLabel } from '../components/EnvDialogs';
 import { useSession } from '../App';
@@ -46,7 +46,14 @@ export default function Dashboard() {
       else if (a === 'Edit') nav(`/migrationplan/${p.id}`);
       else if (a === 'Delete') {
         if (await confirm({ title: 'Delete Migration Plan', danger: true, ok: 'Delete', body: <p>Delete plan <b>{p.name}</b>? Target VMs that were already created on AHV are kept. This cannot be undone.</p> })) {
-          await api.deletePlan(p.id); toast(`Plan ${p.name} deleted`); plans.reload();
+          try { await api.deletePlan(p.id); toast(`Plan ${p.name} deleted`); }
+          catch (err) {
+            // D24: seeded VMs still have staging disks on the writer; offer to remove them first
+            if (!(err instanceof ApiError && err.status === 409 && /staging disks/.test(err.message))) throw err;
+            if (!(await confirm({ title: 'Remove staging disks?', danger: true, ok: 'Remove and delete', body: <p>{err.message}</p> }))) return;
+            await api.deletePlan(p.id, true); toast(`Removing staging disks of ${p.name}; the plan disappears when that is done`);
+          }
+          plans.reload();
         }
       }
     } catch (e) { showError(e, `${a} plan`); }
