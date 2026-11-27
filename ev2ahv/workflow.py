@@ -510,6 +510,8 @@ class Migration:
             if t.get("cloud_init_file"):
                 with open(os.path.expanduser(t["cloud_init_file"]), "rb") as fh:
                     self.prism.customize_cloud_init(vm_id, base64.b64encode(fh.read()).decode())
+            if t.get("project"):
+                self.prism.set_project(vm_id, self.prism.project_id(t["project"]))
             self.mark("created")
         if not self.step_done("powered"):
             # MAC and IP are kept, so the source must be off before the target starts.

@@ -3082,6 +3082,14 @@
                         },
                         "type": "array",
                         "title": "Subnets"
+                    },
+                    "projects": {
+                        "items": {
+                            "$ref": "#/components/schemas/Named"
+                        },
+                        "type": "array",
+                        "title": "Projects",
+                        "description": "Prism projects (target environments)"
                     }
                 },
                 "type": "object",

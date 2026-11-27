@@ -502,3 +502,10 @@ written, `b` 2 GiB with 1 GiB written. Plan `target.transfer: image`, `staging_d
 | Result | `ev2ahv-d14-target` ON with 2 disks from images `ev2ahv-img-d14-image-a`, `-b` |
 
 Not tested in the lab: a failed upload (the qcow2 removal on failure is covered by unit tests only).
+
+## D8a: Prism project at VM create, 2026-11-27
+
+Real Prism Central (adit's API key): `Prism.projects()` returned 9 projects. A disk-less, powered-off VM
+`ev2ahv-d8a-test` (e9066136-...) was created with v4, then `set_project(vm, <Testing>)` updated it through v3:
+GET `/api/nutanix/v3/vms/{uuid}` afterwards shows `project_reference` = Testing (21dd8ccd-...). A second call returned
+"no change". Not yet run inside a full migration (the step runs right after create, before power-on).

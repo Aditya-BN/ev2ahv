@@ -9,7 +9,6 @@ import { SessionCtx } from '../App';
 
 const STEPS = ['Source & Target', "Select VM's", 'Network and Policy', 'VM Preparation', 'VM Settings', 'Summary'];
 const RESYNC = [5, 15, 30, 60, 120, 240, 720, 1440];
-const PROJECTS = ['None', '_internal', 'default'];
 
 interface WS {
   name: string; sourceId: string; targetId: string; project: string; cluster: string; container: string;
@@ -228,9 +227,10 @@ function Step1({ ws, set, sources, targets, target, source, envsReload }: SP & {
       {source && !targets.length && <div className="alert warn">No Nutanix AOS target environment is registered. Add one on the dashboard first.</div>}
       {target && (
         <>
-          {live
-            ? <Field label="Target Project" hint="Not applied yet: the migrated VM is created without a project (backlog D8a)."><select value="None" disabled><option>None</option></select></Field>
-            : <Field label="Target Project"><select value={ws.project} onChange={(e) => set({ project: e.target.value })}>{PROJECTS.map((p) => <option key={p}>{p}</option>)}</select></Field>}
+          <Field label="Target Project" hint={(target.projects || []).length ? 'The migrated VM is put in this Prism project.' : live ? 'No projects listed: refresh the target environment (or the API key cannot list projects).' : undefined}>
+            <select value={ws.project} onChange={(e) => set({ project: e.target.value })}>
+              {['None', ...(target.projects || []).map((p) => p.name)].map((p) => <option key={p}>{p}</option>)}
+            </select></Field>
           <Field label="Target Cluster"><select id="sel-cluster" value={ws.cluster} onChange={(e) => set({ cluster: e.target.value, container: '' })}>
             <option value="">Select a Cluster...</option>{target.clusters.map((c) => <option key={c.id}>{c.name}</option>)}</select></Field>
           {ws.cluster && <Field label="Target Container"><select id="sel-container" value={ws.container} onChange={(e) => set({ container: e.target.value })}>
