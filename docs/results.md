@@ -599,3 +599,12 @@ A disk-less, powered-off VM `ev2ahv-d8c-test` was created with `builder.nic_entr
 
 Cleanup: staging disk removed with the engine's `cleanup` (deleting the plan does not do it: D24), plan, environment,
 plan file and fake source deleted, the temporary key line removed from the writer.
+
+## Handover, 2026-11-27 evening (root)
+
+- **Rollbacks left at the pause**: both had finished (rollback finished 09:40 / 09:37 UTC); only the everRun guests were
+  still booting. Found: AHV `ev2ahv-rocky9-app2` and `ev2ahv-win22-app3` OFF, everRun sources running (.162
+  sys_vendor Stratus), plans Ready to Cutover with `rolled_back` set and resyncing on schedule. Nothing to change.
+- **appliance-2 0.3.7 -> 0.3.8** with the signed bundle (lab key; no keys installed, so not enforced): the 0.3.7 tool
+  refuses `manifest.json.sig` as unknown, so the bundled tool was run once (documented bootstrap); 23 s including the
+  venv rebuild (ldap3 added), UI upgrade path unit enabled, 0 AVC.

@@ -25,7 +25,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D11 | P3 | (owner 2026-11-27: the owner enters the credentials with `bash tools/prism-userpass.sh`, which saves ~/.config/ev2ahv/prism-userpass.env (600) and tests the login.) Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
 | D13 | P3 | LDAP sign-in is built and tested against OpenLDAP, not yet against the lab Active Directory (needs a bind account). The default certificate is self-signed (the Health page can replace it). | server |
 | D15 | P2 | Production impact and backups are untested. ev2ahv takes no snapshots and does not use VSS, but: (a) seeds and full-disk resyncs add read I/O and about one CPU core per disk on the everRun node, and that load has never been measured; (b) reading while an everRun snapshot exists is unverified; (c) D5 dirty bitmaps may clash with any QEMU-level backup on the same VM; (d) after cutover the everRun-side backup job fails, and in-guest agents usually need one full backup because disk IDs change; (e) running scripts as root on the nodes may not be covered by Stratus support. Update 2026-11-27: (a) measured, see docs/runbook.md section 7 (about 1 core, +3 ms disk latency, recommended `max_mbps: 100`); (b) (c) (d) (e) still untested. | docs/runbook.md, engine |
-| D21 | P3 | appliance-2 still uses the bastion key as its app key (appliance-3 fixed 2026-11-27). Linux guests that use automatic prep over SSH need the appliance key too (not added to `ev2ahv-src-rocky9`). | appliance, docs |
 
 ## What to test
 
@@ -41,6 +40,13 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: D21 done for appliance-2 too (owner approved). Its own key (`ev2ahv-appliance`, SHA256:eXBo8F...) is
+  authorized with `from="10.12.135.154"` and no forwarding on both everRun nodes and in the Rocky guest (backups
+  `authorized_keys.bak-ev2ahv-<UTC>`); swapped after a test as the `ev2ahv` user (bastion key kept as
+  `id_ed25519.bastion-lab`). Environment refresh Connected; prep-check: source disks and all guest checks PASS.
+- 2026-11-27: prep-check after a rollback no longer FAILs on the plan's own earlier AHV copy (same extId as the stored
+  `target_vm`; the next cutover discards it first). Before, a prep-check after a rollback made the UI refuse the
+  re-cutover without force. Found on appliance-2 (0.3.8, plan app-rocky-stageB): now 0 FAIL. 3 tests.
 - 2026-11-27: D7 lab signing key (owner decision). Ed25519 pair made by root on the bastion; private key only at
   `/root/.config/ev2ahv/upgrade-signing/lab.key` (0600), public key `appliance/keys/ev2ahv-lab-upgrade.pub`; custody and
   rotation in docs/security.md. Checked: a 0.3.8 bundle signed with it verifies against the public key, and a changed
