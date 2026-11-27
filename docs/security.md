@@ -125,3 +125,16 @@ So the 22 sysctl/module "fails" in the chroot scan are passes on a real instance
   the shipped venv: `mkimage.sh` uninstalls it after writing `pip.list`, and `ev2ahv-upgrade` does the same when it
   rebuilds the venv. Nothing installs Python packages on the appliance at runtime.
 
+## Upgrade signing keys (D7 custody, 2026-11-27)
+
+- **Lab key** (owner decision 2026-11-27): an Ed25519 key pair made on the bastion by the root session. The private key
+  stays at `/root/.config/ev2ahv/upgrade-signing/lab.key` (root only, 0600, never copied, never committed). The public
+  key is `appliance/keys/ev2ahv-lab-upgrade.pub` (SHA-256 of its DER: `18668053b4512629...`). Only root on the bastion can
+  sign: `python3 tools/make_bundle.py --sign /root/.config/ev2ahv/upgrade-signing/lab.key`.
+- To make a lab appliance require signed bundles, copy the public key to `/etc/ev2ahv/upgrade-keys/ev2ahv-lab.pub`
+  (root, 0644). From then on unsigned bundles, and bundles signed with any other key, are refused. Not installed on any
+  appliance yet: adit's unsigned bundles would stop working.
+- **Production key**: comes later and is held by the owner, off the bastion. Customer appliances get only its public
+  key; the lab key must never be installed on them.
+- Rotation: install the new public key next to the old one, sign with the new key, then remove the old public key.
+

@@ -19,7 +19,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | ID | Pri | Debt | Where |
 |---|---|---|---|
 | D5 | P2 | (owner 2026-11-27: the everRun failover test runs after root finishes his current lab items.) Changed-block tracking works on real everRun: HA win22 and, since 2026-11-27, the FT Rocky guest (8 resyncs under load, idle dirty pass 26 s against 72 s, fallback after bitmap loss works; docs/cbt.md). Per-VM setting `cbt` in the API and wizard (0.3.5, default off). 0.3.6: the bitmap does not give a safe final sync on everRun (QEMU exits with the guest, QMP stop does not hold, guest writes after disk silence; docs/cbt.md), so the final sync stays a source pass; `final_verify` full/sample/none shortens it (downtime 422-474 s -> 208 s sample, 161 s none). Left: a real failover or guest restart (only simulated by removing the bitmaps), ask Stratus about customer FT guests, a guest-side halt signal or a read-only `blockdev-reopen` if a bitmap final is wanted, and a changed `cbt` is not applied while the engine plan is reused after a rollback (refresh the environment first). | engine, ev2ahv/cbt.py, workflow.py, server/live.py |
-| D7 | P2 | Upgrades are CLI only (no UI upload or apply); bundles are checksummed but not signed. Backups are pruned with `ev2ahv-upgrade prune --keep N` (0.3.5, manual, not scheduled); appliance-2 holds 2. The automatic restore on a real failing upgrade has still only been run in unit tests. | appliance, server |
+| D7 | P3 | Upgrades: production signing key not made yet (owner holds it, later); the lab key is not installed on the lab appliances (would refuse unsigned bundles); backups are pruned only by hand (`ev2ahv-upgrade prune`). | appliance, server |
 | D8b | P2 | (owner 2026-11-27: interesting; research the Nutanix Move docs first, a real Move later.) No "Edit Cutover Settings" (Move's button was never clicked in the reference, so its fields are unknown; see docs/move-reference). Needs a look at a real Move first. | web, server |
 | D9 | P3 | Windows on SCSI costs downtime: the guest boots on PCI (virtio-blk) and is converted to SCSI after cutover, which added 182 s in the 2026-11-24 run. Binding `vioscsi` during guest prep, before cutover, could remove that step (not tried). | engine, ev2ahv/guest.py |
 | D11 | P3 | (owner 2026-11-27: the owner enters the credentials with `bash tools/prism-userpass.sh`, which saves ~/.config/ev2ahv/prism-userpass.env (600) and tests the login.) Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
@@ -41,6 +41,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: D7 lab signing key (owner decision). Ed25519 pair made by root on the bastion; private key only at
+  `/root/.config/ev2ahv/upgrade-signing/lab.key` (0600), public key `appliance/keys/ev2ahv-lab-upgrade.pub`; custody and
+  rotation in docs/security.md. Checked: a 0.3.8 bundle signed with it verifies against the public key, and a changed
+  manifest is refused.
 - 2026-11-27: D24. Deleting a plan whose VMs were seeded is refused unless `cleanup=true`; then each such VM runs a
   new staging-only step (`cleanup-staging`, never the migrated VM) and the worker deletes the plan when all are done,
   starting nothing else for it meanwhile. The dashboard and plan page offer "Remove and delete". D23: a NIC without a
