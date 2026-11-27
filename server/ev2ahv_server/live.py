@@ -357,6 +357,21 @@ def cutover_summary(r, now=None):
 
 # ------------------------------------------------------------------ jobs and the worker loop
 
+ETA_WINDOW = 120   # seconds of recent progress the ETA is based on
+
+
+def eta_seconds(hist, now, frac, window=ETA_WINDOW):
+    """Remaining seconds from the progress rate over the last `window` seconds (D20). A since-start average was far off
+    on sparse disks, where holes go by fast and allocated data slowly. hist is a list of (time, fraction), updated."""
+    hist.append((now, frac))
+    while len(hist) > 2 and now - hist[1][0] >= window:
+        hist.pop(0)
+    t0, f0 = hist[0]
+    if frac < 0.02 or now - t0 < 10 or frac <= f0:
+        return None
+    return int((1 - frac) * (now - t0) / (frac - f0))
+
+
 class Live:
     def __init__(self, store, lock, finish, bump):
         self.store, self.lock, self.finish, self.bump = store, lock, finish, bump
@@ -427,7 +442,7 @@ class Live:
 
                     job["action"] = step
                     ran.append(step)
-                    self._update(plan["id"], vm["id"], lambda p, v: v.update(phase=step))
+                    self._update(plan["id"], vm["id"], lambda p, v: v.update(phase=step, stage=None))
                     argv = [sys.executable, "-m", "ev2ahv_server.runner", path, step]
                     if force and step == "cutover":
                         argv.append("--force")
@@ -444,6 +459,8 @@ class Live:
                             msg = json.loads(line[7:])
                             if "progress" in msg:
                                 self._progress(plan["id"], vm["id"], step, msg["progress"], job)
+                            if "stage" in msg:
+                                self._update(plan["id"], vm["id"], lambda p, v, s=msg["stage"]: v.update(stage=s))
                             result, error = msg.get("result", result), msg.get("error", error)
                         rc = proc.wait()
                     if job["cancelled"]:
@@ -472,10 +489,10 @@ class Live:
                 self.store.event("error", f"{job['action']} failed: {error}", plan=plan["name"], vm=vm["name"])
                 self._update(plan["id"], vm["id"],
                              lambda p, v: v.update(fail_from=v["status"], status="Failed", error=f"{job['action']}: {error}",
-                                                  phase=None))
+                                                  phase=None, stage=None))
             else:
                 self.store.event("info", f"{' + '.join(ran)} finished", plan=plan["name"], vm=vm["name"])
-                self._update(plan["id"], vm["id"], lambda p, v: (on_done(p, v, result), v.update(phase=None)))
+                self._update(plan["id"], vm["id"], lambda p, v: (on_done(p, v, result), v.update(phase=None, stage=None)))
 
         threading.Thread(target=run, daemon=True, name=f"job-{vm['name']}").start()
 
@@ -502,8 +519,7 @@ class Live:
 
     def _progress(self, pid, vid, step, pr, job):
         frac = pr["done"] / max(pr["total"], 1)
-        el = time.time() - job["started"]
-        eta = int(el / frac * (1 - frac)) if frac > 0.02 else None
+        eta = eta_seconds(job.setdefault("hist", []), time.time(), frac)
 
         def fn(p, v):
             if step == "seed":
