@@ -55,6 +55,10 @@ class EverRun:
         """{vm name: "FT" | "HA" | ""} for every VM, from the same watch call the portal uses."""
         return {name: availability_level(v.findtext("availability")) for name, v in self.vms().items()}
 
+    def system_version(self):
+        """The everRun release, e.g. "8.1.1-285" (supernova/version in the watch output), or "" if absent."""
+        return (self.call("supernova", "<watch/>").findtext(".//supernova/version") or "").strip()
+
     def state(self, name):
         return self.vm(name).findtext("state")
 

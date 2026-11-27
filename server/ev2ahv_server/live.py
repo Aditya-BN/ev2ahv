@@ -168,10 +168,17 @@ def _fill_availability(doc, secret, api=everrun_api.EverRun):
     if not (pw and doc.get("address")):
         return
     try:
-        levels = api(doc["address"], doc.get("username") or "admin", pw, timeout=30).availability()
+        client = api(doc["address"], doc.get("username") or "admin", pw, timeout=30)
+        levels = client.availability()
     except Exception as e:
         log.warning("everRun %s: cannot read FT/HA from the web API: %s", doc["address"], e)
         return
+    try:   # D19: "everRun 8.1.1-285" instead of just "everRun"
+        v = client.system_version() if hasattr(client, "system_version") else ""
+        if v:
+            doc["version"] = f"everRun {v}"
+    except Exception as e:
+        log.warning("everRun %s: cannot read the version: %s", doc["address"], e)
     for w in doc.get("workloads", []):
         w["availability"] = levels.get(w["name"], "")
 

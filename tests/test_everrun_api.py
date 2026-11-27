@@ -8,6 +8,7 @@ from ev2ahv.everrun_api import EverRun, availability_level  # noqa: E402
 
 # Shape of a supernova <watch/> response (trimmed); the field values here are assumptions, see docs/results.md D6.
 WATCH = """<response id='1' status='ok'>
+  <supernova id='supernova:o32'><version>8.1.1-285</version></supernova>
   <vm id='vm:o1'><name>ev2ahv-src-rocky9</name><state>running</state><availability>FT</availability></vm>
   <vm id='vm:o2'><name>ev2ahv-src-win22</name><state>stopped</state><availability>ha</availability></vm>
   <vm id='vm:o3'><name>ev2ahv-src-other</name><state>running</state></vm>
@@ -56,6 +57,13 @@ class FillTest(unittest.TestCase):
         d = self.doc()
         self.live._fill_availability(d, lambda k: None, api=lambda *a, **k: self.fail("called the API"))
         self.assertEqual([w["availability"] for w in d["workloads"]], ["", ""])
+
+    def test_version_is_filled(self):
+        """D19: the environment shows the everRun release, from supernova/version."""
+        d = self.doc()
+        self.live._fill_availability(d, lambda k: "pw", api=FakeEverRun)
+        self.assertEqual(d["version"], "everRun 8.1.1-285")
+        self.assertEqual(FakeEverRun().system_version(), "8.1.1-285")
 
     def test_api_error_is_not_fatal(self):
         def broken(*a, **k):
