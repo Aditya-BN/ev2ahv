@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, Provider, ProviderIn, ProviderType, Workload } from '../api';
 import { Field, Modal, PasswordInput, Spinner, useDialogs } from './ui';
-import { fmtBytes, fmtDate, useLive } from '../util';
+import { fmtBytes, fmtDate, fmtMem, useLive } from '../util';
 
 export const typeLabel = (t: ProviderType) => (t === 'everrun' ? 'Stratus everRun' : t === 'plans' ? 'Plan files (YAML)' : 'Nutanix AOS');
 
@@ -100,7 +100,7 @@ export function EnvView({ env, onClose }: { env: Provider; onClose: () => void }
               <th>Name</th><th>OS</th><th>Availability</th><th>Power State</th><th>vCPU(s)</th><th>Memory</th><th>Storage</th></tr></thead>
               <tbody>{(data || []).map((w) => (
                 <tr key={w.id}><td>{w.name}</td><td>{w.os_name}</td><td>{w.availability || '-'}</td><td>{w.power_state}</td>
-                  <td>{w.vcpus}</td><td>{w.memory_mib / 1024} GiB</td><td>{fmtBytes(w.total_bytes)}</td></tr>))}</tbody></table></div>
+                  <td>{w.vcpus}</td><td>{fmtMem(w.memory_mib)}</td><td>{fmtBytes(w.total_bytes)}</td></tr>))}</tbody></table></div>
           )}
         </>
       )}

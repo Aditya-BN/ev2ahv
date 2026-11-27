@@ -184,6 +184,12 @@ def _fill_availability(doc, secret, api=everrun_api.EverRun, settings=None):
     except Exception as e:
         log.warning("everRun %s: cannot read FT/HA from the web API: %s", doc["address"], e)
         return
+    try:   # D19: "everRun 8.1.1-285" instead of just "everRun"
+        ver = client.system_version() if hasattr(client, "system_version") else ""
+        if ver:
+            doc["version"] = f"everRun {ver}"
+    except Exception as e:
+        log.warning("everRun %s: cannot read the version: %s", doc["address"], e)
     workloads = doc.setdefault("workloads", [])
     seen = {w["name"] for w in workloads}
     for w in workloads:
