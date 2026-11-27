@@ -34,6 +34,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D20 | P3 | Seed ETA is wrong on sparse disks (34 min shown, done in 12.6 min); prep-check badge shows WARN while the check still runs; cutover shows only "cutover NN%" with no stage (final sync, shutdown, conversion). | web, server/live.py |
 | D21 | P3 | Lab shortcut: appliance-3 uses the bastion key as its app key (same as appliance-2). Needs the appliance key authorised on the everRun nodes and the UI to show its public key with a copy hint. | appliance, docs |
 | D22 | P3 | Discovery lists only guests libvirt knows, so a stopped everRun guest (undefined in libvirt) is missing from the environment and the wizard. The DOH `watch` lists it (name, state, FT/HA); disk details would need the everRun API or the guest started. | server/live.py |
+| D21 | P3 | appliance-2 still uses the bastion key as its app key (appliance-3 fixed 2026-11-27). Linux guests that use automatic prep over SSH need the appliance key too (not added to `ev2ahv-src-rocky9`). | appliance, docs |
 
 ## What to test
 
@@ -50,6 +51,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: D21 for appliance-3. Its own key (`ev2ahv-appliance`, SHA256:CzvWC2PB...) was appended to root's
+  authorized_keys on both everRun nodes with `from="10.12.135.160",no-agent-forwarding,no-port-forwarding,no-X11-forwarding`
+  (backups `authorized_keys.bak-ev2ahv-<UTC>` on each node), tested as the `ev2ahv` user, then made the app key; the
+  bastion key is kept on the appliance as `id_ed25519.bastion-lab` for a revert. everRun environment refresh: Connected.
 - 2026-11-27: D14 run on a real writer (`ev2ahv-writer-root`): prep-check asked 14 GiB (old rule 16), peak use 7.00 GiB
   (raw staging + one qcow2), never two qcow2 at once, none left behind, staging sha256-identical to the source.
   Downtime 299.4 s, of which 246.4 s image upload: the upload, not the space, is now the cost of image mode.
