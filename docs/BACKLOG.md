@@ -29,7 +29,7 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D13 | P3 | LDAP / AD sign-in is a stub (design in docs/security.md). The default certificate is self-signed (the Health page can replace it). | server |
 | D14 | P3 | The image fallback (`target.transfer: image`) still needs the total disk size plus the largest disk free on the writer, and the upload adds to downtime. Going lower needs uploading straight from the raw file (no qcow2 copy). | engine |
 | D15 | P2 | Production impact and backups are untested. ev2ahv takes no snapshots and does not use VSS, but: (a) seeds and full-disk resyncs add read I/O and about one CPU core per disk on the everRun node, and that load has never been measured; (b) reading while an everRun snapshot exists is unverified; (c) D5 dirty bitmaps may clash with any QEMU-level backup on the same VM; (d) after cutover the everRun-side backup job fails, and in-guest agents usually need one full backup because disk IDs change; (e) running scripts as root on the nodes may not be covered by Stratus support. Update 2026-11-27: (a) measured, see docs/runbook.md section 7 (about 1 core, +3 ms disk latency, recommended `max_mbps: 100`); (b) (c) (d) (e) still untested. | docs/runbook.md, engine |
-| D21 | P3 | Lab shortcut: appliance-3 uses the bastion key as its app key (same as appliance-2). Needs the appliance key authorised on the everRun nodes and the UI to show its public key with a copy hint. | appliance, docs |
+| D21 | P3 | appliance-2 still uses the bastion key as its app key (appliance-3 fixed 2026-11-27). Linux guests that use automatic prep over SSH need the appliance key too (not added to `ev2ahv-src-rocky9`). | appliance, docs |
 
 ## What to test
 
@@ -46,6 +46,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: D21 for appliance-3. Its own key (`ev2ahv-appliance`, SHA256:CzvWC2PB...) was appended to root's
+  authorized_keys on both everRun nodes with `from="10.12.135.160",no-agent-forwarding,no-port-forwarding,no-X11-forwarding`
+  (backups `authorized_keys.bak-ev2ahv-<UTC>` on each node), tested as the `ev2ahv` user, then made the app key; the
+  bastion key is kept on the appliance as `id_ed25519.bastion-lab` for a revert. everRun environment refresh: Connected.
 - 2026-11-27: D14 run on a real writer (`ev2ahv-writer-root`): prep-check asked 14 GiB (old rule 16), peak use 7.00 GiB
   (raw staging + one qcow2), never two qcow2 at once, none left behind, staging sha256-identical to the source.
   Downtime 299.4 s, of which 246.4 s image upload: the upload, not the space, is now the cost of image mode.
