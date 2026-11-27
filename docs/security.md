@@ -138,3 +138,8 @@ So the 22 sysctl/module "fails" in the chroot scan are passes on a real instance
   key; the lab key must never be installed on them.
 - Rotation: install the new public key next to the old one, sign with the new key, then remove the old public key.
 
+
+
+## Prism username/password (D11, verified 2026-11-27)
+
+An AOS environment may use a username and password instead of an API key. The password is stored like the API key: Fernet `v1:` in the `secrets` table, write-only in the API. On the appliance it was found nowhere in plaintext (DB, `/var/log`, journal, support bundle). It is sent as HTTP Basic on every Prism call and passed to engine subprocesses in `NTNX_PASSWORD`. Error messages carry Prism's reply only, never the header. Prefer an API key where Prism offers one; a password account can also log in to the Prism UI.

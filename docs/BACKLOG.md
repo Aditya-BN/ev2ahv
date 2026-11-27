@@ -22,7 +22,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D7 | P3 | Upgrades: production signing key not made yet (owner holds it, later); the lab key is not installed on the lab appliances (would refuse unsigned bundles); backups are pruned only by hand (`ev2ahv-upgrade prune`). | appliance, server |
 | D8b | P2 | (owner 2026-11-27: interesting; research the Nutanix Move docs first, a real Move later.) No "Edit Cutover Settings" (Move's button was never clicked in the reference, so its fields are unknown; see docs/move-reference). Needs a look at a real Move first. | web, server |
 | D9 | P3 | Windows on SCSI costs downtime (PCI boot + conversion, 69-79 s). The direct SCSI boot (vioscsi boot-start + CriticalDeviceDatabase, no bound device) does NOT boot Server 2022 on AHV: it ends in the recovery environment (lab 2026-11-27). Now opt-in (`target.try_direct_scsi`); the automatic fallback to PCI works but costs the verify timeout. A working variant needs the driver bound to a real device before cutover (e.g. a temporary SCSI disk hot-added to the source, as the conversion does on AHV). | engine, prep/prep-windows.ps1 |
-| D11 | P3 | (owner 2026-11-27: the owner enters the credentials with `bash tools/prism-userpass.sh`, which saves ~/.config/ev2ahv/prism-userpass.env (600) and tests the login.) Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
 | D13 | P3 | LDAP sign-in is built and tested against OpenLDAP, not yet against the lab Active Directory (needs a bind account). The default certificate is self-signed (the Health page can replace it). | server |
 | D15 | P2 | Production impact and backups are untested. ev2ahv takes no snapshots and does not use VSS, but: (a) seeds and full-disk resyncs add read I/O and about one CPU core per disk on the everRun node, and that load has never been measured; (b) reading while an everRun snapshot exists is unverified; (c) D5 dirty bitmaps may clash with any QEMU-level backup on the same VM; (d) after cutover the everRun-side backup job fails, and in-guest agents usually need one full backup because disk IDs change; (e) running scripts as root on the nodes may not be covered by Stratus support. Update 2026-11-27: (a) measured, see docs/runbook.md section 7 (about 1 core, +3 ms disk latency, recommended `max_mbps: 100`); (b) (c) (d) (e) still untested. | docs/runbook.md, engine |
 
@@ -34,11 +33,12 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | T6 | Console TUI: static IP, hostname, NTP on AHV | `ev2ahv-config --console` on tty1 | Settings survive a reboot; UI reachable on the new IP |
 | T7 | OVA export and ConfigDrive network | — | Deploys from OVA; ConfigDrive sets the network |
 | T9 | Several VMs in one plan at once | Two `ev2ahv-src-*` guests | Both complete; resyncs do not starve each other |
-| T10 | Prism username/password auth (D11) | Environment with a user and password | Validate, refresh and migrate work |
 | T11 | Unit tests (D12) | `tools/check.sh` or the GitHub `ci` workflow | All pass, every run (flaky `Text file busy` fixed in 0.3.3, see Done) |
 | T13 | Production impact and backups (D15) | On lab everRun: seed and resync a production-sized disk while watching node I/O latency and CPU at several bandwidth limits; run an in-guest backup agent during a seed; seed while an everRun snapshot exists; cutover, then back up the AHV VM | Node latency acceptable at a documented bandwidth limit; backup job and ev2ahv both succeed; data read under a snapshot is correct; runbook has a Backups and throttling section |
 
 ## Done (recent)
+
+- 2026-11-27: D11/T10 done: Prism username/password works end to end (CLI test, engine create/disk/delete with ETag, appliance environment validate/refresh with matching counts, disk hot-add self-test PASS, password stored as `v1:` and absent from logs, journal and support bundle). Self-test now takes `provider`. Not run: a full migration with it. See docs/results.md.
 
 - 2026-11-27: D21 done for appliance-2 too (owner approved). Its own key (`ev2ahv-appliance`, SHA256:eXBo8F...) is
   authorized with `from="10.12.135.154"` and no forwarding on both everRun nodes and in the Rocky guest (backups

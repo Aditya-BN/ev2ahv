@@ -26,9 +26,8 @@ def router(store, user, bump):
         except OSError:
             return None
 
-    def target_provider():
-        ps = [p for p in store.all("provider") if p["type"] == "aos"]
-        return ps[0] if ps else None
+    def target_provider(ref=None):
+        return pick_provider(store.all("provider"), ref)
 
     def ssh_key():
         key = os.path.join(tgt.CONFIG, "id_ed25519")
@@ -77,7 +76,10 @@ def router(store, user, bump):
     def selftest(body: dict = None, who=Depends(user)):
         if state["selftest"].get("status") == "running":
             raise HTTPException(409, "Self-test already running")
-        tp, uuid = target_provider(), vm_uuid()
+        ref = (body or {}).get("provider")
+        tp, uuid = target_provider(ref), vm_uuid()
+        if ref and not tp:
+            raise HTTPException(404, f"No AOS environment {ref!r}")
         if not tp or not uuid:
             raise HTTPException(400, "Needs a Nutanix AOS environment and the appliance's VM UUID")
         container = (body or {}).get("container") or next((c["name"] for c in tp.get("containers", [])), None)
@@ -192,6 +194,14 @@ def router(store, user, bump):
         return upgrade_state()
 
     return r
+
+
+def pick_provider(providers, ref=None):
+    """The AOS environment for health and the self-test: the one named (id or name), else the oldest by update time."""
+    ps = [p for p in providers if p["type"] == "aos"]
+    if ref:
+        ps = [p for p in ps if ref in (p["id"], p["name"])]
+    return ps[0] if ps else None
 
 
 def redact(text, secrets_=()):

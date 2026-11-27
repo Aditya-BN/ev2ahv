@@ -654,3 +654,26 @@ bitmap on all 4 disks and did full passes; the one after was dirty-only again. A
 chunks; downtime 515.4 s (final sync 448.4 s, writes running until shutdown); data on AHV: static 438/438 x2, journaled
 writes complete except the file in flight at shutdown. Node0 taken out of maintenance; node1 is now the everRun primary.
 cbt set back to off on the plan.
+
+## D11/T10 Prism username/password, 2026-11-27 evening (UTC 15:53 onward)
+
+Credentials: a Prism Central account saved by the owner (`~/.config/ev2ahv/prism-userpass.env`); `NTNX_API_KEY` unset for every test. Values never printed.
+
+| Check | Result |
+|---|---|
+| `ev2ahv creds test` (CLI) | `OK: 10.12.135.196 via basic, 90 VMs visible`, 0.6 s |
+| Engine, basic auth: list clusters / containers / subnets | 2 clusters (NTNX-DC, PC-DC), 16 containers, 16 subnets |
+| Engine: create `ev2ahv-d11-test` (1 vCPU, 1 GiB, no disks, OFF), add 1 GiB disk (ETag), remove disk, delete VM | All OK; the VM is gone (checked by name). Covers POST, ETag update and DELETE |
+| Appliance-3 (0.3.9): validate + add AOS environment `PC-userpass` (username/password) | Connected; 90 VMs, 1 cluster, 14 containers, 16 subnets (same as the API-key environment after a refresh: 90/1/14/16) |
+| Refresh | OK, same counts |
+| Disk hot-add self-test on `PC-userpass` | PASS (found the appliance, hot-added 1 GiB as /dev/sdb, root helper read it, offline, removed through Prism); health said "this VM is ev2ahv-appliance-3 on PC-userpass" |
+| Wrong password (UI validate and CLI) | HTTP 400 "Cannot reach Prism Central ...: HTTP 401 invalid credentials"; no stack trace, no password in the text |
+| Password at rest | `secrets` table in the appliance DB holds `v1:` (Fernet) values; 0 plaintext matches in the DB (+wal/shm), `/var/log`, `/var/lib/ev2ahv`, the journal (12,892 lines) and the support bundle (6 files; the username appears once, the password 0 times) |
+
+How the self-test chooses: `target_provider()` took the first AOS environment ordered by last update (the oldest), so it silently followed refresh order. For this test the API-key environment was refreshed last so `PC-userpass` came first. Fixed (not yet released, next version after 0.3.9): `POST /api/v2/health/selftest` takes an optional `{"provider": "<id or name>"}`; the default is unchanged. The health card still uses the default pick. The appliance itself still runs 0.3.9, so the live run above used the ordering trick, not the new field (the field is covered by a unit test only).
+
+Mid-run 401: basic auth has no session or token, every request carries the header, so there is nothing to expire. A 401 (password changed or account locked mid-plan) fails that call with `PrismError` "HTTP 401" and the job fails with that text; there is no retry. Unit tests (`tests/test_userpass.py`): header encoding (colon and space in the password), `load()` precedence, 401 text without the password or its base64, 401 mid-run affects only that call, provider choice for the self-test.
+
+Not tested: a full migration (seed, cutover) with a username/password environment (the same `prism_for` object is used for every Prism call, and the writes above went through it, but no plan was run); an account without create rights; PC session lockout after repeated wrong passwords (one wrong try only).
+
+Left in the lab: nothing. `PC-userpass` was removed after the test (it duplicated the same PC and the self-test pick depends on update order). `ev2ahv-d11-test` was deleted.
