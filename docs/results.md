@@ -509,3 +509,18 @@ Real Prism Central (adit's API key): `Prism.projects()` returned 9 projects. A d
 `ev2ahv-d8a-test` (e9066136-...) was created with v4, then `set_project(vm, <Testing>)` updated it through v3:
 GET `/api/nutanix/v3/vms/{uuid}` afterwards shows `project_reference` = Testing (21dd8ccd-...). A second call returned
 "no change". Not yet run inside a full migration (the step runs right after create, before power-on).
+
+## T5: appliance boot under UEFI, 2026-11-27
+
+VM `ev2ahv-appliance-uefi` (75e95bb1-...), image `ev2ahv-appliance-0.3.5`, 2 vCPU, 4 GiB, v4 `UefiBoot` with secure boot off,
+VLAN135-IPAM static 10.12.135.161 (checked free: no Prism NIC, no ping, neighbour INCOMPLETE, no PTR).
+
+| Step | Result |
+|---|---|
+| Power-on to UI (`/api/v2/appinfo` 200, version 0.3.5, live, appliance) | 60 s |
+| First login | must_change true; `/plans` 403 until the password was changed, 200 after |
+| Prism environment | Connected, 92 VMs visible |
+| Health | VM UUID found, AHV VM `ev2ahv-appliance-uefi`, self-signed certificate |
+| Self-test | PASS, 5 steps (hot-add 1 GiB disk as /dev/sdb, helper read 1073741824 bytes, offline, remove via Prism) |
+
+Not checked: failed units and SELinux from inside (console admin needs an interactive password change), secure boot.
