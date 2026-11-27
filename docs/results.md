@@ -509,3 +509,19 @@ Real Prism Central (adit's API key): `Prism.projects()` returned 9 projects. A d
 `ev2ahv-d8a-test` (e9066136-...) was created with v4, then `set_project(vm, <Testing>)` updated it through v3:
 GET `/api/nutanix/v3/vms/{uuid}` afterwards shows `project_reference` = Testing (21dd8ccd-...). A second call returned
 "no change". Not yet run inside a full migration (the step runs right after create, before power-on).
+
+## D14: raw image upload vs qcow2, 2026-11-27
+
+Same writer (`ev2ahv-writer-root`) and the same fake source as the qcow2 run above (disk a 6 GiB with 3 GiB written,
+disk b 2 GiB with 1 GiB written), plan `image_format: raw`.
+
+| Measure | qcow2 (default) | raw |
+|---|---|---|
+| prep-check staging need | 15,032,385,536 B (14 GiB) | 8,589,934,592 B (8 GiB) |
+| Peak `/data` use over baseline | +7.00 GiB | +4.00 GiB |
+| Image conversion + upload | 246.4 s | 224.2 s (8 GiB virtual sent) |
+| Downtime | 299.4 s | 276.2 s |
+| Seed / final sync | 139.7 s / 40.8 s | 132.5 s / 40.2 s |
+
+Test VM and images deleted afterwards (`cleanup --delete-target`). On a much sparser disk, or a slow writer-to-bastion
+link, qcow2 may still be faster because raw sends the holes as zeros.

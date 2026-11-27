@@ -28,11 +28,12 @@ def safe_staging_file(path, staging_dir=None):
     return path
 
 
-def image_space_needed(sizes):
+def image_space_needed(sizes, image_format="qcow2"):
     """Worst-case free bytes the writer needs for target.transfer: image: a raw staging file per disk (sparse, but
-    worst case fully written) plus one qcow2 at a time while it is converted and uploaded (worst case the largest
-    disk). Before 2026-11-26 the check asked for twice the total."""
-    return sum(sizes) + max(sizes, default=0)
+    worst case fully written) plus, for qcow2, one qcow2 at a time while it is converted and uploaded (worst case the
+    largest disk). raw uploads the staging file itself, so it needs no extra copy (D14). Before 2026-11-26 the check
+    asked for twice the total."""
+    return sum(sizes) + (max(sizes, default=0) if image_format == "qcow2" else 0)
 
 
 class Migration:
@@ -154,6 +155,24 @@ class Migration:
             images.pop(disk["name"], None)
             self.state.set("images", images)
             raw = safe_staging_file(self.staging()[disk["name"]]["file"], self.p["target"].get("staging_dir"))
+            if self.p["target"].get("image_format", "qcow2") == "raw":
+                # D14: no conversion and no second copy; uploads the full virtual size (holes as zeros)
+                q_raw = shlex.quote(raw)
+                self.writer.run(f"sync {q_raw}")
+                size = int(self.writer.run(f"stat -c %s {q_raw}").strip())
+                proc = subprocess.Popen(self.writer.argv(f"cat {q_raw}"), stdout=subprocess.PIPE)
+                try:
+                    image = self.prism.upload_image(name, proc.stdout, size, cluster,
+                                                    f"ev2ahv staging, plan {self.p['name']}")
+                finally:
+                    proc.stdout.close()
+                    rc = proc.wait()
+                if rc:
+                    self.prism.delete_image(image)
+                    raise RuntimeError(f"reading {raw} on the writer failed (rc {rc})")
+                images[disk["name"]] = image
+                self.state.set("images", images)
+                continue
             qcow = raw[:-4] + ".qcow2"
             q_raw, q_qcow = shlex.quote(raw), shlex.quote(qcow)
             # one qcow2 at a time, removed after upload or failure, so the writer needs the raw files plus the largest
@@ -244,7 +263,7 @@ class Migration:
                         sizes.append(builder.align(r.size()))
                     finally:
                         r.close()
-                need = image_space_needed(sizes)
+                need = image_space_needed(sizes, self.p["target"].get("image_format", "qcow2"))
                 base = self.p["target"]["staging_dir"]
                 free = int(self.writer.run(f"mkdir -p {shlex.quote(base)}; df -B1 --output=avail {shlex.quote(base)} | tail -1").strip())
                 if free < need:

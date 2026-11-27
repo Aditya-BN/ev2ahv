@@ -52,6 +52,7 @@ class SpaceTest(unittest.TestCase):
     def test_raw_files_plus_largest_disk(self):
         self.assertEqual(image_space_needed([40 * G, 10 * G, 10 * G]), 100 * G)   # was 120 GiB (twice the total)
         self.assertEqual(image_space_needed([10 * G]), 20 * G)
+        self.assertEqual(image_space_needed([40 * G, 10 * G, 10 * G], "raw"), 60 * G)   # D14: no qcow2 copy
         self.assertEqual(image_space_needed([]), 0)
 
 
@@ -90,6 +91,25 @@ class UploadCleanupTest(unittest.TestCase):
             migration(w, p, self.state).upload_images()
         self.assertEqual(p.deleted, ["img-ev2ahv-img-t-vda"])
         self.assertEqual(w.cmds[-1], "rm -f /s/t-vda.qcow2 /s/t-vda.qcow2.tmp")
+
+
+class RawUploadTest(UploadCleanupTest):
+    """D14: image_format raw uploads the staging file itself: no qemu-img, no qcow2."""
+    def test_raw_uploads_the_staging_file_without_conversion(self):
+        w, p = FakeWriter(), FakePrism()
+        m = migration(w, p, self.state)
+        m.p["target"]["image_format"] = "raw"
+        m.upload_images()
+        self.assertEqual(p.uploaded, ["ev2ahv-img-t-vda", "ev2ahv-img-t-vdb"])
+        self.assertFalse([c for c in w.cmds if "qemu-img" in c or "qcow2" in c])
+
+    def test_raw_read_failure_deletes_the_image(self):
+        w, p = FakeWriter(cat_ok=False), FakePrism()
+        m = migration(w, p, self.state)
+        m.p["target"]["image_format"] = "raw"
+        with self.assertRaises(RuntimeError):
+            m.upload_images()
+        self.assertEqual(p.deleted, ["img-ev2ahv-img-t-vda"])
 
 
 if __name__ == "__main__":

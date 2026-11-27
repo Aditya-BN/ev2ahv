@@ -27,7 +27,6 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 | D10 | P3 | Security scan leftovers: `ensure_pam_wheel_group_empty` is not explained in docs/security.md; the pip-vendored trivy false positive remains (drop pip from the venv or record an exception). The sysctl/module rules pass on a booted instance (2026-11-27). | appliance, docs/security.md |
 | D11 | P3 | Prism username/password auth has never been used with valid credentials (API key only). | ev2ahv/credentials.py |
 | D13 | P3 | LDAP / AD sign-in is a stub (design in docs/security.md). The default certificate is self-signed (the Health page can replace it). | server |
-| D14 | P3 | The image fallback (`target.transfer: image`) still needs the total disk size plus the largest disk free on the writer, and the upload adds to downtime. Going lower needs uploading straight from the raw file (no qcow2 copy). | engine |
 | D15 | P2 | Production impact and backups are untested. ev2ahv takes no snapshots and does not use VSS, but: (a) seeds and full-disk resyncs add read I/O and about one CPU core per disk on the everRun node, and that load has never been measured; (b) reading while an everRun snapshot exists is unverified; (c) D5 dirty bitmaps may clash with any QEMU-level backup on the same VM; (d) after cutover the everRun-side backup job fails, and in-guest agents usually need one full backup because disk IDs change; (e) running scripts as root on the nodes may not be covered by Stratus support. Update 2026-11-27: (a) measured, see docs/runbook.md section 7 (about 1 core, +3 ms disk latency, recommended `max_mbps: 100`); (b) (c) (d) (e) still untested. | docs/runbook.md, engine |
 | D19 | P3 | Environment details show memory as `5.990234375 GiB` and the everRun version as just `everRun`. | web, server |
 | D20 | P3 | Seed ETA is wrong on sparse disks (34 min shown, done in 12.6 min); prep-check badge shows WARN while the check still runs; cutover shows only "cutover NN%" with no stage (final sync, shutdown, conversion). | web, server/live.py |
@@ -49,6 +48,10 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: D14 closed. `target.image_format: raw` uploads the staging file itself (no qemu-img, no second copy);
+  qcow2 stays the default. Same fake source (6 GiB/3 GiB written + 2 GiB/1 GiB) on `ev2ahv-writer-root`: space check
+  8 GiB vs 14 GiB, peak use +4.00 vs +7.00 GiB, image upload 224.2 vs 246.4 s, downtime 276.2 vs 299.4 s. raw sends the
+  full virtual size, so qcow2 can still win on very sparse disks or slow links. 2 new tests.
 - 2026-11-27: D14 run on a real writer (`ev2ahv-writer-root`): prep-check asked 14 GiB (old rule 16), peak use 7.00 GiB
   (raw staging + one qcow2), never two qcow2 at once, none left behind, staging sha256-identical to the source.
   Downtime 299.4 s, of which 246.4 s image upload: the upload, not the space, is now the cost of image mode.
