@@ -51,6 +51,9 @@ Take an item by posting its ID on the shared board (see [AGENTS.md](../AGENTS.md
 
 ## Done (recent)
 
+- 2026-11-27: D14 run on a real writer (`ev2ahv-writer-root`): prep-check asked 14 GiB (old rule 16), peak use 7.00 GiB
+  (raw staging + one qcow2), never two qcow2 at once, none left behind, staging sha256-identical to the source.
+  Downtime 299.4 s, of which 246.4 s image upload: the upload, not the space, is now the cost of image mode.
 - 2026-11-27: T12 passed. everRun 8.1.1 DOH `watch` gives `availability` as `FT` for `ev2ahv-src-rocky9` and `HA` for
   `ev2ahv-src-win22`; `availability_level` maps both. A refresh on `ev2ahv-appliance-3` (0.3.5) shows rocky9 as FT. Found:
   a stopped guest is missing from discovery (everRun undefines it in libvirt), so its FT/HA and the guest itself do not

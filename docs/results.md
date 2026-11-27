@@ -452,3 +452,22 @@ refresh through the appliance API.
 |---|---|---|---|---|
 | ev2ahv-src-rocky9 | running | `FT` | FT | FT |
 | ev2ahv-src-win22 | stopped | `HA` | HA | not listed: a stopped guest is undefined in libvirt (D22) |
+
+## D14: image fallback on a real writer, 2026-11-27
+
+Writer `ev2ahv-writer-root` (new: Rocky 9 GenericCloud, 2 vCPU, 4 GiB, 20 GiB `/data` for staging, VLAN136
+10.12.136.211, created for this test). Fake source on the writer's root fs, two sparse raw disks: `a` 6 GiB with 3 GiB
+written, `b` 2 GiB with 1 GiB written. Plan `target.transfer: image`, `staging_dir: /data/staging`, target
+`ev2ahv-d14-target` (no guest, not bootable; verify = power state). CLI from the bastion. `/data` used sampled every 1 s.
+
+| Measure | Result |
+|---|---|
+| prep-check staging space | PASS: 21,223,514,112 bytes free, worst case 15,032,385,536 (14 GiB = 6 + 2 + largest 6; the old rule asked 16 GiB) |
+| Seed | 139.7 s |
+| Cutover | downtime 299.4 s: final sync 40.8 s, image upload 246.4 s (2 images), create + power-on about 12 s |
+| Peak `/data` use | +7.00 GiB over baseline: raw staging 4 GiB allocated + one qcow2 (disk a) |
+| qcow2 files at once | at most 1 (241 of 458 samples had one); none left after the cutover |
+| Data | staging raw files sha256-identical to the source files (both disks) |
+| Result | `ev2ahv-d14-target` ON with 2 disks from images `ev2ahv-img-d14-image-a`, `-b` |
+
+Not tested in the lab: a failed upload (the qcow2 removal on failure is covered by unit tests only).
