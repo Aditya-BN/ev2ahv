@@ -10,8 +10,12 @@
   -Mode Cleanup  On the migrated VM on AHV: removes ghost NICs, uninstalls Stratus guest software, and
                  installs Nutanix Guest Tools with -InstallNgt when the NGT ISO is attached.
                  Writes C:\ev2ahv\cleanup.json.
-  -Mode Remove   Removes the startup task and saved network config.
-  -DryRun        With Cleanup or Remove: print what would be removed or uninstalled and change nothing.
+                 It also makes vioscsi boot-start (service key Start=0 plus the virtio-scsi PCI IDs in the
+                 CriticalDeviceDatabase) so the VM can boot straight from SCSI on AHV. The source keeps its own
+                 controller; the keys it creates are recorded in C:\ev2ahv\scsi-boot.json.
+  -Mode Remove   Removes the startup task and saved network config, and undoes the vioscsi boot-start keys
+                 it created (not while a device uses vioscsi).
+  -DryRun        With Prep, Cleanup or Remove: print what would be removed or uninstalled and change nothing.
 
   The startup task does nothing unless the machine is a Nutanix VM, so booting the source again after a
   rollback is safe. The last output line is "EV2AHV-JSON:" followed by the facts as JSON.
@@ -80,6 +84,21 @@ function OsFolder([int]$build) {
     }
 }
 
+# PCI IDs of the virtio-scsi controller AHV presents (legacy/transitional 1004 and modern 1048), as CriticalDeviceDatabase keys.
+$CddRoot = 'HKLM:\SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase'
+$ScsiCdd = @('pci#ven_1af4&dev_1004&subsys_00081af4&rev_00', 'pci#ven_1af4&dev_1004&subsys_00081af4', 'pci#ven_1af4&dev_1004',
+             'pci#ven_1af4&dev_1048&subsys_11001af4&rev_01', 'pci#ven_1af4&dev_1048&subsys_11001af4', 'pci#ven_1af4&dev_1048')
+$ScsiClassGuid = '{4D36E97B-E325-11CE-BFC1-08002BE10318}'
+$ScsiMarker = Join-Path $Root 'scsi-boot.json'    # what Enable-ScsiBoot created, so Remove deletes only that
+function ScsiCddKeys {
+    foreach ($k in $ScsiCdd) {
+        $path = Join-Path $CddRoot $k
+        $svc = $null
+        if (Test-Path -LiteralPath $path) { $svc = (Get-ItemProperty -LiteralPath $path -ErrorAction SilentlyContinue).Service }
+        [ordered]@{ key = $k; present = [bool](Test-Path -LiteralPath $path); service = $svc }
+    }
+}
+
 function DriverState($name) {
     $svc = "HKLM:\SYSTEM\CurrentControlSet\Services\$name"
     $sys = Test-Path "$env:SystemRoot\System32\drivers\$name.sys"
@@ -90,8 +109,12 @@ function DriverState($name) {
     # A storage driver can boot Windows on a new bus only if a present device already uses it.
     # Boot-start alone is not enough: tested on Server 2022, it ends in the recovery environment.
     $bound = [bool](Get-CimInstance Win32_PnPEntity -Filter "Service = '$name'" -ErrorAction SilentlyContinue)
-    [ordered]@{ name = $name; sys = $sys; start = $start; staged = $staged; start_override = $override; bound = $bound
-                boot_ready = ($sys -and $start -eq 0 -and -not $override -and $bound) }
+    # vioscsi has no device on the source. It can still be bound at first boot on AHV when its PCI IDs are in the
+    # CriticalDeviceDatabase (Windows then starts the boot-start driver for the new controller by itself).
+    $critical = $false
+    if ($name -eq 'vioscsi') { $critical = (@(ScsiCddKeys | Where-Object { $_.present -and $_.service -eq 'vioscsi' }).Count -eq $ScsiCdd.Count) }
+    [ordered]@{ name = $name; sys = $sys; start = $start; staged = $staged; start_override = $override; bound = $bound; critical = $critical
+                boot_ready = ($sys -and $start -eq 0 -and -not $override -and ($bound -or $critical)) }
 }
 
 function FindInf($name) {
@@ -106,7 +129,7 @@ function FindInf($name) {
 
 function InstallDriver($name, [bool]$bootStart) {
     $state = DriverState $name
-    if ($state.staged -and $state.sys -and (-not $bootStart -or $state.boot_ready)) { return }
+    if ($state.staged -and (-not $bootStart -or ($state.sys -and $state.boot_ready))) { return }
     $inf = FindInf $name
     if (-not $inf) { Problem "$name.inf for $(OsFolder $Facts.build)/amd64 not found under '$VirtioPath'"; return }
     if (-not $state.staged) {
@@ -119,6 +142,75 @@ function InstallDriver($name, [bool]$bootStart) {
     if ((Test-Path $svc) -and (Get-ItemProperty $svc).Start -ne 0 -and (DriverState $name).bound) { Set-ItemProperty $svc -Name Start -Value 0; Change "set $name to boot-start" }
     if ($name -notmatch '^[A-Za-z0-9]+$') { throw "bad driver service name '$name'" }
     if (Test-Path -LiteralPath "$svc\StartOverride") { Remove-Item -LiteralPath "$svc\StartOverride" -Recurse -Force; Change "removed $name StartOverride" }
+}
+
+# Makes vioscsi a boot-start driver on a source that has no virtio-scsi device, so the VM can boot straight from SCSI on AHV.
+# It stages the driver, makes sure the service key exists with Start=0 and registers the controller's PCI IDs in the
+# CriticalDeviceDatabase. The source keeps booting from its own controller; vioscsi just loads without a device.
+# Every key this creates is recorded in scsi-boot.json so -Mode Remove can undo exactly that.
+function Enable-ScsiBoot {
+    InstallDriver 'vioscsi' $false
+    $st = DriverState 'vioscsi'
+    if (-not $st.staged) { Problem 'vioscsi is not staged, so it cannot be made boot-start'; return }
+    $old = $null
+    if (Test-Path -LiteralPath $ScsiMarker) { $old = Get-Content -LiteralPath $ScsiMarker -Raw | ConvertFrom-Json }
+    $created = [ordered]@{ service_key = [bool]($old -and $old.service_key); sys_copied = [bool]($old -and $old.sys_copied); cdd = @(if ($old) { $old.cdd }) }
+    $drv = Join-Path $env:SystemRoot 'System32\drivers\vioscsi.sys'
+    if (-not (Test-Path -LiteralPath $drv)) {
+        $repo = Get-ChildItem "$env:SystemRoot\System32\DriverStore\FileRepository" -Directory -Filter 'vioscsi.inf_*' -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName 'vioscsi.sys' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+        if (-not $repo) { Problem 'vioscsi.sys not found in the driver store'; return }
+        Copy-Item -LiteralPath $repo -Destination $drv; $created.sys_copied = $true; Change 'copied vioscsi.sys to System32\drivers'
+    }
+    $svc = 'HKLM:\SYSTEM\CurrentControlSet\Services\vioscsi'
+    if (-not (Test-Path -LiteralPath $svc)) {
+        New-Item -Path $svc -Force | Out-Null
+        New-ItemProperty -Path $svc -Name Type -Value 1 -PropertyType DWord | Out-Null
+        New-ItemProperty -Path $svc -Name ErrorControl -Value 1 -PropertyType DWord | Out-Null
+        New-ItemProperty -Path $svc -Name Group -Value 'SCSI miniport' -PropertyType String | Out-Null
+        New-ItemProperty -Path $svc -Name ImagePath -Value 'system32\drivers\vioscsi.sys' -PropertyType ExpandString | Out-Null
+        New-ItemProperty -Path $svc -Name DisplayName -Value 'Red Hat VirtIO SCSI pass-through controller' -PropertyType String | Out-Null
+        New-Item -Path "$svc\Parameters\PnpInterface" -Force | Out-Null
+        New-ItemProperty -Path "$svc\Parameters\PnpInterface" -Name '5' -Value 1 -PropertyType DWord | Out-Null
+        $created.service_key = $true; Change 'created the vioscsi service key'
+    }
+    if ($null -eq (Get-ItemProperty -LiteralPath $svc).Start -or (Get-ItemProperty -LiteralPath $svc).Start -ne 0) {
+        New-ItemProperty -Path $svc -Name Start -Value 0 -PropertyType DWord -Force | Out-Null; Change 'set vioscsi to boot-start'
+    }
+    if (Test-Path -LiteralPath "$svc\StartOverride") { Remove-Item -LiteralPath "$svc\StartOverride" -Recurse -Force; Change 'removed vioscsi StartOverride' }
+    $added = 0
+    foreach ($k in $ScsiCdd) {
+        $path = Join-Path $CddRoot $k
+        if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null; $created.cdd += $k; $added++ }
+        New-ItemProperty -Path $path -Name Service -Value 'vioscsi' -PropertyType String -Force | Out-Null
+        New-ItemProperty -Path $path -Name ClassGUID -Value $ScsiClassGuid -PropertyType String -Force | Out-Null
+    }
+    if ($added) { Change "registered vioscsi in the CriticalDeviceDatabase ($added new key(s))" }
+    ConvertTo-Json -InputObject $created -Depth 4 | Set-Content -LiteralPath $ScsiMarker -Encoding UTF8
+}
+
+# Undoes Enable-ScsiBoot: only the keys and the file it recorded as created, and only while no device uses vioscsi.
+function Disable-ScsiBoot {
+    if (-not (Test-Path -LiteralPath $ScsiMarker)) { Say 'no scsi-boot.json: nothing recorded to undo'; return }
+    if ((DriverState 'vioscsi').bound) { Problem 'a device uses vioscsi (the VM boots from SCSI): leaving the driver as it is'; return }
+    $m = Get-Content -LiteralPath $ScsiMarker -Raw | ConvertFrom-Json
+    foreach ($k in @($m.cdd)) {
+        if ($k -notin $ScsiCdd) { Problem "ignoring unexpected key '$k' in scsi-boot.json"; continue }
+        $path = Join-Path $CddRoot $k
+        if ($DryRun) { Say "[dry-run] would remove $path"; continue }
+        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue; Change "removed CriticalDeviceDatabase key $k"
+    }
+    $svc = 'HKLM:\SYSTEM\CurrentControlSet\Services\vioscsi'
+    if ($m.service_key) {
+        if ($DryRun) { Say "[dry-run] would remove $svc" } else { Remove-Item -LiteralPath $svc -Recurse -Force -ErrorAction SilentlyContinue; Change 'removed the vioscsi service key' }
+    } elseif (Test-Path -LiteralPath $svc) {
+        if ($DryRun) { Say '[dry-run] would set vioscsi back to demand start' } else { New-ItemProperty -Path $svc -Name Start -Value 3 -PropertyType DWord -Force | Out-Null; Change 'set vioscsi to demand start' }
+    }
+    if ($m.sys_copied) {
+        $drv = Join-Path $env:SystemRoot 'System32\drivers\vioscsi.sys'
+        if ($DryRun) { Say "[dry-run] would remove $drv" } else { Remove-Item -LiteralPath $drv -Force -ErrorAction SilentlyContinue; Change 'removed vioscsi.sys from System32\drivers' }
+    }
+    if (-not $DryRun) { Remove-Item -LiteralPath $ScsiMarker -Force -ErrorAction SilentlyContinue }
 }
 
 # ---------------------------------------------------------------- SAN policy
@@ -216,7 +308,8 @@ function TaskState {
 # ---------------------------------------------------------------- modes
 switch ($Mode) {
     'Remove' {
-        if ($DryRun) { Say "[dry-run] would unregister task $TaskName and delete $NetFile and $ApplyScript"; Emit; exit 0 }
+        if ($DryRun) { Say "[dry-run] would unregister task $TaskName and delete $NetFile and $ApplyScript"; Disable-ScsiBoot; Emit; exit 0 }
+        Disable-ScsiBoot
         Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $NetFile, $ApplyScript -Force -ErrorAction SilentlyContinue
         Change 'removed the ev2ahv startup task and saved network config'
@@ -257,8 +350,14 @@ switch ($Mode) {
     }
     'Prep' {
         if ($Facts.on_ahv) { Problem 'refusing: Prep runs on the source, and this is already on AHV'; Emit; exit 2 }
+        if ($DryRun) {
+            Say "[dry-run] would stage drivers from '$VirtioPath', make vioscsi boot-start (service key + $($ScsiCdd.Count) CriticalDeviceDatabase keys),"
+            Say "[dry-run] set the SAN policy, save the network config and register the startup task $TaskName. Nothing was changed."
+            $Facts.drivers = [ordered]@{ vioscsi = DriverState 'vioscsi'; viostor = DriverState 'viostor' }
+            Emit; exit 0
+        }
         InstallDriver 'viostor' ($Bus -eq 'pci')
-        InstallDriver 'vioscsi' ($Bus -eq 'scsi')   # staged now, so Windows installs it by itself when a SCSI controller appears on AHV
+        try { Enable-ScsiBoot } catch { Problem "could not make vioscsi boot-start: $($_.Exception.Message)" }   # lets the VM boot directly on SCSI on AHV
         InstallDriver 'netkvm' $false
         if ((SanPolicy) -notmatch 'Online All') { SetSanOnlineAll; Change 'SAN policy set to OnlineAll' }
         $net = CaptureNetwork

@@ -846,3 +846,24 @@ class MakeBundle(Sandbox):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WindowsScsiBootGuards(unittest.TestCase):
+    """D9: prep-windows.ps1 makes vioscsi boot-start. It must stay reversible, dry-runnable and limited to what it recorded."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prep", "prep-windows.ps1"), encoding="utf-8") as fh:
+            cls.ps = fh.read()
+
+    def test_removal_is_limited_to_recorded_keys_and_honours_dry_run(self):
+        body = self.ps.split("function Disable-ScsiBoot", 1)[1].split("# ---------------------------------------------------------------- SAN policy", 1)[0]
+        self.assertIn("scsi-boot.json", body)
+        self.assertIn("-notin $ScsiCdd", body)          # only the fixed PCI ID keys, whatever the marker file says
+        self.assertIn("(DriverState 'vioscsi').bound", body)   # never while a device uses the driver
+        self.assertGreaterEqual(body.count("$DryRun"), 3)
+        self.assertNotIn("Remove-Item -Path", body)     # -LiteralPath only
+
+    def test_prep_has_a_dry_run_that_changes_nothing(self):
+        prep = self.ps.split("'Prep' {", 1)[1]
+        self.assertLess(prep.index("if ($DryRun)"), prep.index("Enable-ScsiBoot"))

@@ -55,6 +55,14 @@ def grade_windows(f, bus, firmware):
         st = d.get("vioscsi") or {}
         out.append(_item("vioscsi staged for SCSI conversion", PASS if st.get("staged") else WARN,
                          "staged" if st.get("staged") else "not staged: run guest-prep with VirtIO drivers, or the VM stays on PCI"))
+        if st.get("boot_ready"):
+            out.append(_item("Direct SCSI boot (vioscsi boot-ready)", PASS,
+                             "vioscsi is boot-start and registered for the virtio-scsi controller: the VM is created on SCSI "
+                             "and the PCI to SCSI conversion is skipped"))
+        else:
+            out.append(_item("Direct SCSI boot (vioscsi boot-ready)", WARN,
+                             "vioscsi is not boot-ready: the VM boots on PCI and is converted to SCSI after cutover "
+                             "(adds 80 to 180 s of downtime). Run guest-prep with VirtIO drivers"))
     elif not (d.get(other) or {}).get("boot_ready"):
         out.append(_item(f"Alternate boot driver {other}", WARN, "cannot boot Windows yet, so the other disk bus is not an option"))
     net = d.get("netkvm") or {}
@@ -114,6 +122,11 @@ def grade_linux(f, bus, firmware):
     for p in _list(f.get("problems")):
         out.append(_item("Prep script", WARN, p))
     return out
+
+
+def scsi_boot_ready(facts):
+    """True when a Windows guest can boot straight from virtio-scsi on AHV (vioscsi boot-start and registered)."""
+    return bool((((facts or {}).get("drivers") or {}).get("vioscsi") or {}).get("boot_ready"))
 
 
 def grade(os_name, facts, bus, firmware):

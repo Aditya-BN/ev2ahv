@@ -48,6 +48,7 @@ class Grading(unittest.TestCase):
                 "target": {"vm_name": "ev2ahv-x", "cluster": "c", "container": "k", "disk_bus": "pci"}, "disks": [{"path": "/a"}]}
         from ev2ahv.workflow import Migration
         m = Migration.__new__(Migration); m.p = plan.validate(json.loads(json.dumps(base)))
+        m.state = type("S", (), {"get": lambda s, k, d=None: None})()
         self.assertTrue(m.wants_conversion())
         base["target"]["convert_to_scsi"] = False
         m.p = plan.validate(base)
@@ -152,3 +153,82 @@ class Gating(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DirectScsi(unittest.TestCase):
+    """D9: a Windows guest whose vioscsi is boot-ready is created on SCSI and skips the PCI to SCSI conversion."""
+
+    BASE = {"name": "x", "writer": {"vm": "w", "host": "h"}, "source": {"type": "local"},
+            "target": {"vm_name": "ev2ahv-x", "cluster": "c", "container": "k", "disk_bus": "pci"},
+            "disks": [{"path": "/a"}, {"path": "/b"}], "guest": {"os": "windows", "prep": "auto", "address": "1.2.3.4",
+                                                               "password_env": "PW"}}
+
+    def mig(self, facts, **target):
+        from ev2ahv.workflow import Migration
+        base = json.loads(json.dumps(self.BASE)); base["target"].update(target)
+        m = Migration.__new__(Migration); m.p = plan.validate(base); m._guest_facts = facts
+        stored = {}
+        m.state = type("S", (), {"get": lambda s, k, d=None: stored.get(k, d), "set": lambda s, k, v: stored.__setitem__(k, v),
+                                  "event": lambda *a, **k: None})()
+        return m
+
+    def test_grade_row_pass_when_boot_ready_warn_when_not(self):
+        name = "Direct SCSI boot (vioscsi boot-ready)"
+        self.assertEqual(statuses(guest.grade("windows", WIN_OK, "pci", "bios"))[name], "PASS")
+        f = json.loads(json.dumps(WIN_OK)); f["drivers"]["vioscsi"] = {"boot_ready": False, "staged": True, "bound": False}
+        item = [i for i in guest.grade("windows", f, "pci", "bios") if i["name"] == name][0]
+        self.assertEqual(item["status"], "WARN")
+        self.assertIn("converted to SCSI", item["detail"])
+        self.assertNotIn(name, statuses(guest.grade("windows", WIN_OK, "scsi", "bios")))
+
+    def test_scsi_boot_ready(self):
+        self.assertTrue(guest.scsi_boot_ready(WIN_OK))
+        self.assertFalse(guest.scsi_boot_ready({"drivers": {"vioscsi": {"boot_ready": False}}}))
+        self.assertFalse(guest.scsi_boot_ready({}))
+        self.assertFalse(guest.scsi_boot_ready(None))
+
+    def test_decision_follows_the_guest_facts(self):
+        self.assertTrue(self.mig(WIN_OK).direct_scsi_now())
+        self.assertFalse(self.mig(None).direct_scsi_now())
+        f = json.loads(json.dumps(WIN_OK)); f["drivers"]["vioscsi"]["boot_ready"] = False
+        self.assertFalse(self.mig(f).direct_scsi_now())
+        self.assertFalse(self.mig(WIN_OK, convert_to_scsi=False).direct_scsi_now())
+        lin = self.mig(WIN_OK); lin.p["guest"]["os"] = "linux"
+        self.assertFalse(lin.direct_scsi_now())
+
+    def test_direct_skips_conversion_and_builds_scsi_disks(self):
+        from ev2ahv import builder
+        m = self.mig(WIN_OK)
+        self.assertTrue(m.wants_conversion())          # nothing decided yet: the old path
+        self.assertEqual(m.create_plan()["target"]["disk_bus"], "pci")
+        m.state.set("direct_scsi", m.direct_scsi_now())
+        self.assertFalse(m.wants_conversion())
+        body = builder.vm_payload(m.create_plan(), "cl", [(1024 ** 2, "r1"), (1024 ** 2, "r2")], {})
+        self.assertEqual([d["diskAddress"] for d in body["disks"]],
+                         [{"busType": "SCSI", "index": 0}, {"busType": "SCSI", "index": 1}])
+        self.assertEqual(body["bootConfig"]["bootDevice"]["diskAddress"], {"busType": "SCSI", "index": 0})
+        self.assertEqual(m.p["target"]["disk_bus"], "pci")   # the plan itself is not changed
+
+    def test_not_ready_keeps_pci_and_conversion(self):
+        from ev2ahv import builder
+        f = json.loads(json.dumps(WIN_OK)); f["drivers"]["vioscsi"]["boot_ready"] = False
+        m = self.mig(f); m.state.set("direct_scsi", m.direct_scsi_now())
+        self.assertTrue(m.wants_conversion())
+        body = builder.vm_payload(m.create_plan(), "cl", [(1024 ** 2, "r1"), (1024 ** 2, "r2")], {})
+        self.assertEqual({d["diskAddress"]["busType"] for d in body["disks"]}, {"PCI"})
+
+    def test_failed_direct_boot_moves_back_to_pci_and_converts_later(self):
+        m = self.mig(WIN_OK); m.state.set("direct_scsi", True)
+        calls = []
+        class P:
+            def power(s, vm, how): calls.append(("power", how))
+            def wait_power(s, vm, st, *a): calls.append(("wait", st))
+            def set_boot_disk(s, vm, bus, i): calls.append(("boot", bus, i))
+        m.prism = P(); m._bus_disks = lambda vm, bus: [1, 2]
+        m._move_disks = lambda vm, a, b, i: calls.append(("move", a, b, i))
+        m.verify = lambda: {"power": "ON"}
+        v = m.revert_direct_scsi("vm", RuntimeError("no boot"))
+        self.assertEqual(v, {"power": "ON"})
+        self.assertIn(("move", "SCSI", "PCI", 0), calls)
+        self.assertFalse(m.direct_scsi())
+        self.assertEqual(m.state.get("conversion")["result"], "direct SCSI reverted to PCI")
