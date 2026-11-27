@@ -55,6 +55,12 @@ class EverRun:
         """{vm name: "FT" | "HA" | ""} for every VM, from the same watch call the portal uses."""
         return {name: availability_level(v.findtext("availability")) for name, v in self.vms().items()}
 
+    def inventory(self):
+        """{vm name: {"state": everRun state, "availability": "FT" | "HA" | ""}} for every VM, stopped ones included."""
+        return {name: {"state": (v.findtext("state") or "").strip(),
+                       "availability": availability_level(v.findtext("availability"))}
+                for name, v in self.vms().items()}
+
     def state(self, name):
         return self.vm(name).findtext("state")
 
