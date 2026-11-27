@@ -79,7 +79,7 @@ export function useVmActions(onDone: () => void) {
 
   const run = (planId: string, action: PlanAction, vms: Target[], testSubnet?: string | null) => {
     const pp: Pending = { planId, action, vms, testSubnet };
-    if (['pause', 'resume', 'retry', 'complete'].includes(action)) exec(pp); else setP(pp);
+    if (['pause', 'resume', 'retry', 'complete', 'resync'].includes(action)) exec(pp); else setP(pp);
   };
 
   let dialog: ReactNode = null;
