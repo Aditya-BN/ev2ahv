@@ -409,3 +409,36 @@ Load stopped, manifests written (`stop`): `/ext4/ev2ahv` 438 files, `/span/ev2ah
 | everRun | `ev2ahv-src-rocky9` stopped (not defined on node0 or node1); the two were never running together |
 
 The final sync is unchanged (a verified full pass), so the downtime is in line with T2 (422.1 s). The dirty pass was not used for the final sync.
+
+## T3/T4 Windows via the UI from appliance-3, 2026-11-27 (logs UTC; WIB = +7)
+
+`ev2ahv-src-win22` (everRun HA, 60 GiB C: + 10 GiB F:, 10.12.136.161) migrated to `ev2ahv-win22-app3` from `ev2ahv-appliance-3` (v0.3.5)
+by driving the real UI with headless Chromium (`web/tools/t4.mjs`, deviceScaleFactor 2, 49 screenshots in `docs/appliance-shots/t4/`).
+The only non-UI calls were read-only checks (plan JSON, Prism, WinRM) and the test harness: `tests/e2e/guest-load.ps1` started a write load
+on C: and F: before the resync, then `-Mode stop` wrote the SHA-256 manifests (400 + 399 files) on the source just before cutover.
+
+Lab shortcut (same as appliance-2): the bastion keypair was installed as the appliance app key,
+`/var/lib/ev2ahv/config/id_ed25519` (owner ev2ahv, 0600, restorecon, with the `.pub`); the appliance's generated key was kept as `*.generated`.
+A real deployment would authorize the appliance's own key on the everRun nodes.
+
+| Step (all in the UI) | Result |
+|---|---|
+| Add everRun environment `everrun-lab` (10.12.136.153, nodes .151/.152), refresh | Connected, 2 VMs listed |
+| Wizard: target AOS `Nutanix-lab-PC` / NTNX-DC / VM_Container; `sharednetwork` to `VLAN136`; automatic prep (WinRM, Administrator); retain IP and MAC; `disk_bus: pci` with convert to SCSI (default); guest IP 10.12.136.161; name `ev2ahv-win22-app3` | Saved and started as `win22-ui-t4` |
+| Prep and prep-check | about 3 min (02:25 to 02:28:40); badge PASS |
+| Seed (70 GiB, sparse skipped) | about 12.6 min (02:28:40 to 02:41:16) |
+| Resync under load | 188.3 s (02:56 to 02:59). Needed the plan edited to the 15 min interval, see UI problems |
+| Cutover (UI, 03:09:15 UTC) | Completed; screenshots 40 to 49 |
+| **Stored cutover result** | downtime **877.2 s (14.6 min)**, final sync **678.6 s**, PCI to SCSI conversion **78.9 s**, last resync 188.3 s, verify power ON and 10.12.136.161:5985 reachable |
+
+Verified on AHV (Prism v4 and WinRM): VM `ev2ahv-win22-app3` (8e487f94-c10f-4c83-69ea-5f5e561ae305) ON, 2 vCPU, 6 GiB, MAC 00:e0:09:a4:d7:41, two SCSI disks
+("NUTANIX VDISK", online, writable), C: and F: healthy, `Manufacturer Nutanix / AHV`, IP 10.12.136.161 answers ping, ports 3389 and 5985 open,
+F: 400 of 400 and C: 399 of 399 files match, manifest hashes identical to the source's. The everRun source is **stopped** (`vm-info` state stopped).
+Not done: RDP login (port check only), rollback (not needed).
+
+UI problems found (no code change was needed to finish; none fixed yet, see BACKLOG D18 to D21):
+1. No "Resync now". The first resync waits for the interval (default 1 hour, smallest option 15 min). To see a resync inside the window the plan had to be edited through the wizard, which asks for the Windows password again.
+2. Environment details show memory as `5.990234375 GiB` and version as just `everRun`.
+3. Seed ETA is unreliable on sparse disks (34 min shown, finished in 12.6 min).
+4. The prep-check badge shows WARN while the check is still running.
+5. Cutover shows no stage text beyond "cutover NN%"; a 15 min wait with no hint of final sync versus conversion.
