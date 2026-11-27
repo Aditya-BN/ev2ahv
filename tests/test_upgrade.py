@@ -227,6 +227,34 @@ class ApplyTest(Base):
         self.assertEqual(up.current_version(), "0.2.0")
         self.assertEqual(self.app_text(), "v = 'old'\n")
 
+    def _fake_backups(self, names):
+        for n in names:
+            write(f"{self.a}/var/backups/{n}/app/VERSION", "x\n")
+
+    def test_prune_keeps_the_newest_and_only_touches_its_own(self):
+        self._fake_backups([f"2026112{i}T010101Z-0.3.{i}" for i in range(1, 6)])
+        write(f"{self.a}/var/backups/notes/app/VERSION", "x")          # not a backup name
+        os.makedirs(f"{self.a}/var/backups/20261129T010101Z-0.3.9")     # no app/
+        up.prune(2, dry_run=True)
+        self.assertEqual(len(os.listdir(f"{self.a}/var/backups")), 7)
+        kept, gone = up.prune(2)
+        self.assertEqual([os.path.basename(k) for k in kept], ["20261124T010101Z-0.3.4", "20261125T010101Z-0.3.5"])
+        self.assertEqual(len(gone), 3)
+        self.assertEqual(sorted(os.listdir(f"{self.a}/var/backups")),
+                         ["20261124T010101Z-0.3.4", "20261125T010101Z-0.3.5", "20261129T010101Z-0.3.9", "notes"])
+
+    def test_prune_refuses_keep_below_one_and_symlinks(self):
+        self._fake_backups(["20261121T010101Z-0.3.1"])
+        for k in (0, -1):
+            with self.assertRaises(up.UpgradeError):
+                up.prune(k)
+        victim = os.path.join(self.tmp.name, "victim")
+        write(f"{victim}/app/VERSION", "keep me")
+        os.symlink(victim, f"{self.a}/var/backups/20261122T010101Z-0.3.2")
+        up.prune(1)
+        self.assertTrue(os.path.exists(f"{victim}/app/VERSION"))
+        self.assertEqual(len(os.listdir(f"{self.a}/var/backups")), 2)
+
 
 class MigrateTest(unittest.TestCase):
     def test_versions_and_newer_database_refused(self):

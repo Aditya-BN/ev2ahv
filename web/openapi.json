@@ -2,7 +2,7 @@
     "openapi": "3.1.0",
     "info": {
         "title": "ev2ahv API",
-        "version": "0.3.4"
+        "version": "0.3.5"
     },
     "paths": {
         "/api/v2/token": {
@@ -1158,6 +1158,81 @@
                         "content": {
                             "application/json": {
                                 "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/plans/{pid}/vms/{vid}/settings": {
+            "patch": {
+                "summary": "Patch Vm Settings",
+                "description": "Change one VM setting of an existing plan without resending the whole plan (today only cbt).",
+                "operationId": "patch_vm_settings_api_v2_plans__pid__vms__vid__settings_patch",
+                "parameters": [
+                    {
+                        "name": "pid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Pid"
+                        }
+                    },
+                    {
+                        "name": "vid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Vid"
+                        }
+                    },
+                    {
+                        "name": "ev2ahv_session",
+                        "in": "cookie",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Ev2Ahv Session"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VmSettingsPatch"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Plan"
+                                }
                             }
                         }
                     },
@@ -3275,10 +3350,37 @@
                         ],
                         "title": "Guest Address",
                         "description": "IP the server uses to reach the guest for automatic prep"
+                    },
+                    "cbt": {
+                        "type": "string",
+                        "enum": [
+                            "off",
+                            "auto"
+                        ],
+                        "title": "Cbt",
+                        "description": "changed-block tracking for resyncs (experimental, everRun direct sources only; docs/cbt.md)",
+                        "default": "off"
                     }
                 },
                 "type": "object",
                 "title": "VmSettings"
+            },
+            "VmSettingsPatch": {
+                "properties": {
+                    "cbt": {
+                        "type": "string",
+                        "enum": [
+                            "off",
+                            "auto"
+                        ],
+                        "title": "Cbt"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "cbt"
+                ],
+                "title": "VmSettingsPatch"
             }
         }
     }

@@ -4,13 +4,14 @@
   ev2ahv-upgrade status
   ev2ahv-upgrade apply  /path/ev2ahv-upgrade-<ver>.tar.gz [--force]   verify, back up, install, start, health check
   ev2ahv-upgrade rollback                                               back to the previous app, venv and database
+  ev2ahv-upgrade prune --keep N [--dry-run]                             delete all but the newest N backups (N >= 1)
 
 apply refuses a bundle whose files do not match its manifest, a downgrade (unless --force) and an upgrade while a
 migration step is running. Before it touches anything it stops the app and saves the app, the venv (when the
 requirements change), the state directory (database, engine plans and chunk records) and /etc/ev2ahv/ev2ahv.env under /var/lib/ev2ahv/backups/<time>-<old version>/. If the new version does not answer
 its health check, it restores all of that and starts the old version again. Stdlib only.
 """
-import argparse, hashlib, json, os, shutil, subprocess, sys, tarfile, tempfile, time
+import argparse, hashlib, json, os, re, shutil, subprocess, sys, tarfile, tempfile, time
 
 P = {  # paths; tests point them at a temporary tree
     "app": "/opt/ev2ahv/app", "venv": "/opt/ev2ahv/venv", "data": "/var/lib/ev2ahv",
@@ -281,6 +282,27 @@ def backups():
     return sorted(os.path.join(d, n) for n in os.listdir(d)) if os.path.isdir(d) else []
 
 
+BACKUP_NAME = re.compile(r"^\d{8}T\d{6}Z-[0-9A-Za-z._-]+$")
+
+
+def prune(keep, dry_run=False):
+    """Delete all but the newest `keep` backups. Only real directories named like the ones apply creates
+    (<UTC time>-<version>) and holding an app/ are touched; anything else in backups/ is left alone. Returns
+    (kept, removed) as lists of paths."""
+    if not isinstance(keep, int) or keep < 1:
+        raise UpgradeError("--keep must be at least 1 (the newest backup is what rollback uses)")
+    root = os.path.realpath(os.path.join(P["data"], "backups"))
+    mine = [b for b in backups()
+            if BACKUP_NAME.match(os.path.basename(b)) and os.path.isdir(b) and not os.path.islink(b)
+            and os.path.isdir(os.path.join(b, "app")) and os.path.realpath(b).startswith(root + os.sep)]
+    kept, gone = mine[-keep:], mine[:-keep]
+    for b in gone:
+        log(("would remove " if dry_run else "removing ") + b)
+        if not dry_run:
+            rm_tree(b)
+    return kept, gone
+
+
 def rollback(ops=None):
     ops = ops or {"systemctl": systemctl}
     b = backups()
@@ -298,6 +320,9 @@ def main(argv=None):
     a.add_argument("bundle")
     a.add_argument("--force", action="store_true", help="allow a downgrade")
     sub.add_parser("rollback")
+    pr = sub.add_parser("prune")
+    pr.add_argument("--keep", type=int, required=True, help="number of newest backups to keep (>= 1)")
+    pr.add_argument("--dry-run", action="store_true")
     sub.add_parser("status")
     args = ap.parse_args(argv)
     if os.geteuid() != 0:
@@ -307,6 +332,9 @@ def main(argv=None):
             apply(args.bundle, args.force)
         elif args.cmd == "rollback":
             rollback()
+        elif args.cmd == "prune":
+            kept, gone = prune(args.keep, args.dry_run)
+            print(f"kept {len(kept)}, {'would remove' if args.dry_run else 'removed'} {len(gone)}")
         else:
             print(f"installed {current_version()}")
             for b in backups():

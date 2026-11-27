@@ -247,6 +247,8 @@ def engine_plan(plan, vm, src, wl, secret, settings):
             t[k_eng] = vs[k_ui]
     if vs.get("vcpus"):
         t["sockets"] = 1
+    if vs.get("cbt") == "auto" and p["source"].get("type") == "direct" and p["source"].get("qemu_domain"):
+        p.setdefault("sync", {})["cbt"] = "auto"   # default stays off; the plan validator rejects auto elsewhere
     if plan.get("cluster"):
         t["cluster"] = plan["cluster"]
     if plan.get("container"):

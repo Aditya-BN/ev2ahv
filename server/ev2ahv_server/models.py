@@ -117,6 +117,11 @@ class VmSettings(BaseModel):
     firmware: Optional[Literal["bios", "uefi"]] = None
     timezone: Optional[str] = None
     guest_address: Optional[str] = Field(None, description="IP the server uses to reach the guest for automatic prep")
+    cbt: Literal["off", "auto"] = Field("off", description="changed-block tracking for resyncs (experimental, everRun direct sources only; docs/cbt.md)")
+
+
+class VmSettingsPatch(BaseModel):
+    cbt: Literal["off", "auto"]
 
 
 class Schedule(BaseModel):

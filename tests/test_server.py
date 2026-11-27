@@ -102,6 +102,37 @@ class NameGuardTest(unittest.TestCase):
                              {}, None, {})
 
 
+class CbtSettingTest(unittest.TestCase):
+    """The per-VM cbt setting reaches the engine plan only for direct everRun sources, and defaults to off."""
+    INFO = {"name": "ev2ahv-src-x", "active_host": "10.0.0.1", "vcpus": 2, "memory_mib": 2048, "firmware": "bios",
+            "disks": [{"dev": "vda", "path": "/mnt/x/a.img", "guest_bytes": 1 << 30}], "nics": [{"mac": "52:54:00:00:00:01"}]}
+
+    def _plan(self, cbt):
+        import tempfile
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        old = live.DATA; live.DATA = tmp.name; self.addCleanup(setattr, live, "DATA", old)
+        orig = live.everrun.discover; live.everrun.discover = lambda *_: dict(self.INFO)
+        self.addCleanup(setattr, live.everrun, "discover", orig)
+        vs = {} if cbt is None else {"cbt": cbt}
+        plan = {"id": "p1", "name": "n", "vm_settings": {"v": vs}, "prep": {"mode": "manual"}, "network_map": []}
+        src = {"type": "everrun", "node_addresses": ["10.0.0.1"], "address": "10.0.0.9", "username": "u"}
+        wl = {"os_type": "linux", "nics": []}
+        path = live.engine_plan(plan, {"id": "v", "name": "ev2ahv-src-x"}, src, wl, lambda k: None, {})
+        return live.planlib.load(path)
+
+    def test_default_is_off(self):
+        self.assertEqual(self._plan(None)["sync"]["cbt"], "off")
+        self.assertEqual(self._plan("off")["sync"]["cbt"], "off")
+
+    def test_auto_reaches_the_engine_plan(self):
+        self.assertEqual(self._plan("auto")["sync"]["cbt"], "auto")
+
+    def test_model_default_and_patch_validation(self):
+        self.assertEqual(m.VmSettings().cbt, "off")
+        with self.assertRaises(Exception):
+            m.VmSettingsPatch(cbt="on")
+
+
 class StoppedSourceTest(unittest.TestCase):
     """T2 finding: everRun undefines a stopped guest in libvirt, so steps after the stop reuse the seeded plan."""
     def setUp(self):
