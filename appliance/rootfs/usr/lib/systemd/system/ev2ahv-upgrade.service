@@ -1,0 +1,8 @@
+[Unit]
+Description=ev2ahv: apply the upgrade bundle uploaded through the web UI (root; verifies before installing)
+After=ev2ahv.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ev2ahv-upgrade apply-request
+TimeoutStartSec=1800

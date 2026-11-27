@@ -5,6 +5,12 @@
   ev2ahv-upgrade apply  /path/ev2ahv-upgrade-<ver>.tar.gz [--force]   verify, back up, install, start, health check
   ev2ahv-upgrade rollback                                               back to the previous app, venv and database
   ev2ahv-upgrade prune --keep N [--dry-run]                             delete all but the newest N backups (N >= 1)
+  ev2ahv-upgrade apply-request                                          apply a bundle the web UI uploaded (run by
+                                                                        ev2ahv-upgrade.path/.service, as root)
+
+Signatures: a bundle may carry manifest.json.sig (Ed25519 over manifest.json, tools/make_bundle.py --sign). If any
+public key is installed in /etc/ev2ahv/upgrade-keys/*.pub, apply requires a signature that verifies against one of
+them (openssl pkeyutl); with no keys installed, unsigned bundles are accepted as before.
 
 apply refuses a bundle whose files do not match its manifest, a downgrade (unless --force) and an upgrade while a
 migration step is running. Before it touches anything it stops the app and saves the app, the venv (when the
@@ -19,6 +25,9 @@ P = {  # paths; tests point them at a temporary tree
     "sock": "/run/ev2ahv/app.sock", "self": "/usr/local/sbin/ev2ahv-upgrade",
     "link": "/usr/sbin/ev2ahv-upgrade",             # in sudo's secure_path, so `sudo ev2ahv-upgrade` works
     "cookie": "/run/ev2ahv/health.cookie",          # read-only session the app writes at start (0.3.3+)
+    "keys": "/etc/ev2ahv/upgrade-keys",             # trusted signing keys (*.pub); none installed = unsigned allowed
+    "spool": "/var/lib/ev2ahv/upgrade",             # the web UI drops bundle.tar.gz + request.json here
+    "units": "/usr/lib/systemd/system",
 }
 # read endpoints that load stored data through the data model; all must answer 200 after an upgrade (D7)
 HEALTH_PATHS = ("/api/v2/plans", "/api/v2/plans/vms", "/api/v2/providers", "/api/v2/events", "/api/v2/settings")
@@ -105,6 +114,7 @@ def unpack(bundle, into):
     man_path = os.path.join(into, "manifest.json")
     if not os.path.exists(man_path):
         raise UpgradeError("bundle has no manifest.json")
+    verify_signature(man_path, man_path + ".sig")
     with open(man_path) as fh:
         man = json.load(fh)
     for rel, digest in man["files"].items():
@@ -114,10 +124,104 @@ def unpack(bundle, into):
         if not os.path.isfile(f) or sha256(f) != digest:
             raise UpgradeError(f"bundle file {rel} is missing or does not match the manifest")
     extra = {os.path.relpath(os.path.join(d, n), into) for d, _, ns in os.walk(into) for n in ns} - set(man["files"]) \
-        - {"manifest.json"}
+        - {"manifest.json", "manifest.json.sig"}
     if extra:
         raise UpgradeError(f"bundle has files not in the manifest: {sorted(extra)[:5]}")
     return man
+
+
+def trusted_keys():
+    d = P["keys"]
+    return sorted(os.path.join(d, n) for n in os.listdir(d) if n.endswith(".pub")) if os.path.isdir(d) else []
+
+
+def verify_signature(manifest, sig):
+    """Require a valid Ed25519 signature over manifest.json when trusted keys are installed (D7)."""
+    keys = trusted_keys()
+    if not keys:
+        if os.path.exists(sig):
+            log("bundle is signed, but no trusted keys are installed in " + P["keys"] + ": signature not checked")
+        return None
+    if not os.path.exists(sig):
+        raise UpgradeError(f"bundle is not signed, and {P['keys']} holds trusted keys: refusing it")
+    for k in keys:
+        r = sh("openssl", "pkeyutl", "-verify", "-pubin", "-inkey", k, "-rawin", "-in", manifest, "-sigfile", sig,
+               check=False)
+        if r.returncode == 0:
+            log(f"signature verified with {os.path.basename(k)}")
+            return k
+    raise UpgradeError("bundle signature does not verify against any trusted key")
+
+
+def install_units(work):
+    """Install the systemd units a bundle carries (systemd/*), so UI upgrades reach older appliances too."""
+    src = os.path.join(work, "systemd")
+    if not os.path.isdir(src):
+        return []
+    names = sorted(n for n in os.listdir(src) if re.match(r"^ev2ahv-[\w.@-]+\.(service|path|timer)$", n))
+    for n in names:
+        shutil.copy2(os.path.join(src, n), os.path.join(P["units"], n))
+    if names and not os.path.isdir(P["spool"]):   # appliances built before 0.3.7 have no spool yet
+        os.makedirs(P["spool"], mode=0o770)
+        try:
+            shutil.chown(P["spool"], "ev2ahv", "ev2ahv")
+        except (LookupError, PermissionError):
+            pass
+    if names and shutil.which("systemctl"):   # absent off-appliance (CI runners)
+        sh("systemctl", "daemon-reload", check=False)
+        sh("systemctl", "enable", "--now", "ev2ahv-upgrade.path", check=False)
+    return names
+
+
+def _status(**kw):
+    """status.json in the spool, readable by the app (group ev2ahv)."""
+    os.makedirs(P["spool"], exist_ok=True)
+    f = os.path.join(P["spool"], "status.json")
+    tmp = f + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(dict(kw, time=time.time()), fh)
+    os.chmod(tmp, 0o640)
+    try:
+        shutil.chown(tmp, "root", "ev2ahv")
+    except (LookupError, PermissionError):
+        pass
+    os.replace(tmp, f)
+
+
+def apply_request(ops=None, apply_fn=None):
+    """Apply the bundle the web UI uploaded. The spool is writable by the app, so nothing in it is trusted: the bundle
+    is copied (never following links) into a root-only directory first, and apply() verifies it as usual."""
+    apply_fn = apply_fn or apply
+    req_f, bun_f = os.path.join(P["spool"], "request.json"), os.path.join(P["spool"], "bundle.tar.gz")
+    if not os.path.exists(req_f):
+        return None
+    try:
+        with open(req_f) as fh:
+            req = json.load(fh)
+    except ValueError:
+        req = {}
+    os.remove(req_f)                     # consume the request first, so the path unit does not fire again
+    private = tempfile.mkdtemp(prefix="ev2ahv-upgrade-req-", dir=P["data"])
+    try:
+        local = os.path.join(private, "bundle.tar.gz")
+        try:
+            fd = os.open(bun_f, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        except OSError as e:
+            _status(state="failed", message=f"no uploaded bundle: {e.strerror}", by=req.get("by"))
+            return False
+        with os.fdopen(fd, "rb") as src, open(local, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+        os.remove(bun_f)
+        _status(state="running", message="verifying and installing", by=req.get("by"), from_version=current_version())
+        try:
+            bdir = apply_fn(local, bool(req.get("force")), ops) if ops else apply_fn(local, bool(req.get("force")))
+        except UpgradeError as e:
+            _status(state="failed", message=str(e), by=req.get("by"), version=current_version())
+            return False
+        _status(state="done", message=f"upgraded; backup in {bdir}", by=req.get("by"), version=current_version())
+        return True
+    finally:
+        rm_tree(private)
 
 
 def busy():
@@ -211,6 +315,7 @@ def apply(bundle, force=False, ops=None):
             if os.path.exists(os.path.join(work, "ev2ahv-upgrade")):
                 shutil.copy2(os.path.join(work, "ev2ahv-upgrade"), P["self"])
                 link_self()
+            install_units(work)
             sh("chown", "-R", "root:root", P["app"], check=False)
             if shutil.which("restorecon"):   # absent off-appliance (CI runners)
                 sh("restorecon", "-R", P["app"], check=False)
@@ -324,6 +429,7 @@ def main(argv=None):
     pr.add_argument("--keep", type=int, required=True, help="number of newest backups to keep (>= 1)")
     pr.add_argument("--dry-run", action="store_true")
     sub.add_parser("status")
+    sub.add_parser("apply-request")
     args = ap.parse_args(argv)
     if os.geteuid() != 0:
         sys.exit("run as root (sudo)")
@@ -332,6 +438,9 @@ def main(argv=None):
             apply(args.bundle, args.force)
         elif args.cmd == "rollback":
             rollback()
+        elif args.cmd == "apply-request":
+            r = apply_request()
+            print("no request" if r is None else "applied" if r else "failed (see status.json)")
         elif args.cmd == "prune":
             kept, gone = prune(args.keep, args.dry_run)
             print(f"kept {len(kept)}, {'would remove' if args.dry_run else 'removed'} {len(gone)}")

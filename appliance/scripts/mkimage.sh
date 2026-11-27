@@ -56,6 +56,9 @@ passwd -l root
 # CIS no_empty_passwords: no account may log in with an empty password (all accounts here have one or are locked)
 sed -i 's/ nullok\b//' /etc/pam.d/system-auth /etc/pam.d/password-auth
 install -d -m 0750 -o ev2ahv -g ev2ahv /var/lib/ev2ahv /var/lib/ev2ahv/tls /var/lib/ev2ahv/config /var/log/ev2ahv
+# D7: upgrade spool (the app writes, root applies) and trusted signing keys (empty: unsigned bundles allowed)
+install -d -m 0770 -o ev2ahv -g ev2ahv /var/lib/ev2ahv/upgrade
+install -d -m 0755 /etc/ev2ahv/upgrade-keys
 install -d -m 0750 -o root -g ev2ahv /etc/ev2ahv
 chown root:ev2ahv /etc/ev2ahv/ev2ahv.env; chmod 0640 /etc/ev2ahv/ev2ahv.env
 install -d -m 0755 /var/log/journal
@@ -64,7 +67,7 @@ ln -sf /usr/local/sbin/ev2ahv-upgrade /usr/sbin/ev2ahv-upgrade   # in sudo secur
 ln -sf /dev/null /etc/systemd/system/getty@tty1.service
 ln -sf /usr/lib/systemd/system/ev2ahv-tls.path /etc/systemd/system/multi-user.target.wants/ev2ahv-tls.path 2>/dev/null || true
 for u in chronyd sshd firewalld NetworkManager nginx auditd cloud-init-local cloud-init cloud-config cloud-final \
-         ev2ahv ev2ahv-boot ev2ahv-blockd.socket ev2ahv-firstboot ev2ahv-tls.path ev2ahv-console ev2ahv-issue; do
+         ev2ahv ev2ahv-boot ev2ahv-blockd.socket ev2ahv-firstboot ev2ahv-tls.path ev2ahv-upgrade.path ev2ahv-console ev2ahv-issue; do
   systemctl enable $u.service 2>/dev/null || systemctl enable $u
 done
 systemctl set-default multi-user.target

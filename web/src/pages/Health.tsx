@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, UpgradeState } from '../api';
+import { useSession } from '../App';
 import { Modal, Spinner, useDialogs } from '../components/ui';
 import { fmtDateSec, tzLabel, useLive } from '../util';
 
@@ -10,7 +11,48 @@ const stepTime = (t: number | string) => (typeof t === 'number' ? fmtDateSec(t) 
 export const authLine = (key: string, from = window.location.hostname) =>
   `install -d -m 700 /root/.ssh && echo 'from="${from}",no-agent-forwarding,no-port-forwarding,no-X11-forwarding ${key}' >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys`;
 
+// D7: upload an upgrade bundle; root (ev2ahv-upgrade.path) verifies and applies it, then the app restarts.
+function UpgradeCard() {
+  const { showError, toast } = useDialogs();
+  const [up, setUp] = useState<UpgradeState | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const refresh = () => api.upgradeStatus().then(setUp).catch(() => { /* app restarting */ });
+  useEffect(() => {
+    refresh();
+    const t = window.setInterval(refresh, 4000);
+    return () => window.clearInterval(t);
+  }, []);
+  const s = up?.status || {};
+  const active = !!up?.pending || s.state === 'running';
+  const send = async () => {
+    if (!file) return;
+    setBusy(true);
+    try { setUp(await api.uploadUpgrade(file)); toast('Bundle uploaded; the appliance verifies and applies it'); setFile(null); }
+    catch (e) { showError(e, 'Upgrade'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="card">
+      <h4 className="section">Upgrade</h4>
+      {up && !up.enabled ? <p className="muted">This appliance cannot upgrade from the UI yet; use <code>sudo ev2ahv-upgrade apply</code> once.</p> : (<>
+        <p className="muted">Upload an <code>ev2ahv-upgrade-&lt;version&gt;.tar.gz</code> bundle. The appliance checks every file (and the signature, if signing keys are installed), backs up the app and its data, installs, and restores the old version by itself if the new one does not start. The page reloads when the app is back.</p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input type="file" accept=".tar.gz,.tgz,application/gzip" disabled={active || busy} onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          <button className="btn primary" disabled={!file || active || busy} onClick={send}>{busy ? 'Uploading…' : 'Upload and apply'}</button>
+        </div>
+        {(active || s.state) && (
+          <p className={s.state === 'failed' ? 'vm-error' : 'muted'} style={{ marginTop: 8 }}>
+            {up?.pending ? 'Waiting for the appliance to start the upgrade…' : s.state === 'running' ? `Upgrading from ${s.from_version || '?'}… the app restarts` : s.state === 'done' ? `Done: now ${s.version}.` : `Failed: ${s.message}`}
+            {s.time ? ` (${fmtDateSec(s.time)})` : ''}
+          </p>)}
+      </>)}
+    </div>
+  );
+}
+
 export default function Health() {
+  const { info } = useSession();
   const { showError, toast } = useDialogs();
   const { data, loading, reload } = useLive(() => api.health(), []);
   const [certDlg, setCertDlg] = useState(false);
@@ -90,6 +132,8 @@ export default function Health() {
             <p className="muted">The <code>from=</code> option limits the key to this appliance's address ({window.location.hostname}); replace it with the appliance IP if you opened this page through a DNS name or a proxy. Then add or refresh the everRun environment: it fails if any node refuses the key.</p>
           </>)}
         </div>
+
+        {info.role === 'admin' && <UpgradeCard />}
       </>)}
       {certDlg && (
         <Modal title="Replace certificate" width={640} onClose={() => setCertDlg(false)}

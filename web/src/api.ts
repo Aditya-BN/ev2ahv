@@ -89,6 +89,10 @@ export class ApiError extends Error {
 }
 
 const BASE = '/api/v2';
+export interface UpgradeState {
+  enabled: boolean; pending: boolean;
+  status: { state?: 'running' | 'done' | 'failed'; message?: string; by?: string; version?: string; from_version?: string; time?: number };
+}
 export const authEvents = new EventTarget();
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -172,6 +176,17 @@ export const api = {
   settings: () => req<Settings>('GET', '/settings'),
   putSettings: (b: Partial<Settings>) => req<Settings>('PUT', '/settings', b),
   supportBundleUrl: () => `${BASE}/supportbundle`,
+  upgradeStatus: () => req<UpgradeState>('GET', '/upgrade'),
+  uploadUpgrade: async (file: File, force = false): Promise<UpgradeState> => {
+    const res = await fetch(`${BASE}/upgrade${force ? '?force=true' : ''}`, {
+      method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/octet-stream' }, body: file,
+    });
+    const text = await res.text();
+    let data: { detail?: unknown; message?: string } & Partial<UpgradeState> = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { /* not JSON */ }
+    if (!res.ok) throw new ApiError(res.status, typeof data.detail === 'string' ? data.detail : data.message || res.statusText);
+    return data as UpgradeState;
+  },
   logs: async (lines = 300) => {
     const res = await fetch(`${BASE}/logs?lines=${lines}`, { credentials: 'same-origin' });
     if (res.status === 401) authEvents.dispatchEvent(new Event('unauthorized'));
