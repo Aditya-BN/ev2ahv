@@ -107,13 +107,15 @@ class CbtSettingTest(unittest.TestCase):
     INFO = {"name": "ev2ahv-src-x", "active_host": "10.0.0.1", "vcpus": 2, "memory_mib": 2048, "firmware": "bios",
             "disks": [{"dev": "vda", "path": "/mnt/x/a.img", "guest_bytes": 1 << 30}], "nics": [{"mac": "52:54:00:00:00:01"}]}
 
-    def _plan(self, cbt):
+    def _plan(self, cbt, final_verify=None):
         import tempfile
         tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
         old = live.DATA; live.DATA = tmp.name; self.addCleanup(setattr, live, "DATA", old)
         orig = live.everrun.discover; live.everrun.discover = lambda *_: dict(self.INFO)
         self.addCleanup(setattr, live.everrun, "discover", orig)
         vs = {} if cbt is None else {"cbt": cbt}
+        if final_verify:
+            vs["final_verify"] = final_verify
         plan = {"id": "p1", "name": "n", "vm_settings": {"v": vs}, "prep": {"mode": "manual"}, "network_map": []}
         src = {"type": "everrun", "node_addresses": ["10.0.0.1"], "address": "10.0.0.9", "username": "u"}
         wl = {"os_type": "linux", "nics": []}
@@ -127,10 +129,23 @@ class CbtSettingTest(unittest.TestCase):
     def test_auto_reaches_the_engine_plan(self):
         self.assertEqual(self._plan("auto")["sync"]["cbt"], "auto")
 
+    def test_final_verify_reaches_the_engine_plan_and_defaults_to_full(self):
+        self.assertEqual(self._plan("auto")["sync"]["final_verify"], "full")
+        self.assertEqual(self._plan("auto", "none")["sync"]["final_verify"], "none")
+        self.assertEqual(self._plan("auto", "sample")["sync"]["final_verify"], "sample")
+        self.assertEqual(self._plan(None, "none")["sync"]["final_verify"], "full")   # cbt off: not applied
+
+    def test_engine_plan_can_power_off_the_source_hard(self):
+        self.assertIn("poweroff", self._plan("auto")["source"]["power"])
+
     def test_model_default_and_patch_validation(self):
         self.assertEqual(m.VmSettings().cbt, "off")
+        self.assertEqual(m.VmSettings().final_verify, "full")
         with self.assertRaises(Exception):
             m.VmSettingsPatch(cbt="on")
+        with self.assertRaises(Exception):
+            m.VmSettingsPatch(final_verify="maybe")
+        self.assertIsNone(m.VmSettingsPatch(final_verify="sample").cbt)
 
 
 class StoppedSourceTest(unittest.TestCase):

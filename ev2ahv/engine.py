@@ -1,5 +1,5 @@
 """Chunk sync: send only chunks whose content differs, committing progress after each fsync."""
-import logging, time
+import logging, random, time
 
 from .helper.ev2ahv_helper import digest, is_zero
 
@@ -143,4 +143,52 @@ def final_sync(source, target, state, key, algo, rounds=5, **kw):
         stats = sync(source, target, state, key, algo, verify_target=True, **kw)
         if stats["sent"] == 0:
             return n, stats
+    raise RuntimeError(f"{key}: still differing after {rounds} verified passes. Is the source really stopped?")
+
+
+FINAL_VERIFY = ("full", "sample", "none")
+SAMPLE_MIN, SAMPLE_FRACTION = 256, 0.02
+
+
+def sample_check(source, target, key, algo, state, total, dirty, rng=None):
+    """Read a random sample of chunks (every chunk the dirty pass wrote, plus 2 percent of the disk, at least 256)
+    from both sides and compare them. Returns the number of chunks that differ."""
+    rng = rng or random.Random()
+    n = min(total, max(SAMPLE_MIN, int(total * SAMPLE_FRACTION)))
+    picks = sorted(set(rng.sample(range(total), n)) | {i for i in dirty if 0 <= i < total})
+    bad, checked = 0, 0
+    for b in range(0, len(picks), 32):
+        part = picks[b:b + 32]
+        for (i, a), (j, c) in zip(source.read(part), target.read(part)):
+            checked += 1
+            bad += fingerprint(a, algo) != fingerprint(c, algo)
+    state.event("final-sample", disk=key, checked=checked, mismatched=bad)
+    log.info("%s: final sample check, %d chunks, %d differ", key, checked, bad)
+    return bad
+
+
+def final_sync_dirty(source, target, state, key, algo, dirty, verify="full", rounds=5, **kw):
+    """Final sync from a dirty-chunk list captured with the guest stopped (D5, docs/cbt.md): a dirty pass replaces the
+    full source-only pass, then `verify` decides how the result is checked:
+      full    the verified passes of final_sync (hash the real target too, repair, repeat until clean). Default.
+      sample  compare a random sample plus every chunk the dirty pass wrote; any difference means the full passes.
+      none    trust the dirty pass.
+    Returns (verified rounds, stats); stats carry final_mode and the dirty chunk count."""
+    if verify not in FINAL_VERIFY:
+        raise ValueError(f"final_verify must be one of {FINAL_VERIFY}")
+    kw = {k: v for k, v in kw.items() if k in ("batch", "progress", "stop")}
+    stats = sync_dirty(source, target, state, key, algo, dirty, **kw)
+    stats["final_mode"], stats["dirty_chunks"] = "dirty+" + verify, len(set(dirty))
+    if verify == "none":
+        return 0, stats
+    if verify == "sample":
+        total = (source.size() + source.chunk - 1) // source.chunk
+        if sample_check(source, target, key, algo, state, total, dirty) == 0:
+            return 0, stats
+        log.warning("%s: sample check found differences, running the full verified passes", key)
+        stats["final_mode"] = "dirty+sample->full"
+    for n in range(1, rounds + 1):
+        vs = sync(source, target, state, key, algo, verify_target=True, **kw)
+        if vs["sent"] == 0:
+            return n, dict(vs, final_mode=stats["final_mode"], dirty_chunks=stats["dirty_chunks"])
     raise RuntimeError(f"{key}: still differing after {rounds} verified passes. Is the source really stopped?")

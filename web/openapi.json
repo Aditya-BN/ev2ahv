@@ -2,7 +2,7 @@
     "openapi": "3.1.0",
     "info": {
         "title": "ev2ahv API",
-        "version": "0.3.5"
+        "version": "0.3.6"
     },
     "paths": {
         "/api/v2/token": {
@@ -1177,7 +1177,7 @@
         "/api/v2/plans/{pid}/vms/{vid}/settings": {
             "patch": {
                 "summary": "Patch Vm Settings",
-                "description": "Change one VM setting of an existing plan without resending the whole plan (today only cbt).",
+                "description": "Change one VM setting of an existing plan without resending the whole plan (cbt, final_verify).",
                 "operationId": "patch_vm_settings_api_v2_plans__pid__vms__vid__settings_patch",
                 "parameters": [
                     {
@@ -3360,6 +3360,17 @@
                         "title": "Cbt",
                         "description": "changed-block tracking for resyncs (experimental, everRun direct sources only; docs/cbt.md)",
                         "default": "off"
+                    },
+                    "final_verify": {
+                        "type": "string",
+                        "enum": [
+                            "full",
+                            "sample",
+                            "none"
+                        ],
+                        "title": "Final Verify",
+                        "description": "how the final sync is checked when changed-block tracking gave it a dirty pass: full (hash the target too, default), sample (random chunks plus every written one), none (trust the dirty pass); docs/cbt.md",
+                        "default": "full"
                     }
                 },
                 "type": "object",
@@ -3368,18 +3379,38 @@
             "VmSettingsPatch": {
                 "properties": {
                     "cbt": {
-                        "type": "string",
-                        "enum": [
-                            "off",
-                            "auto"
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "off",
+                                    "auto"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
                         ],
                         "title": "Cbt"
+                    },
+                    "final_verify": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "full",
+                                    "sample",
+                                    "none"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Final Verify"
                     }
                 },
                 "type": "object",
-                "required": [
-                    "cbt"
-                ],
                 "title": "VmSettingsPatch"
             }
         }

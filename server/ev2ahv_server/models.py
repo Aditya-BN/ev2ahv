@@ -118,10 +118,12 @@ class VmSettings(BaseModel):
     timezone: Optional[str] = None
     guest_address: Optional[str] = Field(None, description="IP the server uses to reach the guest for automatic prep")
     cbt: Literal["off", "auto"] = Field("off", description="changed-block tracking for resyncs (experimental, everRun direct sources only; docs/cbt.md)")
+    final_verify: Literal["full", "sample", "none"] = Field("full", description="how the final sync is checked when changed-block tracking gave it a dirty pass: full (hash the target too, default), sample (random chunks plus every written one), none (trust the dirty pass); docs/cbt.md")
 
 
 class VmSettingsPatch(BaseModel):
-    cbt: Literal["off", "auto"]
+    cbt: Optional[Literal["off", "auto"]] = None
+    final_verify: Optional[Literal["full", "sample", "none"]] = None
 
 
 class Schedule(BaseModel):

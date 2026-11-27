@@ -36,7 +36,7 @@ export interface Prep {
 export interface VmSettings {
   target_name?: string | null; vcpus?: number | null; memory_mib?: number | null; disk_bus: 'scsi' | 'pci';
   convert_to_scsi: boolean; firmware?: 'bios' | 'uefi' | null; timezone?: string | null; guest_address?: string | null;
-  cbt?: 'off' | 'auto';
+  cbt?: 'off' | 'auto'; final_verify?: 'full' | 'sample' | 'none';
 }
 export interface Schedule { seed_at?: number | null; timezone: string; resync_minutes: number }
 export interface VmCounts { total: number; in_progress: number; ready_to_cutover: number; failed: number; paused: number; completed: number }

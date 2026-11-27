@@ -505,15 +505,22 @@ def edit_plan(pid: str, body: m.PlanIn, who=Depends(user)):
 
 @app.patch("/api/v2/plans/{pid}/vms/{vid}/settings", response_model=m.Plan)
 def patch_vm_settings(pid: str, vid: str, body: m.VmSettingsPatch, who=Depends(user)):
-    """Change one VM setting of an existing plan without resending the whole plan (today only cbt)."""
+    """Change one VM setting of an existing plan without resending the whole plan (cbt, final_verify)."""
     doc = _plan(pid)
     v = next((x for x in doc["vms"] if x["id"] == vid), None)
     if not v:
         raise HTTPException(404, "VM not in this plan")
     vs = doc.setdefault("vm_settings", {}).setdefault(vid, m.VmSettings().model_dump())
-    vs["cbt"] = body.cbt
+    changed = []
+    for key, label in (("cbt", "changed-block tracking"), ("final_verify", "final verify")):
+        val = getattr(body, key)
+        if val is not None:
+            vs[key] = val
+            changed.append(f"{label} to {val}")
+    if not changed:
+        raise HTTPException(422, "Nothing to change: send cbt and/or final_verify")
     store.put("plan", doc)
-    store.event("info", f"{who} set changed-block tracking to {body.cbt} for {v['name']}", plan=doc["name"])
+    store.event("info", f"{who} set {' and '.join(changed)} for {v['name']}", plan=doc["name"])
     bump()
     return _plan_out(doc)
 

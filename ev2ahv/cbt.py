@@ -13,7 +13,9 @@ pass after start() again.
 QMP transports: UnixQmp (qemu-storage-daemon or a test QEMU) and VirshQmp (virsh qemu-monitor-command over ssh;
 lab-tested on everRun 8.1.1, see docs/cbt.md; it changes the running guest's QEMU state, so it stays off unless a plan asks for it).
 """
-import json, shlex, socket, subprocess
+import json, logging, shlex, socket, subprocess, time
+
+log = logging.getLogger("ev2ahv.cbt")
 
 
 class BitmapLost(RuntimeError):
@@ -99,6 +101,9 @@ class QemuBitmap:
                 names += [b["name"] for b in nd.get("dirty-bitmaps") or [] if b["name"].startswith(self.prefix)]
         return sorted(set(names), key=lambda n: int(n[len(self.prefix):]))
 
+    def has_bitmap(self):
+        return bool(self._ours())
+
     def start(self):
         """Begin tracking from now. Removes any older ev2ahv bitmaps on the node first."""
         for name in self._ours():
@@ -137,3 +142,80 @@ class QemuBitmap:
 
     def drop(self, frozen):
         self.qmp("block-dirty-bitmap-remove", {"node": self.node, "name": frozen})
+
+
+class NotReady(RuntimeError):
+    """The final capture could not begin; the guest was not touched, so the normal stop and a full pass apply."""
+
+
+class CaptureFailed(RuntimeError):
+    """The guest was told to halt and then something went wrong: halted is True, the caller must power it off and
+    run a full final pass."""
+
+
+def blockstats_total(qmp):
+    """Write plus flush operations the guest has issued on every disk (it only grows while the guest writes)."""
+    return sum(d.get("stats", {}).get("wr_operations", 0) + d.get("stats", {}).get("flush_operations", 0)
+               for d in qmp("query-blockstats") or [])
+
+
+def halt_and_capture(qmp, trackers, halt, guest_up, chunk, timeout=600, quiet=5.0, poll=0.5, sleep=time.sleep,
+                     now=time.monotonic):
+    """Final dirty set with the guest stopped (docs/cbt.md, "Final sync").
+    everRun's QEMU exits the moment the guest powers off, taking the bitmaps with it, and a graceful stop leaves no
+    window to read them. So: halt the guest from inside (the OS unmounts and stops with the CPU still powered, so QEMU
+    stays alive), wait until it answers nothing and writes nothing for `quiet` seconds, pause the vCPUs over QMP (from
+    then on no write is possible and the bitmap holds every write up to that point), rotate and read each disk's
+    bitmap. Returns {disk: sorted chunk indexes}. NotReady before the halt was sent; CaptureFailed after it."""
+    try:
+        st = qmp("query-status")
+        if not st or st.get("status") != "running":
+            raise NotReady(f"guest QEMU is {st and st.get('status')}, not running on this node")
+        for name, bm in trackers.items():
+            if not bm.has_bitmap():
+                raise NotReady(f"{name}: no tracking bitmap, so it was interrupted")
+    except NotReady:
+        raise
+    except Exception as e:
+        raise NotReady(str(e))
+    try:
+        halt()
+    except Exception as e:
+        raise NotReady(f"cannot send the halt to the guest: {e}")
+    try:
+        t_halt = now()
+        deadline, last, last_up, still_since = t_halt + timeout, None, None, None
+        while True:
+            writes = blockstats_total(qmp)
+            up = guest_up()
+            if writes != last or up != last_up:
+                log.info("halt wait: %.1f s, guest %s, disk operations %d", now() - t_halt, "up" if up else "silent", writes)
+            last_up = up
+            if up or writes != last:
+                still_since = None
+            elif still_since is None:
+                still_since = now()
+            last = writes
+            if still_since is not None and now() - still_since >= quiet:
+                break
+            if now() > deadline:
+                raise CaptureFailed("the guest did not halt in time")
+            sleep(poll)
+        before = blockstats_total(qmp)
+        qmp("stop")
+        st = qmp("query-status")
+        if not st or st.get("status") != "paused":
+            raise CaptureFailed(f"the guest did not pause (status {st and st.get('status')})")
+        out = {}
+        for name, bm in trackers.items():
+            frozen = bm.rotate()
+            out[name] = ranges_to_chunks(bm.dirty(frozen), chunk)
+        # everRun resumes a paused guest within a second (seen on the FT guest), so the pause is not the guarantee: the
+        # guest wrote nothing at all between the quiet check and the last extent read, or the dirty set is not trusted
+        if blockstats_total(qmp) != before:
+            raise CaptureFailed("the guest wrote to its disks during the capture")
+        return out
+    except CaptureFailed:
+        raise
+    except Exception as e:
+        raise CaptureFailed(str(e))

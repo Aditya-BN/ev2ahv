@@ -3,7 +3,8 @@
 Status 2026-11-27: works on real everRun, on the HA guest (`ev2ahv-src-win22`, "On everRun" below) and on the FT guest
 (`ev2ahv-src-rocky9`, "On an FT guest" below). Wired into the resync as a plan option `sync.cbt: auto|off` (default **off**).
 Since 0.3.5 it is a per-VM setting in the appliance too (wizard checkbox, `vm_settings.cbt`, and
-`PATCH /api/v2/plans/{id}/vms/{vm}/settings` `{"cbt": "auto"}` for an existing plan). Final sync still uses the verified full pass.
+`PATCH /api/v2/plans/{id}/vms/{vm}/settings` `{"cbt": "auto"}` for an existing plan). Since 0.3.6 the final sync can use the
+bitmap too (section "Final sync" below); `sync.final_verify` chooses how it is checked, default `full`.
 
 ## Why
 
@@ -120,6 +121,48 @@ was enabled and 8 scheduled resyncs ran with a write load in the guest (table in
   a failover loses it; the fallback above was run by removing the bitmaps over QMP, which is a simulation. The everRun API has
   no per-VM failover for an FT guest (it is a node action, which also moves the other lab guest), so it was left alone.
   Ask Stratus before using this on customer FT guests.
+
+## Final sync (0.3.6)
+
+Problem: of the 439 s downtime on the 40 GiB FT guest, 378 s was the final sync, which is always a full pass (one source-only
+pass, then verified passes that hash the target too). The bitmap lives in the guest's QEMU, and everRun's QEMU exits the
+moment the guest powers off, so after a normal stop there is nothing left to read.
+
+What everRun does on a stop (observed 2026-11-27 with a 20 ms QMP status poll on both nodes during a cutover of
+`ev2ahv-src-rocky9`): the partner QEMU goes paused to running, the guest shuts down, and about 5.5 s after the stop QEMU
+exits and the monitor socket resets. There is no `shutdown` or `paused` state in between and so no window to read a bitmap
+(libvirt's own `-no-shutdown` window would have shown as a status). A bitmap cannot be persisted (raw disks, see above).
+
+Chosen approach: **halt, pause, read, then power off hard.** With `sync.cbt: auto` and a Linux guest that the appliance
+reaches over ssh (`guest.address`), the cutover does not use everRun's stop:
+
+1. Check the guest QEMU is `running` on this node and every disk's bitmap exists and was tracked without a gap since its
+   last full pass (`cbt:<disk>` = tracking). Otherwise: normal stop, full final sync (today's behaviour).
+2. `systemctl halt --no-block` over ssh. The OS stops its services and unmounts, then halts with the virtual CPU still
+   powered, so QEMU stays alive.
+3. Wait until the guest answers nothing on ssh and the disks saw no write or flush for 5 s (`query-blockstats`).
+4. QMP `stop` (vCPUs paused, I/O drained). From here no write is possible, and the bitmap holds every write up to this
+   point: the dirty set is exact and final.
+5. In the same pause, rotate each disk's bitmap and read its dirty extents over NBD (about 1 s per disk).
+6. everRun `poweroff` (hard; the guest is already halted and paused, so nothing is cut short). Wait for `stopped`.
+7. Dirty final pass: read only the dirty chunks, send those that differ from the recorded digests. Then `sync.final_verify`:
+   - `full` (default): the existing verified passes (hash source and target, repair, repeat until clean). Saves only the
+     first full source pass.
+   - `sample`: compare a random 2 percent of the disk (at least 256 chunks) plus every chunk the dirty pass wrote, source
+     against target. Any difference runs the full verified passes.
+   - `none`: trust the dirty pass. The floor of the downtime, but nothing checks the bitmap.
+
+Failure handling, all ending in the current full final pass: no bitmap, status not `running`, flag not tracking, halt
+command refused (the guest is untouched, normal stop), guest not silent within `stop_timeout`, QMP error or rotate error
+after the halt (the guest is powered off hard, then the full pass). A halted guest is never left paused with no
+plan: the power-off runs in every branch. The dirty list is stored in the plan state before the source stops, so a crashed
+cutover resumes the same dirty pass. `sync.final_cbt: off` keeps the old stop path even with `cbt: auto`.
+
+What is and is not guaranteed: the target equals the source's disks at the moment of the pause (QMP `stop` plus an exact
+bitmap), and `full` verifies that independently of the bitmap. How clean the guest's filesystems are depends on step 3: a
+guest that halted normally unmounted cleanly; one that was still stopping a service when the disks went quiet is left like
+a power cut (journal replay on the first boot). Windows guests and sources without ssh keep the old path (there is no
+halt without power-off on Windows).
 
 ## Plan option
 
