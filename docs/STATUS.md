@@ -1,6 +1,14 @@
-# ev2ahv status (2026-11-27 WIB, after v0.3.5 and the D5 FT test)
+# ev2ahv status (2026-11-27 WIB, after v0.3.6: final_verify)
 
 Start with AGENTS.md, docs/architecture.md and docs/BACKLOG.md. Detailed numbers are in docs/results.md.
+
+## v0.3.6 (2026-11-27)
+
+| Item | Result | Verified |
+| --- | --- | --- |
+| Final sync with the dirty bitmap | Tried and **rejected** on everRun: the guest's QEMU exits with the guest, a QMP pause does not hold, and the guest writes after disk silence (2 chunks missed). The fallback worked | Yes, on the lab (docs/cbt.md) |
+| `sync.final_verify: full\|sample\|none` (per-VM setting, API, wizard) | Downtime on the 40 GiB FT guest: stock 422-474 s, sample 208.0 s, none 161.0 s; data 438/438 x2, same IP and MAC each time. Default stays full | Yes, idle guest |
+| Lab end state | appliance-2 on 0.3.6; AHV `ev2ahv-rocky9-app2` ON, everRun `ev2ahv-src-rocky9` STOPPED; plan cbt off, final_verify full | Yes |
 
 ## Since the overnight run (2026-11-27 morning WIB)
 
@@ -33,9 +41,9 @@ Tests: 175 unit tests, CI green on main (see the commit status below).
 
 | Object | State |
 |---|---|
-| `ev2ahv-appliance-2` | https://10.12.135.154/, 0.3.5, ON. Holds the everRun and Prism environments and plan `app-rocky-stageB` (Completed). UI password `~/.config/ev2ahv/appliance2-ui.pw` |
+| `ev2ahv-appliance-2` | https://10.12.135.154/, 0.3.6, ON. Holds the everRun and Prism environments and plan `app-rocky-stageB` (Completed). UI password `~/.config/ev2ahv/appliance2-ui.pw` |
 | `ev2ahv-appliance-3` | https://10.12.135.160/, 0.3.5, ON. Prism environment only. UI password `~/.config/ev2ahv/appliance3-ui.pw` |
-| `ev2ahv-rocky9-app2` (AHV) | ON, 10.12.136.162 (cut over again 2026-11-27 02:08 UTC, id 645b6dfa...). The everRun source `ev2ahv-src-rocky9` is **STOPPED**; never run both. The guest still has the test load files and `/root/guest-load2.sh`; plan CBT setting is off |
+| `ev2ahv-rocky9-app2` (AHV) | ON, 10.12.136.162 (cut over again 2026-11-27 06:26 UTC with final_verify none, id 5d23a4f5...). The everRun source `ev2ahv-src-rocky9` is **STOPPED**; never run both. The guest still has the test load files and `/root/guest-load2.sh`; plan CBT setting is off |
 | `ev2ahv-src-win22` (everRun) | Running, as before. Its AHV copy was deleted, so there is no conflict |
 | `ev2ahv-writer` | **Deleted** on purpose (2026-11-27); bastion live mode (:8444) has no writer until a new one is made |
 | Bastion | Mock UI :8443, live UI :8444; shared board `/var/tmp/ev2ahv-collab/` |

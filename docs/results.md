@@ -409,3 +409,35 @@ Load stopped, manifests written (`stop`): `/ext4/ev2ahv` 438 files, `/span/ev2ah
 | everRun | `ev2ahv-src-rocky9` stopped (not defined on node0 or node1); the two were never running together |
 
 The final sync is unchanged (a verified full pass), so the downtime is in line with T2 (422.1 s). The dirty pass was not used for the final sync.
+
+## D5 final sync and final_verify (0.3.6, 2026-11-27)
+
+Plan `app-rocky-stageB` (Rocky 9 FT `ev2ahv-src-rocky9`, 4 disks, 40 GiB) on appliance-2, upgraded 0.3.5 -> 0.3.6 with `sudo ev2ahv-upgrade apply`
+(3 s; version 0.3.6, `is-system-running` running, 0 failed units, self-test PASS). Before every cutover the source was rolled back and
+`sha256sum -c MANIFEST.sha256` gave 438 of 438 OK in `/ext4/ev2ahv` and `/span/ev2ahv`; after every cutover the AHV copy gave the same
+(identical manifest hashes), `sys_vendor` Nutanix, same IP 10.12.136.162 and MAC 00:e0:09:a4:d7:40. The guest was idle at cutover (the
+write load ran during the resyncs, then was stopped to write the manifests). Times are from the stored cutover result.
+
+| # | Final sync design | Downtime | Final sync | Last resync | Data on AHV |
+| --- | --- | --- | --- | --- | --- |
+| earlier | stock 0.3.5: source pass + verified passes | 422.1 s, 439.1 s | 364 s, 377.9 s | | OK |
+| 0 | stock 0.3.5 (observer run) | 474.4 s | 403.0 s | 95.9 s | not checked |
+| 1 | bitmap final (halt, QMP stop, dirty pass), `full` | 534.5 s | 446.6 s | 26.4 s | 438/438 x2 |
+| 2 | bitmap final, capture failed, fallback to full | 489.3 s | 399.9 s | 43.5 s | 438/438 x2 |
+| 3 | `final_verify: sample` (256 chunks per disk) | 404.0 s | 321.1 s | 55.7 s | 438/438 x2 |
+| 4 | `final_verify: sample` (1 percent, at least 64 chunks) | **208.0 s** | 152.9 s | 29.5 s | 438/438 x2 |
+| 5 | `final_verify: none` | **161.0 s** | 98.8 s | 50.1 s | 438/438 x2 |
+
+- Bitmap final sync: rejected. Run 1 missed 2 chunks of `vda` (the guest wrote after the "5 s of silence" the capture waited for;
+  QMP `stop` did not hold, everRun resumed the guest within a second). Run 2 caught that and fell back, correctly. Evidence and reasoning in docs/cbt.md.
+- Run 3's sample (256 chunks per disk, 53 s for `vda`) cost almost as much as it saved, so the sample is now 1 percent, at least 64 chunks;
+  run 4 used that (per disk 30-45 s for the sample check). Sample found 0 differing chunks in runs 3 and 4.
+- Savings against the stock final sync: `sample` about 55 percent of the downtime, `none` about 63 percent (the floor is the source pass,
+  about 100 s, plus about 60 s stop and about 60 s boot and verification). `none` trusts the recorded digests (written only after the
+  target fsynced each chunk); it cannot see a target changed behind the tool's back, so the default stays `full`.
+- Not run: a stock `full` cutover with 0.3.6 (the code path is unchanged and covered by unit tests; run 2's final pass was the full path).
+- Resyncs with cbt on (dirty passes) ran again before runs 1-3: idle 26-37 s; a write load of about 1 file per second per directory gave
+  dirty passes of 25-35 s with 200+ dirty chunks on the data disks.
+- Cleanup: `cbt` set back to `off` and `final_verify` to `full` (PATCH); no bitmaps (the guest is stopped, its QEMU gone), no exports, no
+  `/var/tmp/ev2ahv-cbt-*` socket and no probe scripts on either node. Finding: with cbt on, a flag `cbt:<disk>` stayed "tracking" after the final
+  sync, so the first resync after a rollback logged a spurious "no bitmap" failure; the final sync now sets it to off.

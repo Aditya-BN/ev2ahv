@@ -146,10 +146,10 @@ Results of the two runs that used the bitmap (guest idle, `final_verify: full`):
 
 | Run | Path | Downtime | Final sync | Note |
 | --- | --- | --- | --- | --- |
-| Stock 0.3.5, cbt off (earlier) | stop, full pass, verified passes | 422.1 s and 439.1 s | 364 s and 377.9 s | |
-| Stock 0.3.5 with the QMP observers (2026-11-27 02:25 UTC) | same | 474.4 s | 403.0 s | stop to QEMU exit 5.5 s |
-| 1: halt, pause, bitmap, dirty pass (30 + 3 + 3 + 3 chunks), then verified passes | 534.5 s | 446.6 s | the dirty set missed 2 `vda` chunks, so the verified pass ran twice (2 x 145 s); data correct |
-| 2: same, but the pause did not hold, so it fell back (poweroff, full final pass) | 489.3 s | 399.9 s | the fallback worked; halt plus hard power-off cost 89 s before the final sync against 71 s for a stock stop |
+| Stock 0.3.5, cbt off (earlier runs) | stop, source pass, verified passes | 422.1 s and 439.1 s | 364 s and 377.9 s | |
+| Stock 0.3.5 with the QMP observers | same | 474.4 s | 403.0 s | stop to QEMU exit 5.5 s |
+| 1: halt, pause, bitmap, dirty pass (30+3+3+3 chunks), verified passes | dirty final | 534.5 s | 446.6 s | the dirty set missed 2 `vda` chunks, so the verified pass ran twice (2 x 145 s); data correct |
+| 2: same, but the pause did not hold: fell back (hard power-off, full final pass) | fallback | 489.3 s | 399.9 s | the fallback worked; halt plus hard power-off cost 89 s before the final sync against 71 s for a stock stop |
 
 Both ended with the data identical on AHV (438 of 438 files in each directory, same IP and MAC). The bitmap final was slower than
 today's final sync in both runs, and a dirty set that is not exact would corrupt the copy under `sample` or `none`. So it was removed
@@ -169,7 +169,8 @@ digests; the setting controls the pass after it, which hashes the target:
 - `none`: trust the recorded digests. A digest is recorded only after the target fsynced the chunk, so it is the exact source
   content for every chunk the source pass saw; what it cannot see is a target that changed behind the tool's back.
 
-This is independent of `sync.cbt`. Numbers from the lab are in docs/results.md ("final_verify").
+This is independent of `sync.cbt`. Measured on the FT guest (idle, 40 GiB, appliance-2 0.3.6): `full` 422-474 s downtime (final
+sync 364-403 s), `sample` 208.0 s (final sync 152.9 s), `none` 161.0 s (final sync 98.8 s). Details in docs/results.md.
 
 ## Plan option
 
