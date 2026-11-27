@@ -167,3 +167,13 @@ export function downloadBlob(name: string, text: string, type = 'text/csv') {
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// UI density (Settings in the rail): '' = automatic by screen width (styles.css), else comfortable | compact | dense.
+export type Density = '' | 'comfortable' | 'compact' | 'dense';
+export function getDensity(): Density { return (localStorage.getItem('ev2ahv-density') as Density) || ''; }
+export function setDensity(d: Density) {
+  if (d) { localStorage.setItem('ev2ahv-density', d); document.documentElement.dataset.density = d; }
+  else { localStorage.removeItem('ev2ahv-density'); delete document.documentElement.dataset.density; }
+}
+// The page is scaled with CSS zoom on <html>; fixed-position overlays placed from getBoundingClientRect divide by it.
+export function pageZoom(): number { return parseFloat(getComputedStyle(document.documentElement).zoom) || 1; }
