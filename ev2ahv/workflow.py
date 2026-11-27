@@ -326,18 +326,9 @@ class Migration:
         pass (starting tracking first). Any doubt or error means a full pass: the bitmap is only an accelerator."""
         name, flag = disk["name"], "cbt:" + disk["name"]
         if final:
-            dirty = (self.state.get("final_dirty") or {}).get(name)
-            if dirty is not None:
-                try:
-                    rounds, stats = engine.final_sync_dirty(reader, writer, self.state, name, algo, dirty,
-                                                            verify=self.p["sync"].get("final_verify", "full"), **kw)
-                    return dict(stats, verified_rounds=rounds)
-                except InterruptedError:
-                    raise
-                except Exception as e:
-                    log.warning("%s: dirty final sync failed (%s), full final pass instead", name, e)
-            rounds, stats = engine.final_sync(reader, writer, self.state, name, algo, **kw)
-            return dict(stats, verified_rounds=rounds, final_mode="full")
+            rounds, stats = engine.final_sync(reader, writer, self.state, name, algo,
+                                              verify=self.p["sync"].get("final_verify", "full"), **kw)
+            return dict(stats, verified_rounds=rounds)
         bm = None
         if not verify:
             try:
@@ -434,50 +425,7 @@ class Migration:
             raise RuntimeError(f"cannot read the source power state from {out!r}. Check source.power.status")
         return bool(re.search(r"\b(stopped|shut ?off|off)\b", out, re.I))
 
-    def final_dirty_possible(self, assume_stopped=False):
-        """Final dirty pass (docs/cbt.md): cbt on, direct everRun source, a Linux guest we can halt over ssh, a hard
-        power-off command, and every disk tracked without a gap since its last full pass."""
-        sy, s, g = self.p.get("sync") or {}, self.p.get("source") or {}, self.p.get("guest") or {}
-        return bool(sy.get("cbt") == "auto" and sy.get("final_cbt", "auto") == "auto" and not assume_stopped
-                    and s.get("type") == "direct" and s.get("qemu_domain") and (s.get("power") or {}).get("poweroff")
-                    and g.get("os") == "linux" and g.get("address") and g.get("prep") != "none"
-                    and all(self.state.get("cbt:" + d["name"]) == "tracking" for d in self.p["disks"]))
-
-    def halt_and_capture(self):
-        """Halt the guest from inside, pause it over QMP and read the dirty extents of every disk. Returns True when
-        the guest was halted (so the caller powers it off hard), False when nothing was touched. Any failure after the
-        halt leaves final_mode "full": the final sync is then the verified full pass."""
-        self.state.set("final_mode", "full")
-        self.state.set("final_dirty", {})
-        s, g = self.p["source"], self.p["guest"]
-        try:
-            trackers = {d["name"]: self._cbt_for(d) for d in self.p["disks"]}
-            if any(t is None for t in trackers.values()):
-                raise cbt.NotReady("no tracker")
-            qmp = cbt.VirshQmp(self.source_shell(), s["qemu_domain"])
-            access = self.guest().access()
-            addr = g["address"]
-
-            def guest_up():
-                try:
-                    socket.create_connection((addr, 22), 1).close()
-                    return True
-                except OSError:
-                    return False
-            found = cbt.halt_and_capture(qmp, trackers, lambda: access.t.run("systemctl halt --no-block", timeout=30),
-                                         guest_up, self.chunk, timeout=int(s.get("stop_timeout", 300)))
-        except cbt.NotReady as e:
-            log.warning("final dirty pass not used, normal stop and full final pass (%s)", e)
-            return False
-        except cbt.CaptureFailed as e:
-            log.warning("final dirty capture failed after the halt (%s), full final pass", e)
-            return True
-        self.state.set("final_dirty", found)
-        self.state.set("final_mode", "dirty")
-        log.info("final dirty set captured: %s chunks", {k: len(v) for k, v in found.items()})
-        return True
-
-    def stop_source(self, assume_stopped=False, action="stop"):
+    def stop_source(self, assume_stopped=False):
         state = self.source_stopped()
         if state is None:
             if not assume_stopped:
@@ -486,7 +434,7 @@ class Migration:
             return
         if state:
             return
-        self._source_power(action)
+        self._source_power("stop")
         deadline = time.time() + int(self.p["source"].get("stop_timeout", 300))
         while time.time() < deadline:
             if self.source_stopped():
@@ -520,11 +468,8 @@ class Migration:
         if not self.step_done("stopped"):
             began = time.time()     # downtime includes the guest shutdown itself
             self.state.set("downtime_start", began)
-            self.state.set("final_mode", "full")
-            self.state.set("final_dirty", {})
             try:
-                halted = self.final_dirty_possible(assume_stopped) and self.halt_and_capture()
-                self.stop_source(assume_stopped, "poweroff" if halted else "stop")
+                self.stop_source(assume_stopped)
             except Exception:
                 self.state.set("downtime_start", None)
                 raise
@@ -534,7 +479,8 @@ class Migration:
         if not self.step_done("synced"):
             t0 = time.time()
             self.state.set("final_sync", self._sync_all(final=True))
-            self.timing(final_sync_seconds=round(time.time() - t0, 1), final_mode=self.state.get("final_mode") or "full")
+            self.timing(final_sync_seconds=round(time.time() - t0, 1),
+                        final_verify=self.p["sync"].get("final_verify", "full"))
             for d in self.p["disks"]:   # the guest is off, so its bitmaps are gone: a later resync starts tracking afresh
                 if self.state.get("cbt:" + d["name"]) is not None:
                     self.state.set("cbt:" + d["name"], "off")

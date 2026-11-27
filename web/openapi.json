@@ -3369,7 +3369,7 @@
                             "none"
                         ],
                         "title": "Final Verify",
-                        "description": "how the final sync is checked when changed-block tracking gave it a dirty pass: full (hash the target too, default), sample (random chunks plus every written one), none (trust the dirty pass); docs/cbt.md",
+                        "description": "how the final sync checks the target after its source pass: full (hash the target too, default), sample (compare a random 1 percent), none (trust the recorded digests); docs/cbt.md",
                         "default": "full"
                     }
                 },

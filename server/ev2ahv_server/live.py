@@ -237,8 +237,7 @@ def engine_plan(plan, vm, src, wl, secret, settings):
         api = (f"{shlex.quote(sys.executable)} -I {shlex.quote(os.path.join(ROOT, 'ev2ahv', 'everrun_api.py'))} "
                f"--host {shlex.quote(src['address'])} --user {shlex.quote(src['username'])}")
         q = shlex.quote(vm["name"])
-        p["source"]["power"].update(status=f"{api} status {q}", stop=f"{api} stop {q}", start=f"{api} start {q}",
-                                  poweroff=f"{api} poweroff {q}")
+        p["source"]["power"].update(status=f"{api} status {q}", stop=f"{api} stop {q}", start=f"{api} start {q}")
     t = p["target"]
     if vs.get("target_name"):
         t["vm_name"] = vs["target_name"]
@@ -248,10 +247,10 @@ def engine_plan(plan, vm, src, wl, secret, settings):
             t[k_eng] = vs[k_ui]
     if vs.get("vcpus"):
         t["sockets"] = 1
+    if vs.get("final_verify") in ("full", "sample", "none"):
+        p.setdefault("sync", {})["final_verify"] = vs["final_verify"]
     if vs.get("cbt") == "auto" and p["source"].get("type") == "direct" and p["source"].get("qemu_domain"):
         p.setdefault("sync", {})["cbt"] = "auto"   # default stays off; the plan validator rejects auto elsewhere
-        if vs.get("final_verify") in ("full", "sample", "none"):
-            p["sync"]["final_verify"] = vs["final_verify"]
     if plan.get("cluster"):
         t["cluster"] = plan["cluster"]
     if plan.get("container"):

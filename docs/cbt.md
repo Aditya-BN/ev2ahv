@@ -3,8 +3,8 @@
 Status 2026-11-27: works on real everRun, on the HA guest (`ev2ahv-src-win22`, "On everRun" below) and on the FT guest
 (`ev2ahv-src-rocky9`, "On an FT guest" below). Wired into the resync as a plan option `sync.cbt: auto|off` (default **off**).
 Since 0.3.5 it is a per-VM setting in the appliance too (wizard checkbox, `vm_settings.cbt`, and
-`PATCH /api/v2/plans/{id}/vms/{vm}/settings` `{"cbt": "auto"}` for an existing plan). Since 0.3.6 the final sync can use the
-bitmap too (section "Final sync" below); `sync.final_verify` chooses how it is checked, default `full`.
+`PATCH /api/v2/plans/{id}/vms/{vm}/settings` `{"cbt": "auto"}` for an existing plan). The final sync does not use the bitmap
+(tried in 0.3.6 and rejected, see "Final sync" below); `sync.final_verify` (0.3.6) shortens it instead.
 
 ## Why
 
@@ -122,47 +122,54 @@ was enabled and 8 scheduled resyncs ran with a write load in the guest (table in
   no per-VM failover for an FT guest (it is a node action, which also moves the other lab guest), so it was left alone.
   Ask Stratus before using this on customer FT guests.
 
-## Final sync (0.3.6)
+## Final sync (0.3.6): what was tried, and what shipped
 
-Problem: of the 439 s downtime on the 40 GiB FT guest, 378 s was the final sync, which is always a full pass (one source-only
-pass, then verified passes that hash the target too). The bitmap lives in the guest's QEMU, and everRun's QEMU exits the
-moment the guest powers off, so after a normal stop there is nothing left to read.
+Problem: of the 439 s downtime on the 40 GiB FT guest, 378 s was the final sync. It is a source-only pass (about 75 s) followed by
+verified passes that hash the target too (about 300 s: 145 s for the 20 GiB boot disk alone, one round when nothing differs).
+The bitmap lives in the guest's QEMU. Could the final sync read only the dirty chunks?
 
-What everRun does on a stop (observed 2026-11-27 with a 20 ms QMP status poll on both nodes during a cutover of
-`ev2ahv-src-rocky9`): the partner QEMU goes paused to running, the guest shuts down, and about 5.5 s after the stop QEMU
-exits and the monitor socket resets. There is no `shutdown` or `paused` state in between and so no window to read a bitmap
-(libvirt's own `-no-shutdown` window would have shown as a status). A bitmap cannot be persisted (raw disks, see above).
+**Answer for everRun: not safely, so the bitmap is not used for the final sync.** What was measured (2026-11-27, FT guest
+`ev2ahv-src-rocky9`, appliance-2 0.3.6 builds; the code is in commit 3ae3c57 and was reverted in the next commit):
 
-Chosen approach: **halt, pause, read, then power off hard.** With `sync.cbt: auto` and a Linux guest that the appliance
-reaches over ssh (`guest.address`), the cutover does not use everRun's stop:
+1. everRun's QEMU does not outlive the guest. A 20 ms QMP status poll on both nodes during a stock stop showed: partner paused
+   to running, then about 5.5 s later the monitor socket resets. There is no `shutdown` or `paused` state to catch, so after a
+   normal stop there is nothing left to read (and a bitmap cannot be persisted on raw disks).
+2. Halting the guest from inside (`systemctl halt --no-block` over ssh, the CPU stays powered so QEMU stays up) does keep QEMU
+   alive. Pausing it over QMP `stop` does not stick: everRun resumes it within a second (in the second run `query-status`
+   straight after `stop` already said `running`).
+3. "The disks were silent for 5 s" is not "the guest has finished". A file-mtime trace on node0 showed the guest's last writes
+   to the boot disk came 1.5 to 4.6 s after a 4.6 s silence in the middle of the shutdown (the capture had run in the gap).
+   Run 1 shows the effect: the dirty pass missed 2 chunks of `vda`, which only the verified pass found.
+4. The disk files' mtime cannot prove "nothing was written after the capture": everRun touches all four files every 3 s on its own.
 
-1. Check the guest QEMU is `running` on this node and every disk's bitmap exists and was tracked without a gap since its
-   last full pass (`cbt:<disk>` = tracking). Otherwise: normal stop, full final sync (today's behaviour).
-2. `systemctl halt --no-block` over ssh. The OS stops its services and unmounts, then halts with the virtual CPU still
-   powered, so QEMU stays alive.
-3. Wait until the guest answers nothing on ssh and the disks saw no write or flush for 5 s (`query-blockstats`).
-4. QMP `stop` (vCPUs paused, I/O drained). From here no write is possible, and the bitmap holds every write up to this
-   point: the dirty set is exact and final.
-5. In the same pause, rotate each disk's bitmap and read its dirty extents over NBD (about 1 s per disk).
-6. everRun `poweroff` (hard; the guest is already halted and paused, so nothing is cut short). Wait for `stopped`.
-7. Dirty final pass: read only the dirty chunks, send those that differ from the recorded digests. Then `sync.final_verify`:
-   - `full` (default): the existing verified passes (hash source and target, repair, repeat until clean). Saves only the
-     first full source pass.
-   - `sample`: compare a random 2 percent of the disk (at least 256 chunks) plus every chunk the dirty pass wrote, source
-     against target. Any difference runs the full verified passes.
-   - `none`: trust the dirty pass. The floor of the downtime, but nothing checks the bitmap.
+Results of the two runs that used the bitmap (guest idle, `final_verify: full`):
 
-Failure handling, all ending in the current full final pass: no bitmap, status not `running`, flag not tracking, halt
-command refused (the guest is untouched, normal stop), guest not silent within `stop_timeout`, QMP error or rotate error
-after the halt (the guest is powered off hard, then the full pass). A halted guest is never left paused with no
-plan: the power-off runs in every branch. The dirty list is stored in the plan state before the source stops, so a crashed
-cutover resumes the same dirty pass. `sync.final_cbt: off` keeps the old stop path even with `cbt: auto`.
+| Run | Path | Downtime | Final sync | Note |
+| --- | --- | --- | --- | --- |
+| Stock 0.3.5, cbt off (earlier) | stop, full pass, verified passes | 422.1 s and 439.1 s | 364 s and 377.9 s | |
+| Stock 0.3.5 with the QMP observers (2026-11-27 02:25 UTC) | same | 474.4 s | 403.0 s | stop to QEMU exit 5.5 s |
+| 1: halt, pause, bitmap, dirty pass (30 + 3 + 3 + 3 chunks), then verified passes | 534.5 s | 446.6 s | the dirty set missed 2 `vda` chunks, so the verified pass ran twice (2 x 145 s); data correct |
+| 2: same, but the pause did not hold, so it fell back (poweroff, full final pass) | 489.3 s | 399.9 s | the fallback worked; halt plus hard power-off cost 89 s before the final sync against 71 s for a stock stop |
 
-What is and is not guaranteed: the target equals the source's disks at the moment of the pause (QMP `stop` plus an exact
-bitmap), and `full` verifies that independently of the bitmap. How clean the guest's filesystems are depends on step 3: a
-guest that halted normally unmounted cleanly; one that was still stopping a service when the disks went quiet is left like
-a power cut (journal replay on the first boot). Windows guests and sources without ssh keep the old path (there is no
-halt without power-off on Windows).
+Both ended with the data identical on AHV (438 of 438 files in each directory, same IP and MAC). The bitmap final was slower than
+today's final sync in both runs, and a dirty set that is not exact would corrupt the copy under `sample` or `none`. So it was removed
+(the design below is what would be needed to bring it back).
+
+What would make it exact: a guarantee that the guest cannot write after the capture. On everRun that would need either a
+guest-side hook that signals "halted, all file systems unmounted" (a `system-shutdown` script), or making the disk nodes read-only
+in QEMU (`blockdev-reopen`) before the capture; neither is safe to run against everRun's own storage handling without Stratus.
+
+**What shipped instead: `sync.final_verify: full|sample|none`** (per-VM setting `final_verify`, API and wizard column "Final sync check",
+default `full`). The final sync is still the exact source-only pass first, which sends everything that differs from the recorded
+digests; the setting controls the pass after it, which hashes the target:
+
+- `full`: verified passes (today's behaviour).
+- `sample`: compare a random 1 percent of each disk (at least 64 chunks), source against target. Any difference runs the verified
+  passes.
+- `none`: trust the recorded digests. A digest is recorded only after the target fsynced the chunk, so it is the exact source
+  content for every chunk the source pass saw; what it cannot see is a target that changed behind the tool's back.
+
+This is independent of `sync.cbt`. Numbers from the lab are in docs/results.md ("final_verify").
 
 ## Plan option
 

@@ -392,7 +392,7 @@ function Step5({ ws, set, selected, setting }: SP & { selected: Workload[]; sett
       <h4 className="section">VM Settings</h4>
       <p>Review and override the settings of each VM on AHV.</p>
       <div className="table-wrap"><table className="grid vmset">
-        <thead><tr><th>Source VM</th><th>Target VM name</th><th>vCPU(s)</th><th>Memory (GiB)</th><th>Disk bus</th><th>Firmware</th><th>Timezone</th><th>Guest IP (for automatic preparation)</th><th>Changed-block tracking</th></tr></thead>
+        <thead><tr><th>Source VM</th><th>Target VM name</th><th>vCPU(s)</th><th>Memory (GiB)</th><th>Disk bus</th><th>Firmware</th><th>Timezone</th><th>Guest IP (for automatic preparation)</th><th>Changed-block tracking</th><th>Final sync check</th></tr></thead>
         <tbody>{selected.map((w) => { const s = setting(w); return (
           <tr key={w.id} data-testid="vmset-row">
             <td>{w.name}<div className="sub">{w.os_name}</div></td>
@@ -406,9 +406,9 @@ function Step5({ ws, set, selected, setting }: SP & { selected: Workload[]; sett
             <td><select aria-label="Timezone" value={s.timezone || ''} onChange={(e) => up(w, { timezone: e.target.value || null })}>
               <option value="">Same as source</option>{tzs.map((z) => <option key={z}>{z}</option>)}</select></td>
             <td><input aria-label="Guest IP" value={s.guest_address || ''} placeholder="e.g. 10.0.0.20" onChange={(e) => up(w, { guest_address: e.target.value || null })} /></td>
-            <td><label className="cb small"><input type="checkbox" aria-label={`Changed-block tracking ${w.name}`} checked={s.cbt === 'auto'} onChange={(e) => up(w, { cbt: e.target.checked ? 'auto' : 'off' })} /> Experimental: faster resyncs and final sync (docs/cbt.md)</label>
-              {s.cbt === 'auto' && <label className="cb small">Final check <select aria-label={`Final verify ${w.name}`} value={s.final_verify || 'full'} onChange={(e) => up(w, { final_verify: e.target.value as 'full' | 'sample' | 'none' })}>
-                <option value="full">Full (safest)</option><option value="sample">Sample</option><option value="none">None (fastest)</option></select></label>}</td>
+            <td><label className="cb small"><input type="checkbox" aria-label={`Changed-block tracking ${w.name}`} checked={s.cbt === 'auto'} onChange={(e) => up(w, { cbt: e.target.checked ? 'auto' : 'off' })} /> Experimental: faster resyncs (docs/cbt.md)</label></td>
+            <td><select aria-label={`Final verify ${w.name}`} value={s.final_verify || 'full'} onChange={(e) => up(w, { final_verify: e.target.value as 'full' | 'sample' | 'none' })}>
+              <option value="full">Full (safest)</option><option value="sample">Sample (faster)</option><option value="none">None (fastest)</option></select></td>
           </tr>); })}</tbody></table></div>
       {selected.some((w) => w.os_type === 'windows' && setting(w).disk_bus === 'scsi' && w.warnings.some((x) => x.includes('virtio-blk only'))) &&
         <div className="alert warn">A Windows VM with virtio-blk only cannot boot from SCSI. Choose PCI with "Convert PCI to SCSI after cutover", or the prep-check will fail.</div>}

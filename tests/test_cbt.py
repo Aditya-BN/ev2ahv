@@ -2,7 +2,6 @@
 import os, sys, tempfile, unittest, unittest.mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ev2ahv import engine  # noqa: E402
-from ev2ahv import cbt  # noqa: E402
 from ev2ahv.cbt import BitmapLost, QemuBitmap, find_node, parse_map, ranges_to_chunks  # noqa: E402
 from ev2ahv.readers import LocalReader  # noqa: E402
 from ev2ahv.state import State  # noqa: E402
@@ -80,99 +79,8 @@ class EverrunShapeTest(unittest.TestCase):
             find_node(lambda *a: nodes, "/d/other")
 
 
-class HaltAndCaptureTest(unittest.TestCase):
-    """cbt.halt_and_capture: halt from inside, wait for silence, pause over QMP, then read the bitmaps."""
-    def setUp(self):
-        self.t, self.calls, self.status, self.writes = 0.0, [], "running", [10]
-
-    def clock(self):
-        return self.t
-
-    def sleep(self, s):
-        self.t += s
-
-    def qmp(self, execute, arguments=None):
-        self.calls.append(execute)
-        if execute == "query-status":
-            return {"status": self.status}
-        if execute == "query-blockstats":
-            return [{"stats": {"wr_operations": self.writes[0], "flush_operations": 1}}]
-        if execute == "stop":
-            self.status = "paused"
-        return {}
-
-    def bm(self, ranges=((C, C),), has=True, fail=None):
-        b = unittest.mock.MagicMock()
-        b.has_bitmap.return_value = has
-        b.rotate.return_value = "f"
-        b.dirty.side_effect = fail or (lambda f: list(ranges))
-        return b
-
-    def run_capture(self, trackers, halt=None, up=lambda: False, **kw):
-        return cbt.halt_and_capture(self.qmp, trackers, halt or (lambda: self.calls.append("halt")), up, C,
-                                    sleep=self.sleep, now=self.clock, **kw)
-
-    def test_halt_wait_pause_then_rotate_in_that_order(self):
-        out = self.run_capture({"a": self.bm(), "b": self.bm(((0, 3 * C),))})
-        self.assertEqual(out, {"a": [1], "b": [0, 1, 2]})
-        self.assertLess(self.calls.index("halt"), self.calls.index("stop"))
-        self.assertGreaterEqual(self.t, 5.0)        # waited for the quiet period
-
-    def test_writes_or_a_reachable_guest_restart_the_quiet_period(self):
-        ups = iter([True, True, False] + [False] * 100)
-        ticks = [0]
-
-        def writes_grow(execute, arguments=None):
-            r = self.qmp(execute, arguments)
-            if execute == "query-blockstats":
-                ticks[0] += 1
-                if ticks[0] < 6:
-                    self.writes[0] += 1
-            return r
-        out = cbt.halt_and_capture(writes_grow, {"a": self.bm()}, lambda: None, lambda: next(ups), C,
-                                   sleep=self.sleep, now=self.clock)
-        self.assertEqual(out, {"a": [1]})
-        self.assertGreaterEqual(self.t, 8.0)        # 6 busy polls at 0.5 s plus the quiet period
-
-    def test_nothing_is_halted_when_the_guest_is_not_running_or_a_bitmap_is_missing(self):
-        halted = []
-        self.status = "paused"
-        with self.assertRaises(cbt.NotReady):
-            self.run_capture({"a": self.bm()}, halt=lambda: halted.append(1))
-        self.status = "running"
-        with self.assertRaises(cbt.NotReady):
-            self.run_capture({"a": self.bm(), "b": self.bm(has=False)}, halt=lambda: halted.append(1))
-        self.assertEqual(halted, [])
-        self.assertNotIn("stop", self.calls)
-
-    def test_a_failed_halt_command_is_not_ready(self):
-        def boom():
-            raise RuntimeError("ssh down")
-        with self.assertRaises(cbt.NotReady):
-            self.run_capture({"a": self.bm()}, halt=boom)
-        self.assertNotIn("stop", self.calls)
-
-    def test_timeout_and_bitmap_errors_after_the_halt_are_capture_failures(self):
-        with self.assertRaises(cbt.CaptureFailed):
-            self.run_capture({"a": self.bm()}, up=lambda: True, timeout=30)
-        self.assertNotIn("stop", self.calls)         # never pauses a guest that has not halted
-        with self.assertRaises(cbt.CaptureFailed):
-            self.run_capture({"a": self.bm(fail=BitmapLost("gone"))})
-
-    def test_a_write_during_the_capture_voids_the_dirty_set(self):
-        """everRun resumes a paused guest within a second, so the pause alone proves nothing."""
-        def resumed_and_wrote(execute, arguments=None):
-            r = self.qmp(execute, arguments)
-            if execute == "stop":
-                self.writes[0] += 1                 # a write lands after the pause
-            return r
-        with self.assertRaises(cbt.CaptureFailed) as e:
-            cbt.halt_and_capture(resumed_and_wrote, {"a": self.bm()}, lambda: None, lambda: False, C,
-                                 sleep=self.sleep, now=self.clock)
-        self.assertIn("wrote", str(e.exception))
-
-
-class FinalSyncDirtyTest(unittest.TestCase):
+class FinalVerifyTest(unittest.TestCase):
+    """engine.final_sync: the source pass is always exact; final_verify decides how the target is checked."""
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.src, self.dst = os.path.join(self.tmp.name, "s"), os.path.join(self.tmp.name, "d")
@@ -188,8 +96,8 @@ class FinalSyncDirtyTest(unittest.TestCase):
     def tearDown(self):
         self.r.close(); self.w.close(); self.state.close(); self.tmp.cleanup()
 
-    def poke(self, idx):
-        with open(self.src, "r+b") as f:
+    def poke(self, path, idx):
+        with open(path, "r+b") as f:
             f.seek(idx * C); f.write(os.urandom(C))
 
     def same(self):
@@ -197,41 +105,72 @@ class FinalSyncDirtyTest(unittest.TestCase):
         with open(self.src, "rb") as a, open(self.dst, "rb") as b:
             return a.read() == b.read()
 
-    def test_full_verify_reads_dirty_then_hashes_both_sides(self):
-        for i in (7, 300):
-            self.poke(i)
-        rounds, st = engine.final_sync_dirty(self.r, self.w, self.state, "d", "blake2b", [7, 300], verify="full")
-        self.assertEqual((rounds, st["final_mode"], st["dirty_chunks"]), (1, "dirty+full", 2))
+    def final(self, verify):
+        return engine.final_sync(self.r, self.w, self.state, "d", "blake2b", verify=verify)
+
+    def test_full_hashes_the_target_and_repairs_it(self):
+        self.poke(self.src, 7)
+        self.poke(self.dst, 300)                         # the target drifted from what was recorded
+        rounds, st = self.final("full")
+        self.assertGreaterEqual(rounds, 1)
+        self.assertEqual(st["final_verify"], "full")
         self.assertTrue(self.same())
 
-    def test_full_verify_repairs_a_chunk_the_bitmap_missed(self):
-        self.poke(7); self.poke(9)                       # 9 is not in the dirty list
-        rounds, st = engine.final_sync_dirty(self.r, self.w, self.state, "d", "blake2b", [7], verify="full")
-        self.assertTrue(self.same())
-        self.assertEqual(rounds, 2)                      # the first verified pass sent chunk 9
+    def test_none_reads_the_source_only_and_sends_what_changed(self):
+        self.poke(self.src, 7); self.poke(self.src, 9)
+        rounds, st = self.final("none")
+        self.assertEqual((rounds, st["final_verify"], st["sent"]), (0, "none", 2))
+        self.assertTrue(self.same())                     # exact for the source, whatever the guest wrote
 
-    def test_none_trusts_the_dirty_pass(self):
-        self.poke(7); self.poke(9)
-        rounds, st = engine.final_sync_dirty(self.r, self.w, self.state, "d", "blake2b", [7], verify="none")
-        self.assertEqual((rounds, st["final_mode"], st["read_chunks"]), (0, "dirty+none", 1))
-        self.assertFalse(self.same())                    # the missed chunk is only found by full or sample
+    def test_none_trusts_the_record_so_target_drift_is_not_seen(self):
+        self.poke(self.dst, 300)
+        rounds, st = self.final("none")
+        self.assertEqual(st["sent"], 0)
+        self.assertFalse(self.same())                    # why full is the default
 
-    def test_sample_passes_when_clean_and_escalates_to_full_on_a_difference(self):
-        self.poke(7)
-        rounds, st = engine.final_sync_dirty(self.r, self.w, self.state, "d", "blake2b", [7], verify="sample")
-        self.assertEqual((rounds, st["final_mode"]), (0, "dirty+sample"))
+    def test_sample_passes_when_the_target_is_clean(self):
+        self.poke(self.src, 7)
+        rounds, st = self.final("sample")
+        self.assertEqual((rounds, st["final_verify"]), (0, "sample"))
         self.assertTrue(self.same())
-        # sample size forced to the whole disk, so a missed write is always seen and the full passes repair it
-        self.poke(9)
-        with unittest.mock.patch.object(engine, "SAMPLE_MIN", 512):
-            rounds, st = engine.final_sync_dirty(self.r, self.w, self.state, "d", "blake2b", [7], verify="sample")
-        self.assertEqual(st["final_mode"], "dirty+sample->full")
+
+    def test_sample_escalates_to_the_verified_passes_on_a_difference(self):
+        self.poke(self.dst, 300)
+        with unittest.mock.patch.object(engine, "SAMPLE_MIN", 512):     # sample = the whole disk
+            rounds, st = self.final("sample")
+        self.assertEqual(st["final_verify"], "sample->full")
         self.assertGreaterEqual(rounds, 1)
         self.assertTrue(self.same())
 
-    def test_bad_verify_value_is_refused(self):
+    def test_sample_size_and_bad_value(self):
+        picked = []
+        orig = engine.random.Random.sample
+        with unittest.mock.patch.object(engine.random.Random, "sample", lambda self_, pop, k: picked.append(k) or orig(self_, pop, k)):
+            engine.sample_check(self.r, self.w, "d", "blake2b", self.state, 512)
+        self.assertEqual(picked, [64])                   # min(total, max(64, 1 percent))
         with self.assertRaises(ValueError):
-            engine.final_sync_dirty(self.r, self.w, self.state, "d", "blake2b", [], verify="maybe")
+            self.final("maybe")
+
+
+class WorkflowFinalVerifyTest(unittest.TestCase):
+    def test_the_plan_setting_reaches_the_engine_and_cbt_flags_are_not_touched_by_it(self):
+        from ev2ahv import workflow
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        src, dst = os.path.join(tmp.name, "s"), os.path.join(tmp.name, "d")
+        with open(src, "wb") as f:
+            f.write(os.urandom(32 * C))
+        with open(dst, "wb") as f:
+            f.truncate(32 * C)
+        m = workflow.Migration.__new__(workflow.Migration)
+        m.state, m.chunk = State(os.path.join(tmp.name, "st.db")), C
+        self.addCleanup(m.state.close)
+        r, w = LocalReader(src, chunk=C), BlockEndpoint(LocalTransport(), dst, chunk=C, writable=True)
+        self.addCleanup(r.close); self.addCleanup(w.close)
+        engine.sync(r, w, m.state, "d", "blake2b")
+        for mode, rounds in (("none", 0), ("sample", 0), ("full", 1), (None, 1)):   # no setting means full
+            m.p = {"name": "t", "sync": {} if mode is None else {"final_verify": mode}}
+            st = m._sync_disk({"name": "d", "path": src}, r, w, "blake2b", {"batch": 8, "progress": None}, False, True)
+            self.assertEqual((st["verified_rounds"], st["final_verify"]), (rounds, mode or "full"))
 
 
 class WorkflowCbtTest(unittest.TestCase):
@@ -302,93 +241,6 @@ class WorkflowCbtTest(unittest.TestCase):
         self.assertIsNone(self.m.state.get("cbt:d"))
 
 
-class WorkflowFinalTest(unittest.TestCase):
-    """Migration: when the final dirty pass is possible, and how _sync_disk(final=True) uses or drops its result."""
-    def setUp(self):
-        from ev2ahv import workflow
-        self.tmp = tempfile.TemporaryDirectory()
-        self.src, self.dst = os.path.join(self.tmp.name, "s"), os.path.join(self.tmp.name, "d")
-        with open(self.src, "wb") as f:
-            f.write(os.urandom(64 * C))
-        with open(self.dst, "wb") as f:
-            f.truncate(64 * C)
-        m = workflow.Migration.__new__(workflow.Migration)
-        m.state, m.chunk = State(os.path.join(self.tmp.name, "st.db")), C
-        m.p = {"name": "t", "sync": {"cbt": "auto", "final_cbt": "auto", "final_verify": "full"},
-               "source": {"type": "direct", "qemu_domain": "dom", "power": {"poweroff": "x"}},
-               "guest": {"os": "linux", "address": "10.0.0.5", "prep": "auto"}, "disks": [{"name": "d", "path": self.src}]}
-        self.m, self.disk = m, m.p["disks"][0]
-        self.r = LocalReader(self.src, chunk=C)
-        self.w = BlockEndpoint(LocalTransport(), self.dst, chunk=C, writable=True)
-        engine.sync(self.r, self.w, m.state, "d", "blake2b")
-        m.state.set("cbt:d", "tracking")
-
-    def tearDown(self):
-        self.r.close(); self.w.close(); self.m.state.close(); self.tmp.cleanup()
-
-    def final(self):
-        return self.m._sync_disk(self.disk, self.r, self.w, "blake2b", {"batch": 8, "progress": None}, False, True)
-
-    def poke(self, idx):
-        with open(self.src, "r+b") as f:
-            f.seek(idx * C); f.write(os.urandom(C))
-
-    def test_possible_only_when_everything_lines_up(self):
-        self.assertTrue(self.m.final_dirty_possible())
-        self.assertFalse(self.m.final_dirty_possible(assume_stopped=True))
-        for mutate in (lambda p: p["sync"].update(cbt="off"), lambda p: p["sync"].update(final_cbt="off"),
-                       lambda p: p["guest"].update(os="windows"), lambda p: p["guest"].pop("address"),
-                       lambda p: p["source"]["power"].pop("poweroff"), lambda p: p["source"].update(type="local")):
-            saved = __import__("copy").deepcopy(self.m.p)
-            mutate(self.m.p)
-            self.assertFalse(self.m.final_dirty_possible())
-            self.m.p = saved
-        self.m.state.set("cbt:d", "off")          # tracking had a gap
-        self.assertFalse(self.m.final_dirty_possible())
-
-    def test_dirty_list_gives_a_dirty_final_pass(self):
-        self.poke(5)
-        self.m.state.set("final_dirty", {"d": [5]})
-        st = self.final()
-        self.assertEqual((st["final_mode"], st["dirty_chunks"], st["verified_rounds"]), ("dirty+full", 1, 1))
-
-    def test_no_list_or_a_failing_dirty_pass_means_the_full_final_pass(self):
-        self.poke(5)
-        st = self.final()                                   # nothing captured: current behaviour
-        self.assertEqual(st["final_mode"], "full")
-        self.poke(6)
-        self.m.state.set("final_dirty", {"d": [6]})
-        self.m.state.begin_pass("d")                        # a half-done pass: sync_dirty refuses
-        st = self.final()
-        self.assertEqual(st["final_mode"], "full")
-        with open(self.src, "rb") as a, open(self.dst, "rb") as b:
-            self.assertEqual(a.read(), b.read())
-
-    def test_final_verify_setting_is_used(self):
-        self.poke(5); self.poke(6)
-        self.m.p["sync"]["final_verify"] = "none"
-        self.m.state.set("final_dirty", {"d": [5]})
-        st = self.final()
-        self.assertEqual((st["final_mode"], st["verified_rounds"]), ("dirty+none", 0))
-
-    def test_halt_and_capture_records_the_list_or_stays_full(self):
-        m = self.m
-        m.source_shell = lambda: None
-        m._cbt_for = lambda d: unittest.mock.MagicMock()
-        m.guest = lambda: unittest.mock.MagicMock()
-        with unittest.mock.patch.object(cbt, "halt_and_capture", return_value={"d": [1, 2]}):
-            self.assertTrue(m.halt_and_capture())
-        self.assertEqual((m.state.get("final_mode"), m.state.get("final_dirty")), ("dirty", {"d": [1, 2]}))
-        with unittest.mock.patch.object(cbt, "halt_and_capture", side_effect=cbt.NotReady("x")):
-            self.assertFalse(m.halt_and_capture())      # guest untouched: normal stop
-        self.assertEqual((m.state.get("final_mode"), m.state.get("final_dirty")), ("full", {}))
-        with unittest.mock.patch.object(cbt, "halt_and_capture", side_effect=cbt.CaptureFailed("x")):
-            self.assertTrue(m.halt_and_capture())       # guest halted: power it off, full pass
-        self.assertEqual((m.state.get("final_mode"), m.state.get("final_dirty")), ("full", {}))
-        m._cbt_for = lambda d: None
-        self.assertFalse(m.halt_and_capture())
-
-
 class PlanCbtTest(unittest.TestCase):
     def test_default_off_and_auto_needs_a_domain(self):
         from ev2ahv import plan
@@ -399,10 +251,9 @@ class PlanCbtTest(unittest.TestCase):
             plan.validate(bad)
         ok = dict(bad, source=dict(base["source"], qemu_domain="ev2ahv-src-win22"))
         self.assertEqual(plan.validate(ok)["sync"]["cbt"], "auto")
-        self.assertEqual((ok["sync"]["final_verify"], ok["sync"]["final_cbt"]), ("full", "auto"))
-        for key, bad_value in (("final_verify", "maybe"), ("final_cbt", "on")):
-            with self.assertRaises(plan.PlanError):
-                plan.validate(dict(ok, sync=dict(ok["sync"], **{key: bad_value})))
+        self.assertEqual(ok["sync"]["final_verify"], "full")
+        with self.assertRaises(plan.PlanError):
+            plan.validate(dict(ok, sync=dict(ok["sync"], final_verify="maybe")))
 
 
 class SyncDirtyTest(unittest.TestCase):

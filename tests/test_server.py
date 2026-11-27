@@ -130,13 +130,10 @@ class CbtSettingTest(unittest.TestCase):
         self.assertEqual(self._plan("auto")["sync"]["cbt"], "auto")
 
     def test_final_verify_reaches_the_engine_plan_and_defaults_to_full(self):
-        self.assertEqual(self._plan("auto")["sync"]["final_verify"], "full")
-        self.assertEqual(self._plan("auto", "none")["sync"]["final_verify"], "none")
+        self.assertEqual(self._plan(None)["sync"]["final_verify"], "full")
+        self.assertEqual(self._plan("off", "none")["sync"]["final_verify"], "none")   # independent of cbt
         self.assertEqual(self._plan("auto", "sample")["sync"]["final_verify"], "sample")
-        self.assertEqual(self._plan(None, "none")["sync"]["final_verify"], "full")   # cbt off: not applied
-
-    def test_engine_plan_can_power_off_the_source_hard(self):
-        self.assertIn("poweroff", self._plan("auto")["source"]["power"])
+        self.assertEqual(self._plan("auto")["sync"]["final_verify"], "full")
 
     def test_model_default_and_patch_validation(self):
         self.assertEqual(m.VmSettings().cbt, "off")
