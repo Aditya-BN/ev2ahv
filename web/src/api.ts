@@ -68,7 +68,11 @@ export interface ActionIn { action: PlanAction; vm_ids: string[]; force: boolean
 export interface EventRow { time: number; severity: 'info' | 'warning' | 'error'; plan?: string | null; vm?: string | null; message: string }
 export interface BandwidthPolicy { id: string; name: string; source_id: string; source_name: string; frequency: string; limit_mbps: number }
 export interface Writer { vm?: string | null; host?: string | null; user?: string | null }
-export interface Settings { id?: string; resync_minutes: number; bandwidth_policies: BandwidthPolicy[]; timezone: string; writer?: Writer | null; source_name_prefix?: string }
+export interface Settings { id?: string; resync_minutes: number; bandwidth_policies: BandwidthPolicy[]; timezone: string; writer?: Writer | null; source_name_prefix?: string; ldap?: LdapSettings }
+export interface LdapSettings {
+  enabled: boolean; url?: string; bind_dn?: string; bind_password?: string; user_base?: string; user_filter?: string;
+  admin_group?: string; viewer_group?: string; start_tls?: boolean; verify_tls?: boolean; ca_file?: string; allow_plain?: boolean;
+}
 export interface SelfTestStep { time: number | string; message: string }
 export interface SelfTest { status: 'never run' | 'running' | 'PASS' | 'FAIL'; steps?: SelfTestStep[]; error?: string | null; started?: number | null; ended?: number | null }
 export interface Health {

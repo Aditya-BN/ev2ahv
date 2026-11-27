@@ -95,10 +95,14 @@ Local accounts are stored in the app database (`/var/lib/ev2ahv`, kind `user`), 
   password and a forced change; other accounts are left alone.
 - Every add, change, reset and delete is an event (who and what), so it is in the audit trail.
 
-LDAP / Active Directory: **not implemented** (`users.ldap_login` is a stub that returns no user). Planned shape:
-settings `ldap: {url, bind_dn, bind_password (secret store), user_base, user_filter, admin_group, viewer_group}`;
-login tries the local account first, then an LDAPS simple bind as the user, and maps group membership to the role
-at every login (no local copy of the password). Needs a directory in the lab to build and test against.
+LDAP / Active Directory (D13, 0.3.7+): Appliance Settings > Directory sign-in. Local accounts are tried first. For a
+directory user ev2ahv binds with a service account, finds exactly one entry with `user_filter` (default
+`(sAMAccountName={username})`, the username is escaped) under `user_base`, binds as that DN with the typed password, and
+gives the admin or viewer role from membership of `admin_group` / `viewer_group` (`member`, `uniqueMember` or
+`memberUid` on the group entry, so it works with AD and OpenLDAP without `memberOf`). Users in neither group cannot sign
+in. Nothing about the user is stored; the role is decided at every login. The service account password is write-only
+(encrypted secret store). Clear-text `ldap://` is refused unless StartTLS is on (or `allow_plain` for a lab); certificate
+verification is on by default. A directory outage never blocks local accounts. Library: `ldap3` 2.9.1 + `pyasn1` 0.6.5.
 
 ## Booted-instance check (2026-11-27, `ev2ahv-appliance-3`, 0.3.5 on AHV)
 

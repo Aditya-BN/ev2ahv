@@ -509,3 +509,18 @@ Real Prism Central (adit's API key): `Prism.projects()` returned 9 projects. A d
 `ev2ahv-d8a-test` (e9066136-...) was created with v4, then `set_project(vm, <Testing>)` updated it through v3:
 GET `/api/nutanix/v3/vms/{uuid}` afterwards shows `project_reference` = Testing (21dd8ccd-...). A second call returned
 "no change". Not yet run inside a full migration (the step runs right after create, before power-on).
+
+## D13: LDAP sign-in against OpenLDAP, 2026-11-27
+
+Throw-away `osixia/openldap:1.5.0` container on 127.0.0.1 (removed afterwards), users alice (in ev2ahv-admins), bob (in
+ev2ahv-viewers), carol (in no group); `ldap_login` with the real `ldap3` client:
+
+| Case | LDAPS (636) | StartTLS (389) |
+|---|---|---|
+| alice, right password | admin | admin |
+| bob, right password | viewer | viewer |
+| carol (no group) | refused | refused |
+| alice, wrong password | refused | refused |
+| username `*` | refused | refused |
+
+With certificate verification on, the self-signed server is refused. Not tested: the lab Active Directory.
