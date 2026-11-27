@@ -45,6 +45,7 @@ class Migration:
         self.prism.extra_owned.add(plan["target"]["vm_name"])
         self._lock = None
         self._writer = None
+        self._guest_facts = None
 
     # ---- plumbing ----------------------------------------------------------
     def lock(self):
@@ -227,7 +228,7 @@ class Migration:
             return "free" if not vm else "created by this plan"
         check("Target VM name", target_free)
         t_ = self.p["target"]
-        if self.wants_conversion() and (self.p.get("guest") or {}).get("os") == "windows":
+        if self.wants_conversion() and (self.p.get("guest") or {}).get("os") == "windows" and not self.direct_scsi_now():
             g_ = self.p["guest"]
             if g_.get("prep") != "auto" and not (g_.get("password_env") or g_.get("password_file")):
                 checks.append({"name": "PCI to SCSI conversion", "status": "WARN",
@@ -279,6 +280,7 @@ class Migration:
         if facts.get("on_ahv") and not self.step_done("created"):
             return [{"name": "Guest readiness", "status": "FAIL", "detail": "guest.address answers from AHV, not from the source"}]
         t = self.p["target"]
+        self._guest_facts = facts
         return [dict(c, name="Guest: " + c["name"]) for c in guestlib.grade(g["os"], facts, t["disk_bus"], t["firmware"])]
 
     def guest_prep(self):
@@ -455,6 +457,7 @@ class Migration:
             if failed:
                 self.state.event("cutover-forced", failed=failed)
                 log.warning("cutover forced past %d FAIL item(s)", len(failed))
+            self.state.set("direct_scsi", self.direct_scsi_now())
         if self.dry_run:
             log.info("[dry-run] stop source, verified final sync, clone %d disk(s) into %s, power on, verify",
                      len(self.p["disks"]), t["vm_name"])
@@ -505,7 +508,7 @@ class Migration:
                         self.prism.image_ref(images[d["name"]]) if self.image_mode
                         else self.prism.disk_ref(writer_vm, staging[d["name"]]["disk_id"]))
                        for d in self.p["disks"]]
-            vm_id = self.prism.create_vm(builder.vm_payload(self.p, cluster, sources, subnets))
+            vm_id = self.prism.create_vm(builder.vm_payload(self.create_plan(), cluster, sources, subnets))
             self.state.set("target_vm", vm_id)
             if t.get("cloud_init_file"):
                 with open(os.path.expanduser(t["cloud_init_file"]), "rb") as fh:
@@ -522,7 +525,12 @@ class Migration:
             self.prism.power(vm_id, "power-on")
             self.mark("powered")
         if not self.step_done("verified"):
-            self.state.set("verify", self.verify())
+            try:
+                self.state.set("verify", self.verify())
+            except Exception as e:
+                if not self.direct_scsi():
+                    raise
+                self.state.set("verify", self.revert_direct_scsi(vm_id, e))
             self.timing(downtime_seconds=round(time.time() - began, 1))
             self.state.set("phase", "cutover-complete")
             self.mark("verified")
@@ -532,6 +540,9 @@ class Migration:
                 self.state.set("conversion", self.convert_to_scsi(vm_id))
                 self.timing(conversion_seconds=round(time.time() - t0, 1),
                             downtime_seconds=round(time.time() - began, 1))
+            elif self.direct_scsi():
+                self.state.set("conversion", {"result": "direct SCSI", "reason": "vioscsi was boot-ready, no conversion needed",
+                                              "disks": len(self._bus_disks(vm_id, "SCSI"))})
             self.mark("converted")
         return {"vm": vm_id, "timings": self.state.get("timings"), "verify": self.state.get("verify"),
                 "conversion": self.state.get("conversion")}
@@ -539,7 +550,40 @@ class Migration:
     # ---- PCI to SCSI conversion ---------------------------------------------
     def wants_conversion(self):
         t = self.p["target"]
-        return t["disk_bus"] == "pci" and t.get("convert_to_scsi", True)
+        return t["disk_bus"] == "pci" and t.get("convert_to_scsi", True) and not self.direct_scsi()
+
+    def direct_scsi_now(self):
+        """True when a Windows plan on PCI (with convert_to_scsi) can boot straight from SCSI: the guest facts of the
+        last prep-check say vioscsi is boot-ready. Anything else keeps the PCI boot and the conversion after cutover."""
+        t, g = self.p["target"], self.p.get("guest") or {}
+        return bool(g.get("os") == "windows" and t["disk_bus"] == "pci" and t.get("convert_to_scsi", True)
+                    and self._guest_facts is not None and guestlib.scsi_boot_ready(self._guest_facts))
+
+    def direct_scsi(self):
+        """The decision recorded when the cutover started (stays the same if the cutover is resumed)."""
+        return bool(self.state.get("direct_scsi"))
+
+    def create_plan(self):
+        """The plan the VM is created from: all disks on SCSI when the guest was ready to boot from it directly."""
+        if not self.direct_scsi():
+            return self.p
+        q = dict(self.p, target=dict(self.p["target"], disk_bus="scsi"))
+        log.info("vioscsi is boot-ready: creating %s on SCSI directly, no PCI to SCSI conversion", self.p["target"]["vm_name"])
+        return q
+
+    def revert_direct_scsi(self, vm_id, err):
+        """The direct SCSI boot failed verification: move the disks to PCI (which the guest always boots from)."""
+        log.warning("direct SCSI boot failed verification (%s). Moving %s to PCI", err, self.p["target"]["vm_name"])
+        self.prism.power(vm_id, "power-off")
+        self.prism.wait_power(vm_id, "OFF")
+        scsi = self._bus_disks(vm_id, "SCSI")
+        self._move_disks(vm_id, "SCSI", "PCI", 0)
+        self.prism.set_boot_disk(vm_id, "PCI", 0)
+        self.prism.power(vm_id, "power-on")
+        v = self.verify()
+        self.state.set("direct_scsi", False)
+        self.state.set("conversion", {"result": "direct SCSI reverted to PCI", "reason": str(err)[:300], "disks": len(scsi)})
+        return v
 
     def _bus_disks(self, vm_id, bus):
         return sorted((d for d in self.prism.vm(vm_id).get("disks") or [] if d["diskAddress"]["busType"] == bus),

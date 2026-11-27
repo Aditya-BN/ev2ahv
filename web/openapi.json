@@ -2,7 +2,7 @@
     "openapi": "3.1.0",
     "info": {
         "title": "ev2ahv API",
-        "version": "0.3.7"
+        "version": "0.3.7.dev1"
     },
     "paths": {
         "/api/v2/token": {
