@@ -5,7 +5,7 @@ Lines: EV2AHV {"progress": {...}} while syncing, then EV2AHV {"result": ...} or 
 A separate process keeps pause and cancel simple (terminate it; sync resumes from its last committed chunk)
 and keeps a crash in one migration away from the server. Prism credentials come from the environment.
 """
-import json, logging, os, sys, time
+import json, logging, os, sys, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
@@ -52,8 +52,13 @@ def main():
     done = dict(sizes)
     sent = dict(sizes)
     last = [0.0]
+    lock = threading.Lock()   # disks of one VM sync in parallel threads
 
     def progress(key, idx, total, stats):
+        with lock:
+            progress_locked(key, idx, total, stats)
+
+    def progress_locked(key, idx, total, stats):
         sizes[key], done[key], sent[key] = total, idx, stats.get("sent", 0)
         now = time.time()
         if now - last[0] >= 1 or idx >= total:

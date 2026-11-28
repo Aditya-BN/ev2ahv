@@ -127,9 +127,11 @@ class VmSettings(BaseModel):
     guest_address: Optional[str] = Field(None, description="IP the server uses to reach the guest for automatic prep")
     cbt: Literal["off", "auto"] = Field("off", description="changed-block tracking for resyncs (experimental, everRun direct sources only; docs/cbt.md)")
     final_verify: Literal["full", "sample", "none"] = Field("full", description="how the final sync checks the target after its source pass: full (hash the target too, default), sample (compare a random 1 percent), none (trust the recorded digests); docs/cbt.md")
+    parallel_disks: str = Field("auto", pattern=r"^(auto|[1-9]|1[0-6])$", description="disks of this VM copied at the same time: auto (the smaller of the disk count and 4) or 1 to 16; the bandwidth cap is split between them")
 
 
 class VmSettingsPatch(BaseModel):
+    parallel_disks: Optional[str] = Field(None, pattern=r"^(auto|[1-9]|1[0-6])$")
     cbt: Optional[Literal["off", "auto"]] = None
     final_verify: Optional[Literal["full", "sample", "none"]] = None
 

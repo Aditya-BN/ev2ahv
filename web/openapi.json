@@ -1188,7 +1188,7 @@
         "/api/v2/plans/{pid}/vms/{vid}/settings": {
             "patch": {
                 "summary": "Patch Vm Settings",
-                "description": "Change one VM setting of an existing plan without resending the whole plan (cbt, final_verify).",
+                "description": "Change one VM setting of an existing plan without resending the whole plan (cbt, final_verify, parallel_disks).",
                 "operationId": "patch_vm_settings_api_v2_plans__pid__vms__vid__settings_patch",
                 "parameters": [
                     {
@@ -3542,6 +3542,13 @@
                         "title": "Final Verify",
                         "description": "how the final sync checks the target after its source pass: full (hash the target too, default), sample (compare a random 1 percent), none (trust the recorded digests); docs/cbt.md",
                         "default": "full"
+                    },
+                    "parallel_disks": {
+                        "type": "string",
+                        "pattern": "^(auto|[1-9]|1[0-6])$",
+                        "title": "Parallel Disks",
+                        "description": "disks of this VM copied at the same time: auto (the smaller of the disk count and 4) or 1 to 16; the bandwidth cap is split between them",
+                        "default": "auto"
                     }
                 },
                 "type": "object",
@@ -3549,6 +3556,18 @@
             },
             "VmSettingsPatch": {
                 "properties": {
+                    "parallel_disks": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(auto|[1-9]|1[0-6])$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parallel Disks"
+                    },
                     "cbt": {
                         "anyOf": [
                             {

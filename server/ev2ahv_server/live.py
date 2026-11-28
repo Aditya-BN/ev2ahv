@@ -299,6 +299,9 @@ def engine_plan(plan, vm, src, wl, secret, settings):
         t["sockets"] = 1
     if vs.get("final_verify") in ("full", "sample", "none"):
         p.setdefault("sync", {})["final_verify"] = vs["final_verify"]
+    if vs.get("parallel_disks"):
+        pdisks = str(vs["parallel_disks"])
+        p.setdefault("sync", {})["parallel_disks"] = int(pdisks) if pdisks.isdigit() else "auto"
     if vs.get("cbt") == "auto" and p["source"].get("type") == "direct" and p["source"].get("qemu_domain"):
         p.setdefault("sync", {})["cbt"] = "auto"   # default stays off; the plan validator rejects auto elsewhere
     if plan.get("cluster"):

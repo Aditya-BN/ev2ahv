@@ -5,7 +5,9 @@ Runs on the source or writer side over ssh. `hash` and `read` open the device O_
 Only `write` opens for writing, and it refuses a device that is mounted or held.
 
 Frames on the wire: >QI (chunk index, payload length) + payload. Index END closes the stream,
-index FLUSH asks the writer to fsync and acknowledge.
+index FLUSH asks the writer to fsync and acknowledge. Without FLUSH nothing is acknowledged, so a client may send
+several batches and ask for one fsync at the end. A length with the COMPRESSED bit set carries a zlib stream of the
+chunk (only when the peer asked for `--compress`; a frame that does not shrink is sent plain).
 """
 import argparse
 import errno
@@ -17,11 +19,14 @@ import stat
 import struct
 import sys
 import time
+import zlib
 
 VERSION = "1"
 FRAME = struct.Struct(">QI")
 END = 2 ** 64 - 1
 FLUSH = 2 ** 64 - 2
+COMPRESSED = 1 << 31
+ZLIB_LEVEL = 1
 
 try:
     import xxhash
@@ -186,6 +191,15 @@ def cmd_hash(args):
     out.flush()
 
 
+def pack_payload(data, compress):
+    """(length field, payload) for one frame."""
+    if compress:
+        packed = zlib.compress(data, ZLIB_LEVEL)
+        if len(packed) < len(data):
+            return len(packed) | COMPRESSED, packed
+    return len(data), data
+
+
 def cmd_read(args):
     reader = Reader(args.device, args.chunk, args.limit)
     throttle = Throttle(args.max_mbps)
@@ -196,8 +210,9 @@ def cmd_read(args):
             continue
         index = int(line)
         data = reader.read(index)
-        out.write(FRAME.pack(index, len(data)))
-        out.write(data)
+        length, payload = pack_payload(data, args.compress)
+        out.write(FRAME.pack(index, length))
+        out.write(payload)
         out.flush()
         throttle.account(len(data))
     out.write(FRAME.pack(END, 0))
@@ -263,9 +278,28 @@ def cmd_write(args):
             print("flushed %d" % count, flush=True)
             continue
         offset = index * args.chunk
-        if length > args.chunk or offset + length > size:
+        packed = bool(length & COMPRESSED)
+        if packed:
+            if not args.compress:
+                sys.exit("compressed frame without --compress")
+            length &= ~COMPRESSED
+            if length > args.chunk:
+                sys.exit("frame out of bounds: chunk %d length %d" % (index, length))
+            try:
+                data = zlib.decompressobj().decompress(read_exact(stream, length), args.chunk + 1)
+            except zlib.error as e:
+                sys.exit("bad compressed frame for chunk %d: %s" % (index, e))
+            length = len(data)
+            if length > args.chunk:
+                sys.exit("frame out of bounds: chunk %d inflates past the chunk size" % index)
+        else:
+            if length > args.chunk:
+                sys.exit("frame out of bounds: chunk %d length %d" % (index, length))
+            data = None
+        if offset + length > size:
             sys.exit("frame out of bounds: chunk %d length %d" % (index, length))
-        data = read_exact(stream, length)
+        if data is None:
+            data = read_exact(stream, length)
         done = 0
         while done < length:
             done += os.pwrite(fd, data[done:], offset + done)
@@ -291,6 +325,7 @@ def main(argv=None):
         p.add_argument("device")
         p.add_argument("--chunk", type=int, default=4 * 1024 * 1024)
         p.add_argument("--max-mbps", type=float, default=0)
+        p.add_argument("--compress", action="store_true", help="zlib-compress frames (read: replies, write: requests)")
         if name != "write":
             p.add_argument("--limit", type=int, default=None, help="use only the first LIMIT bytes")
         if name == "hash":

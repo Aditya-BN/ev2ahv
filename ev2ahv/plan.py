@@ -5,7 +5,8 @@ import yaml
 
 SAFE_NAME = re.compile(r"^\w[\w.-]*$")   # plan and disk names end up in file names on the writer
 MAC = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
-DEFAULTS = {"sync": {"chunk_mib": 4, "algo": "auto", "batch": 32, "cbt": "off", "final_verify": "full"}, "verify": {}}
+DEFAULTS = {"sync": {"chunk_mib": 4, "algo": "auto", "batch": 32, "cbt": "off", "final_verify": "full",
+                    "parallel_disks": "auto", "fsync_mib": 128, "compress": "off"}, "verify": {}}
 
 
 class PlanError(ValueError):
@@ -109,6 +110,14 @@ def validate(p):
         errors.append("sync.cbt must be auto or off")
     if p["sync"]["final_verify"] not in ("full", "sample", "none"):
         errors.append("sync.final_verify must be full, sample or none")
+    pd = p["sync"]["parallel_disks"]
+    if not (pd == "auto" or (isinstance(pd, int) and not isinstance(pd, bool) and 1 <= pd <= 16)):
+        errors.append("sync.parallel_disks must be auto or a number from 1 to 16")
+    fm = p["sync"]["fsync_mib"]
+    if isinstance(fm, bool) or not isinstance(fm, (int, float)) or not 0 <= fm <= 4096:
+        errors.append("sync.fsync_mib must be a number from 0 to 4096 (0 = fsync after every batch)")
+    if p["sync"]["compress"] not in ("off", "zlib"):
+        errors.append("sync.compress must be off or zlib")
     if p["sync"]["cbt"] == "auto" and not (p["source"].get("qemu_domain") and p["source"].get("type") == "direct"):
         errors.append("sync.cbt: auto needs source.type direct and source.qemu_domain (the libvirt domain name)")
     if errors:

@@ -1,6 +1,7 @@
 """The migration workflow. Every step is idempotent and records progress in SQLite.
 The source is only ever read, stopped and started. It is never modified or deleted."""
-import base64, copy, fcntl, logging, os, re, shlex, socket, subprocess, time
+import base64, copy, fcntl, logging, os, re, shlex, socket, subprocess, threading, time
+from concurrent.futures import ThreadPoolExecutor
 
 from . import builder, cbt, engine, guest as guestlib, target as tgt
 from .readers import make_reader
@@ -371,7 +372,7 @@ class Migration:
                 frozen = bm.rotate()
                 chunks = cbt.ranges_to_chunks(bm.dirty(frozen), self.chunk)
                 stats = engine.sync_dirty(reader, writer, self.state, name, algo, chunks, batch=kw["batch"],
-                                          progress=kw.get("progress"))
+                                          progress=kw.get("progress"), stop=kw.get("stop"))
                 bm.drop(frozen)
                 self.state.set(flag, "tracking")
                 return dict(stats, cbt=True)
@@ -394,29 +395,95 @@ class Migration:
             self.state.set(flag, "off")
         return dict(stats)
 
+    MAX_AUTO_PARALLEL = 4
+
+    def parallel_count(self, disks):
+        """How many disks of this VM are copied at the same time: sync.parallel_disks, auto = min(disks, 4)."""
+        want = self.p["sync"].get("parallel_disks", "auto")
+        want = self.MAX_AUTO_PARALLEL if want in (None, "auto") else int(want)
+        return max(1, min(disks, want))
+
+    def _prepare_disk(self, disk, algo_hint=None):
+        """Reader, staging device and writer for one disk. Runs one disk at a time: it talks to Prism (hot-add)."""
+        reader = self.reader(disk)
+        try:
+            size = reader.size()
+            path = self.ensure_staging(disk, size)
+            writer = BlockEndpoint(self.writer, path, chunk=self.chunk, writable=True)
+        except BaseException:
+            reader.close()
+            raise
+        if self.p["sync"].get("compress", "off") == "zlib":   # D31: only worth it over a network
+            if self.p["source"].get("type") == "direct":
+                reader.compress = True
+            if not self.p["writer"].get("local"):
+                writer.compress = True
+        return reader, writer
+
     def _sync_all(self, verify=False, final=False):
+        """Sync every disk of the VM, up to parallel_count() at a time. The plan's source.max_mbps is split evenly over
+        the disks that run at once (each reader throttles its own streams). A failure stops the other disks at their
+        next chunk (their committed progress stays valid) and the first real error is raised."""
         results = {}
-        for disk in self.p["disks"]:
-            reader = self.reader(disk)
-            try:
-                size = reader.size()
-                if self.dry_run:
+        if self.dry_run:
+            for disk in self.p["disks"]:
+                reader = self.reader(disk)
+                try:
+                    size = reader.size()
                     log.info("[dry-run] would sync %s (%d bytes)", disk["name"], size)
                     results[disk["name"]] = {"size": size}
-                    continue
-                path = self.ensure_staging(disk, size)
-                writer = BlockEndpoint(self.writer, path, chunk=self.chunk, writable=True)
-                try:
-                    algo = self.state.get("algo") or engine.negotiate(reader, writer, self.p["sync"]["algo"])
-                    self.state.set("algo", algo)
-                    kw = {"batch": int(self.p["sync"]["batch"]), "progress": self.progress}
-                    stats = self._sync_disk(disk, reader, writer, algo, kw, verify, final)
-                    results[disk["name"]] = dict(stats)
                 finally:
+                    reader.close()
+            return results
+        prepared, abort = [], threading.Event()
+        try:
+            for disk in self.p["disks"]:
+                prepared.append((disk,) + self._prepare_disk(disk))
+            first = prepared[0]
+            algo = self.state.get("algo") or engine.negotiate(first[1], first[2], self.p["sync"]["algo"])
+            self.state.set("algo", algo)
+            n = self.parallel_count(len(prepared))
+            total_mbps = self.p["source"].get("max_mbps", 0) or 0
+            if n > 1 and total_mbps:
+                for _, reader, _ in prepared:
+                    reader.max_mbps = total_mbps / n
+            kw = {"batch": int(self.p["sync"]["batch"]), "progress": self.progress, "stop": abort.is_set,
+                  "fsync_bytes": int(float(self.p["sync"].get("fsync_mib", 128)) * 1024 ** 2)}
+            log.info("syncing %d disk(s), %d at a time%s", len(prepared), n,
+                     f", {total_mbps / n:.1f} MiB/s each of {total_mbps}" if n > 1 and total_mbps else "")
+
+            def one(item):
+                disk, reader, writer = item
+                try:
+                    return disk["name"], dict(self._sync_disk(disk, reader, writer, algo, kw, verify, final))
+                except BaseException:
+                    abort.set()
+                    raise
+
+            if n == 1:
+                for item in prepared:
+                    name, res = one(item)
+                    results[name] = res
+            else:
+                errors = []
+                with ThreadPoolExecutor(max_workers=n, thread_name_prefix="disk") as pool:
+                    futures = [pool.submit(one, item) for item in prepared]
+                    for f in futures:
+                        try:
+                            name, res = f.result()
+                            results[name] = res
+                        except BaseException as e:
+                            errors.append(e)
+                if errors:
+                    real = [e for e in errors if not isinstance(e, InterruptedError)]
+                    raise (real or errors)[0]
+        finally:
+            for _, reader, writer in prepared:
+                try:
                     writer.close()
-            finally:
-                reader.close()
-        return results
+                finally:
+                    reader.close()
+        return {d["name"]: results[d["name"]] for d in self.p["disks"]}
 
     def seed(self):
         self.lock()

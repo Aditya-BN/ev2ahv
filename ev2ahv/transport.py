@@ -1,5 +1,5 @@
 """Runs the block helper locally or over ssh, and speaks its framed protocol."""
-import io, json, os, shlex, socket, struct, subprocess, uuid
+import io, json, os, shlex, socket, struct, subprocess, uuid, zlib
 
 from .helper import ev2ahv_helper as helper
 
@@ -126,14 +126,18 @@ class BlockEndpoint:
         self.t, self.device, self.chunk, self.max_mbps = transport, device, chunk, max_mbps
         self.writable = writable
         self.limit = None    # expose only the first N bytes (everRun files carry a metadata trailer)
+        self.compress = False    # zlib on the wire (D31); set before the first read or write
         self._reader = self._writer = None
+        self._size = None
         self.t.setup()
 
     def caps(self):
         return self.t.caps()
 
     def size(self):
-        size = self.t.size(self.device)
+        if self._size is None:   # one helper call per endpoint, not one per pass (a blockd connection each)
+            self._size = self.t.size(self.device)
+        size = self._size
         return size if self.limit is None else min(size, self.limit)
 
     def hashes(self, algo, start=0, limit=None):
@@ -169,6 +173,8 @@ class BlockEndpoint:
                 args += ["--limit", self.limit]
             if self.max_mbps:
                 args += ["--max-mbps", self.max_mbps]
+            if self.compress:
+                args += ["--compress"]
             self._reader = self.t.popen(*args, stdin=subprocess.PIPE)
         p = self._reader
         p.stdin.write("".join(f"{i}\n" for i in indices).encode())
@@ -177,18 +183,31 @@ class BlockEndpoint:
             index, length = FRAME.unpack(read_exact(p.stdout, FRAME.size))
             if index != want:
                 raise RuntimeError(f"helper returned chunk {index}, expected {want}")
-            yield index, read_exact(p.stdout, length)
+            body = read_exact(p.stdout, length & ~helper.COMPRESSED)
+            yield index, zlib.decompress(body) if length & helper.COMPRESSED else body
 
-    def write_batch(self, items):
-        """Write chunks and return only after the remote side has fsynced them."""
+    def _writer_proc(self):
         if not self.writable:
             raise PermissionError(f"{self.device} is not a write target")
         if self._writer is None:
-            self._writer = self.t.popen("write", self.device, "--chunk", self.chunk, stdin=subprocess.PIPE)
-        p = self._writer
+            args = ["write", self.device, "--chunk", self.chunk] + (["--compress"] if self.compress else [])
+            self._writer = self.t.popen(*args, stdin=subprocess.PIPE)
+        return self._writer
+
+    def write_batch(self, items, flush=True):
+        """Write chunks. With flush=True (default) return only after the remote side has fsynced them; with
+        flush=False they are only handed to the helper and flush() must follow before anything is recorded as done."""
+        p = self._writer_proc()
         for index, data in items:
-            p.stdin.write(FRAME.pack(index, len(data)))
-            p.stdin.write(data)
+            length, payload = helper.pack_payload(data, self.compress)
+            p.stdin.write(FRAME.pack(index, length))
+            p.stdin.write(payload)
+        if flush:
+            self.flush()
+
+    def flush(self):
+        """fsync everything written so far on the remote side and wait for the acknowledgement."""
+        p = self._writer_proc()
         p.stdin.write(FRAME.pack(helper.FLUSH, 0))
         p.stdin.flush()
         line = p.stdout.readline().decode().strip()
@@ -211,6 +230,7 @@ class BlockEndpoint:
             p.stdout.close()
             p.stderr.close()
             setattr(self, attr, None)
+        self._size = None
 
 
 BLOCKD_SOCKET = os.environ.get("EV2AHV_BLOCKD_SOCKET", "/run/ev2ahv-blockd.sock")
