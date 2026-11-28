@@ -20,6 +20,7 @@ Lab state at the pause (checked):
 
 Resume: re-enable the scheduled task "ev2ahv swarm auto-continue" (trig_016G221qSDhaRkX9GTSrUJC7), or tell adit's session "resume the swarm". It sends each agent (ids in ~/.config/ev2ahv/swarm-agents.txt) "limit reset, continue", merges finished branches one by one, then releases.
 Worktrees: ~/ev2ahv-<slug>.
+Autopilot: cron runs tools/autopilot.sh every 2 h. Read ~/.local/state/ev2ahv-autopilot/latest.md first when resuming (first run: 4 merge conflicts in nic, perf, policy and report; adit/stratus has 2 test errors).
 
 # ev2ahv status (2026-11-27 WIB, after v0.3.6: final_verify)
 
