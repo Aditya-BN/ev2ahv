@@ -571,7 +571,7 @@ class Migration:
                                               "disks": len(self._bus_disks(vm_id, "SCSI"))})
             self.mark("converted")
         return {"vm": vm_id, "timings": self.state.get("timings"), "verify": self.state.get("verify"),
-                "conversion": self.state.get("conversion")}
+                "final_sync": self.state.get("final_sync"), "conversion": self.state.get("conversion")}
 
     # ---- PCI to SCSI conversion ---------------------------------------------
     def wants_conversion(self):

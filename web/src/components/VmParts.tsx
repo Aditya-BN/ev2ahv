@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { api, ApiError, PlanAction, PlanVm, VmStatus } from '../api';
-import { Modal, Popover, useDialogs } from './ui';
+import { Modal, Popover, SplitButton, useDialogs } from './ui';
 import { vmTone, worstCheck } from '../util';
 
 export const ACTION_ORDER: PlanAction[] = ['retry', 'discard', 'cutover', 'resync', 'test', 'cancel', 'resume', 'pause', 'complete', 'rollback'];
@@ -164,5 +164,16 @@ export function VmLogDialog({ planId, vm, onClose }: { planId: string; vm: Targe
       <pre className="logview short">{text === null ? 'Loading...' : text || '(empty)'}</pre>
       <p className="muted small">Refreshes every 5 s.</p>
     </Modal>
+  );
+}
+
+/** Download report: opens the printable report (HTML, has Print / Save as PDF) in a new tab; the menu has PDF and CSV. */
+export function ReportMenu({ planId, vm, label = 'Download report', small }: { planId: string; vm?: string; label?: string; small?: boolean }) {
+  const open = (f: 'html' | 'pdf' | 'csv') => () => { window.open(api.reportUrl(planId, f, vm), '_blank', 'noopener'); };
+  return (
+    <span className={small ? 'report-menu small' : 'report-menu'}>
+      <SplitButton label={label} onClick={open('html')} moreLabel={`More report formats${vm ? ' for this VM' : ''}`}
+        items={[{ label: 'Print / Save as PDF', onClick: open('pdf') }, { label: 'CSV (one row per VM)', onClick: open('csv') }]} />
+    </span>
   );
 }

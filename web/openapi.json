@@ -1606,6 +1606,86 @@
                 }
             }
         },
+        "/api/v2/plans/{pid}/report": {
+            "get": {
+                "summary": "Plan Report",
+                "description": "Migration report: format=html (printable), pdf (the same page with a Print / Save as PDF note; the appliance\nhas no PDF renderer) or csv (one row per VM). vm= limits it to one VM.",
+                "operationId": "plan_report_api_v2_plans__pid__report_get",
+                "parameters": [
+                    {
+                        "name": "pid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Pid"
+                        }
+                    },
+                    {
+                        "name": "format",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "html",
+                            "title": "Format"
+                        }
+                    },
+                    {
+                        "name": "vm",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Vm"
+                        }
+                    },
+                    {
+                        "name": "ev2ahv_session",
+                        "in": "cookie",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Ev2Ahv Session"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v2/plans/{pid}/vms/{vid}/log": {
             "get": {
                 "summary": "Vm Log",
@@ -1811,6 +1891,51 @@
                         }
                     }
                 },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v2/notifications/test": {
+            "post": {
+                "summary": "Notifications Test",
+                "description": "Send one test message to every configured channel now (one attempt, no retry) and say what happened.",
+                "operationId": "notifications_test_api_v2_notifications_test_post",
+                "parameters": [
+                    {
+                        "name": "ev2ahv_session",
+                        "in": "cookie",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Ev2Ahv Session"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Successful Response",
@@ -2450,6 +2575,42 @@
                         ],
                         "title": "Last Resync Seconds"
                     },
+                    "final_verify": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Final Verify",
+                        "description": "final sync check mode used: full, sample, sample->full or none"
+                    },
+                    "final_verified_rounds": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Final Verified Rounds",
+                        "description": "verified passes of the final sync (0 = target not hashed in full)"
+                    },
+                    "final_sync_sent_bytes": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Final Sync Sent Bytes",
+                        "description": "bytes the final sync sent to the target"
+                    },
                     "verify": {
                         "additionalProperties": true,
                         "type": "object",
@@ -2659,6 +2820,17 @@
                             }
                         ],
                         "title": "Started At"
+                    },
+                    "started_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Started By"
                     },
                     "data_migrated_bytes": {
                         "type": "integer",

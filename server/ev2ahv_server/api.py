@@ -14,6 +14,7 @@ sys.path.insert(0, ROOT)
 from ev2ahv import __version__, web as oldweb  # noqa: E402  (login file + hashing shared with the CLI console)
 
 from . import models as m  # noqa: E402
+from . import notify, report as reportlib  # noqa: E402
 from .store import Store  # noqa: E402
 from .users import UserError, Users, ldap_login, ldap_settings_ok, public as users_public, write_allowed  # noqa: E402
 
@@ -580,6 +581,7 @@ def _start(doc, who):
         store.event("info", f"{who} scheduled plan {doc['name']}", plan=doc["name"])
     else:
         doc["started_at"] = time.time()
+        doc["started_by"] = who
         for v in doc["vms"]:
             v["status"] = "Preparing"
         store.event("info", f"{who} started plan {doc['name']}", plan=doc["name"])
@@ -681,6 +683,29 @@ def plan_events(pid: str, who=Depends(user)):
     return {"entities": ev, "total": len(ev)}
 
 
+@app.get("/api/v2/plans/{pid}/report")
+def plan_report(pid: str, format: str = "html", vm: Optional[str] = None, who=Depends(user)):
+    """Migration report: format=html (printable), pdf (the same page with a Print / Save as PDF note; the appliance
+    has no PDF renderer) or csv (one row per VM). vm= limits it to one VM."""
+    if format not in ("html", "pdf", "csv"):
+        raise HTTPException(422, "format must be html, pdf or csv")
+    doc = _plan_out(_plan(pid)).model_dump()
+    if vm and not any(v["id"] == vm for v in doc["vms"]):
+        raise HTTPException(404, "VM not in this plan")
+    doc["started_by"] = (_plan(pid)).get("started_by")
+    known = [store.secret(o) for (o,) in store.db.execute("SELECT owner FROM secrets")]
+    rep = reportlib.redacted(reportlib.build(doc, store.events(5000), [_provider_out(p).model_dump() for p in store.all("provider")],
+                                             current_settings(), __version__, vm_id=vm), known)
+    import re as _re
+    safe = lambda x: _re.sub(r"[^\w.-]", "_", x)  # noqa: E731
+    stem = safe(doc["name"]) + ("-" + safe(vm) if vm else "") + "-report"
+    if format == "csv":
+        return Response(reportlib.render_csv(rep), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{stem}.csv"'})
+    return Response(reportlib.render_html(rep, pdf_note=format == "pdf"), media_type="text/html; charset=utf-8",
+                    headers={"Content-Disposition": f'inline; filename="{stem}.html"', "Cache-Control": "no-store"})
+
+
 @app.get("/api/v2/plans/{pid}/vms/{vid}/log", response_class=PlainTextResponse)
 def vm_log(pid: str, vid: str, lines: int = 400, who=Depends(user)):
     """Engine log of one VM (live mode): every step's output, UTC timestamps."""
@@ -714,12 +739,15 @@ def current_settings():
 
 @app.get("/api/v2/settings")
 def get_settings(who=Depends(user)):
-    return current_settings()
+    d = current_settings()
+    if "notifications" in d:   # the SMTP password and webhook URL never leave the secret store
+        d = {**d, "notifications": notify.public(store, d["notifications"])}
+    return d
 
 
 @app.put("/api/v2/settings")
 def put_settings(body: dict, who=Depends(user)):
-    doc = dict(get_settings(who))
+    doc = dict(current_settings())
     for k in ("resync_minutes", "bandwidth_policies", "timezone", "writer"):
         if k in body:
             doc[k] = body[k]
@@ -733,6 +761,12 @@ def put_settings(body: dict, who=Depends(user)):
         if pw:
             store.set_secret("ldap:bind_password", str(pw))
         store.event("warning", f"{who} changed the LDAP sign-in settings (enabled: {doc['ldap'].get('enabled')})")
+    if "notifications" in body:
+        try:
+            doc["notifications"] = notify.save(store, doc.get("notifications"), body["notifications"])
+        except notify.NotifyError as e:
+            raise HTTPException(422, str(e))
+        store.event("info", f"{who} changed the notification settings (enabled: {doc['notifications']['enabled']})")
     if "source_name_prefix" in body:
         new = body["source_name_prefix"]
         if not isinstance(new, str) or len(new) > 64:
@@ -745,7 +779,21 @@ def put_settings(body: dict, who=Depends(user)):
     store.put("settings", doc)
     store.event("info", f"{who} changed settings")
     bump()
-    return doc
+    return get_settings(who)
+
+
+@app.post("/api/v2/notifications/test")
+def notifications_test(who=Depends(admin)):
+    """Send one test message to every configured channel now (one attempt, no retry) and say what happened."""
+    cfg = current_settings().get("notifications") or {}
+    if not (cfg.get("smtp") or {}).get("host") and not store.secret(notify.SECRET_URL):
+        raise HTTPException(422, "Configure SMTP or a webhook URL first, and save")
+    res = notify.deliver(store, "ready", "test-plan", "test-vm", "This is a test message from ev2ahv")
+    bad = [f"{c}: {e}" for c, e in res if e]
+    store.event("warning" if bad else "info", f"{who} sent a test notification" + (f" (failed: {'; '.join(bad)})" if bad else ""))
+    if bad:
+        raise HTTPException(502, "Test failed. " + "; ".join(bad))
+    return {"sent": [c for c, _ in res]}
 
 
 @app.get("/api/v2/supportbundle")

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '../api';
 import { Spinner, useDialogs } from '../components/ui';
 import { fmtBytes, fmtDate, fmtDateSec, fmtMem, tzLabel, useLive } from '../util';
-import { PrepScripts } from '../components/VmParts';
+import { PrepScripts, ReportMenu } from '../components/VmParts';
 import { StatusText } from './Dashboard';
 import { typeLabel } from '../components/EnvDialogs';
 
@@ -38,6 +38,7 @@ export default function PlanDetails() {
       <Link to="/dashboard" className="back">&#8249; Back to Dashboard</Link>
       <div className="title-row">
         <h2 className="page-title">{p.name}</h2><StatusText s={p.status} /><div className="spacer" />
+        {started && <ReportMenu planId={id} />}
         {started && <button className="btn" onClick={() => nav(`/migrationprogress/${id}`)}>View Details</button>}
         {can('Start') && <button className="btn primary" onClick={start}>Start</button>}
       </div>

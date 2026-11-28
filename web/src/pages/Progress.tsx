@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, Plan, PlanVm } from '../api';
 import { SplitButton, Modal, Pager, Spinner, usePager } from '../components/ui';
-import { ACTION_LABEL, ACTION_ORDER, ChecksBadge, PhaseInfo, ProgressBar, useVmActions, VmLogDialog, VmStatusBadge } from '../components/VmParts';
+import { ReportMenu, ACTION_LABEL, ACTION_ORDER, ChecksBadge, PhaseInfo, ProgressBar, useVmActions, VmLogDialog, VmStatusBadge } from '../components/VmParts';
 import { fmtBytes, fmtDate, fmtDuration, fmtMem, useLive, vmTone } from '../util';
 import { StatusText } from './Dashboard';
 
@@ -107,6 +107,7 @@ export default function Progress() {
                       <td>{fmtDate(v.last_sync_at)}</td>
                       <td><ChecksBadge vm={v} /></td>
                       <td>
+                        {v.status === 'Completed' && <div><ReportMenu planId={id} vm={v.id} label="Download report" small /></div>}
                         {v.target_vm_url && <a href={v.target_vm_url} target="_blank" rel="noreferrer">View Target VM</a>}
                         {v.status === 'Completed' && v.cutover_result?.downtime_seconds != null && (
                           <div className="muted">Downtime {fmtDuration(v.cutover_result.downtime_seconds)}, final sync {fmtDuration(v.cutover_result.final_sync_seconds)}</div>

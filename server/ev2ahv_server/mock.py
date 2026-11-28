@@ -5,6 +5,8 @@ contacts everRun or Prism.
 """
 import time
 
+from . import notify
+
 GiB = 1 << 30
 
 CLUSTERS = [{"id": "c-136", "name": "NTNX-136"}]
@@ -102,7 +104,33 @@ def seed(store):
     st = store.get("plan", "pl-mes")
     st["vms"][0]["error"] = "Source node node0 unreachable over SSH (timeout after 30 s)"
     store.put("plan", st)
+    _history(store, now)
     store.event("info", "Mock data loaded (no lab systems are contacted in mock mode)")
+
+
+def _history(store, now):
+    """Audit history and a stored cutover result for the completed demo plan, so the migration report has content."""
+    p = store.get("plan", "pl-wave1")
+    base = now - 30 * 3600 + 300
+    done = base + 26 * 3600
+    p["started_by"] = "nutanix"
+    v = p["vms"][0]
+    v["last_sync_at"] = done - 900
+    v["cutover_result"] = {"completed_at": done, "target_vm_id": v["target_vm_id"], "downtime_seconds": 451.0,
+                           "final_sync_seconds": 364.0, "final_verify": "full", "final_verified_rounds": 1,
+                           "final_sync_sent_bytes": 612 << 20, "verify": {"power": "ON", "reachable": "10.12.136.162:22"}}
+    store.put("plan", p)
+    n, vm = p["name"], v["name"]
+    rows = [(base - 300, "info", None, "nutanix started plan " + n), (base, "info", vm, "guest-prep started"),
+            (base + 240, "info", vm, "guest-prep + prep-check finished"), (base + 250, "info", vm, "seed started"),
+            (base + 3100, "info", vm, "seed finished"), (base + 3600 * 5, "info", vm, "resync started"),
+            (base + 3600 * 5 + 160, "info", vm, "resync finished"), (base + 3600 * 15, "info", vm, "resync started"),
+            (base + 3600 * 15 + 140, "info", vm, "resync finished"),
+            (done - 1000, "info", vm, "nutanix: cutover " + vm), (done - 990, "info", vm, "cutover started"),
+            (done, "info", vm, "cutover finished")]
+    with store.db:
+        store.db.executemany("INSERT INTO events(time,severity,plan,vm,message) VALUES(?,?,?,?,?)",
+                             [(t, sev, n, who, msg) for t, sev, who, msg in rows])
 
 
 RATE = 0.6   # mock seed speed, percent of the VM per tick
@@ -141,20 +169,25 @@ def simulate(store, lock, finish, bump):
                         if v["seed_percent"] >= 100:
                             v["status"], v["last_sync_at"] = "Ready to Cutover", time.time()
                             store.event("info", "Seed complete, ready to cut over", plan=p["name"], vm=v["name"])
+                            notify.emit(store, "ready", p["name"], v["name"])
                         dirty = True
                     elif s == "Cutover in Progress" and age > 15:
                         v["status"], v["target_vm_id"] = "Completed", f"tvm-{v['id']}"
                         v["target_vm_url"] = "https://10.12.135.196:9440/"
                         v["cutover_result"] = {"completed_at": time.time(), "target_vm_id": v["target_vm_id"],
                                                "downtime_seconds": 451.0, "final_sync_seconds": 364.0,
-                                               "verify": {"power": "ON"}}
+                                               "final_verify": "full", "final_verified_rounds": 1,
+                                               "final_sync_sent_bytes": 612 << 20,
+                                               "verify": {"power": "ON", "reachable": "10.12.136.162:22"}}
                         store.event("info", "Cutover complete, downtime 7m 31s (mock)", plan=p["name"],
                                     vm=v["name"])
+                        notify.emit(store, "cutover", p["name"], v["name"])
                         dirty = True
                     elif s == "Rolling Back" and age > 10:
                         v["status"], v["rolled_back"], v["cutover_result"] = "Ready to Cutover", True, None
                         store.event("warning", "Rolled back: AHV VM off, source VM on (mock)", plan=p["name"],
                                     vm=v["name"])
+                        notify.emit(store, "rollback", p["name"], v["name"])
                         dirty = True
                     elif s == "Testing" and age > 10:
                         v["status"], v["test_vm_id"] = "Tested", f"test-{v['id']}"

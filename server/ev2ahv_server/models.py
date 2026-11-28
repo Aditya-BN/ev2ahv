@@ -180,6 +180,9 @@ class CutoverResult(BaseModel):
     image_upload_seconds: Optional[float] = None
     conversion_seconds: Optional[float] = None
     last_resync_seconds: Optional[float] = None
+    final_verify: Optional[str] = Field(None, description="final sync check mode used: full, sample, sample->full or none")
+    final_verified_rounds: Optional[int] = Field(None, description="verified passes of the final sync (0 = target not hashed in full)")
+    final_sync_sent_bytes: Optional[int] = Field(None, description="bytes the final sync sent to the target")
     verify: Dict[str, object] = Field(default_factory=dict, description="power state and reachability seen by verify")
 
 
@@ -237,6 +240,7 @@ class Plan(BaseModel):
     schedule: Schedule = Field(default_factory=Schedule)
     status: PlanStatus = "Not Started"
     started_at: Optional[float] = None
+    started_by: Optional[str] = None
     data_migrated_bytes: int = 0
     counts: VmCounts = Field(default_factory=VmCounts)
     vms: List[PlanVm] = Field(default_factory=list)

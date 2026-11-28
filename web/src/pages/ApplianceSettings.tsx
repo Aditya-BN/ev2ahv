@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, LdapSettings } from '../api';
+import { api, LdapSettings, NotifySettings } from '../api';
 import { Field, Spinner, useDialogs } from '../components/ui';
 import { setDisplayTz, timezones, useLive } from '../util';
 
@@ -56,6 +56,7 @@ export default function ApplianceSettings() {
           <div className="form-actions"><button className="btn primary" onClick={save}>Save</button></div>
         </div>
       )}
+      {data && <NotifyCard initial={data.notifications} reload={reload} />}
       {data && <LdapCard initial={data.ldap} reload={reload} />}
     </div>
   );
@@ -90,6 +91,54 @@ function LdapCard({ initial, reload }: { initial?: LdapSettings; reload: () => v
         {text('viewer_group', 'Viewer group (DN)', 'CN=ev2ahv-viewers,OU=Groups,DC=example,DC=com', 'Members get the read-only viewer role. Users in neither group cannot sign in.')}
       </>)}
       <div className="form-actions"><button className="btn primary" onClick={save}>Save</button></div>
+    </div>
+  );
+}
+
+const NOTIFY_EVENTS: [string, string][] = [['ready', 'VM Ready to Cutover'], ['failed', 'VM Failed'], ['cutover', 'Cutover completed'], ['rollback', 'Rollback completed']];
+
+function NotifyCard({ initial, reload }: { initial?: NotifySettings; reload: () => void }) {
+  const { showError, toast } = useDialogs();
+  const [c, setC] = useState<NotifySettings>({ enabled: false, events: NOTIFY_EVENTS.map((e) => e[0]), ...(initial || {}),
+    smtp: { host: '', port: 587, tls: 'starttls', user: '', from: '', to: '', ...(initial?.smtp || {}) } });
+  const [pw, setPw] = useState('');
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const smtp = (p: Partial<NotifySettings['smtp']>) => setC({ ...c, smtp: { ...c.smtp, ...p } });
+  const body = (): Partial<NotifySettings> => ({ enabled: c.enabled, events: c.events,
+    smtp: { ...c.smtp, password: pw || undefined }, webhook: url !== '' || initial?.webhook?.set ? { url: url || undefined } : undefined } as Partial<NotifySettings>);
+  const save = async () => {
+    try { await api.putSettings({ notifications: body() as NotifySettings }); setPw(''); setUrl(''); toast('Notification settings saved'); reload(); }
+    catch (e) { showError(e, 'Notifications'); }
+  };
+  const test = async () => {
+    setBusy(true);
+    try { await api.putSettings({ notifications: body() as NotifySettings }); setPw(''); setUrl(''); const r = await api.testNotification(); toast(`Test sent (${r.sent.join(', ')})`); reload(); }
+    catch (e) { showError(e, 'Send test'); } finally { setBusy(false); }
+  };
+  return (
+    <div className="card form-card" id="notifications">
+      <h4 className="section">Notifications</h4>
+      <p className="muted">Send an e-mail and/or a JSON webhook when a VM is ready to cut over, fails, completes its cutover or is rolled back. Delivery is retried in the background and never slows a migration.</p>
+      <label className="cb"><input type="checkbox" checked={c.enabled} onChange={(e) => setC({ ...c, enabled: e.target.checked })} /> Send notifications</label>
+      <Field label="Events">
+        <div>{NOTIFY_EVENTS.map(([k, l]) => <label className="cb" key={k}><input type="checkbox" checked={c.events.includes(k)}
+          onChange={(e) => setC({ ...c, events: e.target.checked ? [...c.events, k] : c.events.filter((x) => x !== k) })} /> {l}</label>)}</div></Field>
+      <h4 className="section">E-mail (SMTP)</h4>
+      <Field label="SMTP host" hint="Leave empty to turn e-mail off."><input value={c.smtp.host} placeholder="smtp.example.com" onChange={(e) => smtp({ host: e.target.value })} /></Field>
+      <Field label="Port"><input type="number" value={c.smtp.port} onChange={(e) => smtp({ port: Number(e.target.value) })} /></Field>
+      <Field label="Encryption"><select value={c.smtp.tls} onChange={(e) => smtp({ tls: e.target.value as 'none' | 'starttls' | 'ssl' })}>
+        <option value="starttls">STARTTLS (port 587)</option><option value="ssl">TLS (port 465)</option><option value="none">None (plain, internal relay only)</option></select></Field>
+      <Field label="User" hint="Empty = no login."><input value={c.smtp.user} autoComplete="off" onChange={(e) => smtp({ user: e.target.value })} /></Field>
+      <Field label="Password" hint={initial?.smtp?.password_set ? 'A password is stored (encrypted). Type a new one to replace it.' : 'Stored encrypted; never shown again.'}>
+        <input type="password" value={pw} autoComplete="new-password" onChange={(e) => setPw(e.target.value)} /></Field>
+      <Field label="From"><input value={c.smtp.from} placeholder="ev2ahv@example.com" onChange={(e) => smtp({ from: e.target.value })} /></Field>
+      <Field label="To" hint="One or more addresses, separated by commas."><input value={c.smtp.to} placeholder="ops@example.com" onChange={(e) => smtp({ to: e.target.value })} /></Field>
+      <h4 className="section">Webhook</h4>
+      <Field label="Webhook URL" hint={initial?.webhook?.set ? `Stored encrypted (${initial.webhook.host}). Type a new URL to replace it.` : 'Receives a JSON POST: event, plan, vm, detail, time, text. Stored encrypted.'}>
+        <input value={url} placeholder={initial?.webhook?.set ? 'unchanged' : 'https://hooks.example.com/...'} onChange={(e) => setUrl(e.target.value)} /></Field>
+      <div className="form-actions"><button className="btn primary" onClick={save}>Save</button>
+        <button className="btn" id="notify-test" disabled={busy} onClick={test}>{busy ? 'Sending...' : 'Send test'}</button></div>
     </div>
   );
 }

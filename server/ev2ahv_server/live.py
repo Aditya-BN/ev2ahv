@@ -17,6 +17,7 @@ import yaml
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ev2ahv import credentials, everrun, everrun_api, plan as planlib  # noqa: E402
 from ev2ahv.prism import Prism  # noqa: E402
+from . import notify  # noqa: E402
 
 DATA = os.path.expanduser("~/.local/share/ev2ahv/ui")
 SECRETS = os.path.expanduser("~/.config/ev2ahv/ui-secrets")
@@ -372,6 +373,14 @@ def cutover_summary(r, now=None):
     verify = {k: val for k, val in (r.get("verify") or {}).items() if isinstance(val, (str, int, float, bool))}
     out = {"completed_at": now or time.time(), "target_vm_id": r.get("vm"), "verify": verify}
     out.update({k: t[k] for k in TIMINGS if t.get(k) is not None})
+    if t.get("final_verify") in ("full", "sample", "none"):
+        out["final_verify"] = t["final_verify"]
+    fs = [d for d in (r.get("final_sync") or {}).values() if isinstance(d, dict)]
+    if fs:   # per disk: bytes sent, verified passes, and how the target was checked (sample->full if the sample differed)
+        out["final_sync_sent_bytes"] = sum(int(d.get("sent_bytes") or 0) for d in fs)
+        out["final_verified_rounds"] = min(int(d.get("verified_rounds") or 0) for d in fs)
+        out["final_verify"] = next((d["final_verify"] for d in fs if d.get("final_verify") == "sample->full"),
+                                   fs[0].get("final_verify") or out.get("final_verify"))
     return out
 
 
@@ -399,6 +408,10 @@ class Live:
 
     def settings(self):
         return self.store.get("settings", "settings") or {}
+
+    def _status(self, plan, vm):
+        p = self.store.get("plan", plan["id"]) or {}
+        return next((v["status"] for v in p.get("vms", []) if v["id"] == vm["id"]), None)
 
     # -- helpers to read-modify-write one VM under the lock
     def _update(self, pid, vid, fn):
@@ -507,12 +520,23 @@ class Live:
                 return
             if error:
                 self.store.event("error", f"{job['action']} failed: {error}", plan=plan["name"], vm=vm["name"])
+                notify.emit(self.store, "failed", plan["name"], vm["name"], f"{job['action']}: {error}")
                 self._update(plan["id"], vm["id"],
                              lambda p, v: v.update(fail_from=v["status"], status="Failed", error=f"{job['action']}: {error}",
                                                   phase=None, stage=None))
             else:
                 self.store.event("info", f"{' + '.join(ran)} finished", plan=plan["name"], vm=vm["name"])
-                self._update(plan["id"], vm["id"], lambda p, v: (on_done(p, v, result), v.update(phase=None, stage=None)))
+                prev = []
+
+                def done(p, v):
+                    prev.append(v.get("status"))
+                    on_done(p, v, result)
+                    v.update(phase=None, stage=None)
+                self._update(plan["id"], vm["id"], done)
+                kind = {("Seeding", "Ready to Cutover"): "ready", ("Cutover in Progress", "Completed"): "cutover",
+                        ("Rolling Back", "Ready to Cutover"): "rollback"}.get((prev[0] if prev else None, self._status(plan, vm)))
+                if kind:
+                    notify.emit(self.store, kind, plan["name"], vm["name"])
 
         threading.Thread(target=run, daemon=True, name=f"job-{vm['name']}").start()
 

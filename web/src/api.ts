@@ -51,6 +51,7 @@ export interface PlanVm {
 export interface CutoverResult {
   completed_at?: number | null; target_vm_id?: string | null; downtime_seconds?: number | null; final_sync_seconds?: number | null;
   image_upload_seconds?: number | null; conversion_seconds?: number | null; last_resync_seconds?: number | null;
+  final_verify?: string | null; final_verified_rounds?: number | null; final_sync_sent_bytes?: number | null;
   verify: Record<string, unknown>;
 }
 export interface PlanVmX extends PlanVm { plan_id: string; plan_name: string }
@@ -69,7 +70,12 @@ export interface ActionIn { action: PlanAction; vm_ids: string[]; force: boolean
 export interface EventRow { time: number; severity: 'info' | 'warning' | 'error'; plan?: string | null; vm?: string | null; message: string }
 export interface BandwidthPolicy { id: string; name: string; source_id: string; source_name: string; frequency: string; limit_mbps: number }
 export interface Writer { vm?: string | null; host?: string | null; user?: string | null }
-export interface Settings { id?: string; resync_minutes: number; bandwidth_policies: BandwidthPolicy[]; timezone: string; writer?: Writer | null; source_name_prefix?: string; ldap?: LdapSettings }
+export interface Settings { id?: string; resync_minutes: number; bandwidth_policies: BandwidthPolicy[]; timezone: string; writer?: Writer | null; source_name_prefix?: string; ldap?: LdapSettings; notifications?: NotifySettings }
+export interface NotifySettings {
+  enabled: boolean; events: string[];
+  smtp: { host: string; port: number; tls: 'none' | 'starttls' | 'ssl'; user: string; from: string; to: string; password?: string; password_set?: boolean };
+  webhook?: { url?: string; set?: boolean; host?: string };
+}
 export interface LdapSettings {
   enabled: boolean; url?: string; bind_dn?: string; bind_password?: string; user_base?: string; user_filter?: string;
   admin_group?: string; viewer_group?: string; start_tls?: boolean; verify_tls?: boolean; ca_file?: string; allow_plain?: boolean;
@@ -199,6 +205,8 @@ export const api = {
     return res.text();
   },
   docsUrl: '/api/v2/docs',
+  reportUrl: (id: string, format: 'html' | 'pdf' | 'csv', vm?: string) => `${BASE}/plans/${id}/report?format=${format}${vm ? `&vm=${encodeURIComponent(vm)}` : ''}`,
+  testNotification: () => req<{ sent: string[] }>('POST', '/notifications/test'),
 };
 
 export const DEFAULT_PREP: Prep = {
