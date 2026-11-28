@@ -51,6 +51,7 @@ class ExportReader(SourceReader):
 def make_reader(src, disk, chunk, default_key=None, known_hosts=None):
     reader = _make_reader(src, disk, chunk, default_key, known_hosts)
     reader.limit = disk.get("size_bytes")
+    reader.rate_file = src.get("rate_file")
     return reader
 
 

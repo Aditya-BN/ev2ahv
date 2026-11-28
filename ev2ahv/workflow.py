@@ -772,9 +772,8 @@ class Migration:
         return self.p["target"]["vm_name"] + "-test"
 
     def test_subnet(self):
-        t = self.p["target"]
-        nics = self.p.get("nics") or []
-        return t.get("test_subnet") or (nics[0]["subnet"] if nics else None)
+        # D30b: no fallback to the production subnet. A test copy shares the source's IP, so it must never land there
+        return self.p["target"].get("test_subnet") or None
 
     def test(self):
         """Boot a copy of the last synced data on the test subnet while the source keeps running. The staging disks are
@@ -792,6 +791,10 @@ class Migration:
         if existing:
             raise RuntimeError(f"test VM {name} already exists. Discard it first")
         subnet = self.test_subnet()
+        if not subnet:
+            raise RuntimeError("no test network is defined for this plan, so the test is refused: a test copy on the "
+                               "production network would clash with the running source. Add a test network to the "
+                               "plan (target.test_subnet) and try again")
         if self.dry_run:
             log.info("[dry-run] clone %d staging disk(s) into %s on %s and power it on", len(staging), name, subnet)
             return {"dry_run": True}

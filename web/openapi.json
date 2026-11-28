@@ -2461,6 +2461,47 @@
                 "title": "CutoverResult",
                 "description": "What the last successful cutover measured, kept on the plan VM (engine timings, in seconds)."
             },
+            "EffectiveBandwidth": {
+                "properties": {
+                    "limit_mbps": {
+                        "type": "number",
+                        "title": "Limit Mbps",
+                        "description": "MiB/s of source reads in force now; 0 = unlimited"
+                    },
+                    "unlimited": {
+                        "type": "boolean",
+                        "title": "Unlimited"
+                    },
+                    "origin": {
+                        "type": "string",
+                        "enum": [
+                            "plan",
+                            "policy",
+                            "default"
+                        ],
+                        "title": "Origin"
+                    },
+                    "policy": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Policy",
+                        "description": "name of the policy that sets it"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "limit_mbps",
+                    "unlimited",
+                    "origin"
+                ],
+                "title": "EffectiveBandwidth"
+            },
             "HTTPValidationError": {
                 "properties": {
                     "detail": {
@@ -2682,6 +2723,17 @@
                         "type": "array",
                         "title": "Actions",
                         "description": "plan-row Actions menu: Start, Edit, Delete"
+                    },
+                    "bandwidth": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/EffectiveBandwidth"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "the read limit that applies to this plan right now (D28)"
                     }
                 },
                 "type": "object",
@@ -3314,6 +3366,19 @@
                         "title": "Resync Minutes",
                         "description": "automatic resync interval while waiting for cutover (5 min or more)",
                         "default": 60
+                    },
+                    "max_mbps": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "minimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Max Mbps",
+                        "description": "plan override of the read limit in MiB/s (0 = unlimited); empty follows the bandwidth policies (D28)"
                     }
                 },
                 "type": "object",

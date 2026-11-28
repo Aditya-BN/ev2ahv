@@ -39,7 +39,8 @@ export interface VmSettings {
   convert_to_scsi: boolean; firmware?: 'bios' | 'uefi' | null; timezone?: string | null; guest_address?: string | null;
   cbt?: 'off' | 'auto'; final_verify?: 'full' | 'sample' | 'none';
 }
-export interface Schedule { seed_at?: number | null; timezone: string; resync_minutes: number }
+export interface Schedule { seed_at?: number | null; timezone: string; resync_minutes: number; max_mbps?: number | null }
+export interface EffectiveBandwidth { limit_mbps: number; unlimited: boolean; origin: 'plan' | 'policy' | 'default'; policy?: string | null }
 export interface VmCounts { total: number; in_progress: number; ready_to_cutover: number; failed: number; paused: number; completed: number }
 export interface Check { name: string; status: CheckStatus; detail: string }
 export interface PlanVm {
@@ -58,7 +59,7 @@ export interface Plan {
   id: string; name: string; created_by: string; created_at: number; source?: Named | null; target?: Named | null;
   cluster?: string | null; container?: string | null; project?: string | null; network_map: NetworkMap[];
   test_network: boolean; prep: Prep; vm_settings: Record<string, VmSettings>; schedule: Schedule; status: PlanStatus;
-  started_at?: number | null; data_migrated_bytes: number; counts: VmCounts; vms: PlanVm[]; actions: string[];
+  started_at?: number | null; data_migrated_bytes: number; counts: VmCounts; vms: PlanVm[]; actions: string[]; bandwidth?: EffectiveBandwidth | null;
 }
 export interface PlanIn {
   name: string; source_id?: string | null; target_id?: string | null; cluster?: string | null; container?: string | null;

@@ -450,3 +450,7 @@ dl.kv dt { color: var(--md-on-surface-variant); font-weight: 500; } dl.kv dd { m
 .main-col { }
 .rail-item.density select { margin-left: auto; border: 0; background: none; padding: 2px 4px; color: inherit; font: inherit; border-radius: var(--sh-sm); }
 @media (max-width: 960px) { .rail-item.density select { display: none; } }
+
+.chip.static { display: inline-flex; align-items: center; min-height: 28px; padding: 0 12px; cursor: default; font-size: 13px; }
+.chip.static:hover { background: transparent; }
+.chip.static:active { border-radius: var(--sh-md); }

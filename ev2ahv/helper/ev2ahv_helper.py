@@ -66,6 +66,12 @@ class Throttle:
         self.start = time.monotonic()
         self.sent = 0
 
+    def set_rate(self, max_mbps):
+        """Change the limit mid-run (0 = unlimited); the pacing window restarts so the new rate applies at once."""
+        self.rate = max_mbps * 1024 * 1024 if max_mbps else 0
+        self.start = time.monotonic()
+        self.sent = 0
+
     def account(self, n):
         if not self.rate:
             return
@@ -193,6 +199,9 @@ def cmd_read(args):
     for line in sys.stdin:
         line = line.strip()
         if not line:
+            continue
+        if line.startswith("rate "):   # D28: the engine changes the limit between batches
+            throttle.set_rate(float(line.split()[1]))
             continue
         index = int(line)
         data = reader.read(index)

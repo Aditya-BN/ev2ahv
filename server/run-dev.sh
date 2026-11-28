@@ -21,6 +21,7 @@ for mode in "$@"; do
     old=$(cat "$pidf" 2>/dev/null || true)
     if is_ours "$old"; then kill "$old" 2>/dev/null && sleep 1; else echo "$pidf is stale or not ours; not signalling '$old'" >&2; fi
   fi
-  nohup "$PY" -m ev2ahv_server "--$mode" --port "$port" > "$RUN/ev2ahv-$mode.log" 2>&1 &
+  # the dev server is the lab: keep the ev2ahv- name guard unless the caller sets EV2AHV_DEFAULT_NAME_PREFIX (D30a)
+  EV2AHV_DEFAULT_NAME_PREFIX=${EV2AHV_DEFAULT_NAME_PREFIX-ev2ahv-} nohup "$PY" -m ev2ahv_server "--$mode" --port "$port" > "$RUN/ev2ahv-$mode.log" 2>&1 &
   echo $! > "$pidf"
 done

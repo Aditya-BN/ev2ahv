@@ -68,15 +68,19 @@ class CutoverResultTest(unittest.TestCase):
 
 
 class NameGuardTest(unittest.TestCase):
-    """D3: the source name guard is a setting (default ev2ahv-), not only an env var."""
+    """D3: the source name guard is a setting, not only an env var. D30: the built-in default is no guard; the lab
+    gets ev2ahv- from EV2AHV_DEFAULT_NAME_PREFIX or its stored setting."""
     def setUp(self):
         self.allow_any = live.ALLOW_ANY
         live.ALLOW_ANY = False
+        self.prefix = live.GUARD_PREFIX
+        live.GUARD_PREFIX = "ev2ahv-"   # what a lab appliance runs with
 
     def tearDown(self):
         live.ALLOW_ANY = self.allow_any
+        live.GUARD_PREFIX = self.prefix
 
-    def test_default_is_the_lab_prefix(self):
+    def test_default_is_the_lab_prefix_when_configured(self):
         self.assertTrue(live.name_allowed("ev2ahv-src-rocky9", {}))
         self.assertFalse(live.name_allowed("everrun-db01", {}))
         self.assertFalse(live.name_allowed("everrun-db01", None))

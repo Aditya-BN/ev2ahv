@@ -14,19 +14,19 @@ export default function ApplianceSettings() {
   const [wvm, setWvm] = useState('');
   const [whost, setWhost] = useState('');
   const [wuser, setWuser] = useState('');
-  const [prefix, setPrefix] = useState('ev2ahv-');
+  const [prefix, setPrefix] = useState('');
   const [init, setInit] = useState(false);
   useEffect(() => {
     if (data && !init) {
       setResync(data.resync_minutes); setTz(data.timezone);
       setWvm(data.writer?.vm || ''); setWhost(data.writer?.host || ''); setWuser(data.writer?.user || '');
-      setPrefix(data.source_name_prefix ?? 'ev2ahv-');
+      setPrefix(data.source_name_prefix ?? '');
       setInit(true);
     }
   }, [data, init]);
   const save = async () => {
-    if (prefix.trim() === '' && (data?.source_name_prefix ?? 'ev2ahv-') !== ''
-        && !window.confirm('An empty prefix lets this appliance migrate any VM it can see. Continue?')) return;
+    if (prefix.trim() === '' && (data?.source_name_prefix ?? '') !== ''
+        && !window.confirm('Removing the guard lets this appliance migrate any VM it can see. Continue?')) return;
     try {
       await api.putSettings({ resync_minutes: resync, timezone: tz, source_name_prefix: prefix.trim(), writer: { vm: wvm || null, host: whost || null, user: wuser || null } });
       setDisplayTz(tz); toast('Settings saved'); reload();
@@ -46,8 +46,11 @@ export default function ApplianceSettings() {
           <Field label="Timezone" hint="Used to show dates in the console and as the default for schedules. Default Asia/Jakarta (WIB).">
             <select value={tz} onChange={(e) => setTz(e.target.value)}>{timezones().map((z) => <option key={z}>{z}</option>)}</select></Field>
           <h4 className="section">Migration scope</h4>
-          <Field label="Source VM name prefix" hint="Only source VMs (and plan-file targets) whose name starts with this can be migrated. Leave empty to allow any VM. Changes are logged in Events.">
-            <input value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="empty = any VM" /></Field>
+          <Field label="Source VM name prefix (name guard)" hint="Optional safety net. When set, only source VMs (and plan-file targets) whose name starts with this can be migrated; every other VM is blocked. Leave empty for no guard, which is what a customer appliance normally wants. Changes are logged in Events.">
+            <input id="name-guard" value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="empty = no guard, any VM can be migrated" /></Field>
+          {prefix.trim() !== '' ? (
+            <div className="alert warn" id="name-guard-warning">Name guard is on: only VMs whose name starts with <b>{prefix.trim()}</b> can be migrated. Every other VM is blocked, with a "Name guard" message in the wizard. Clear the field if that is not what you want.</div>
+          ) : <p className="muted" id="name-guard-off">No name guard: any VM the source environment shows can be migrated.</p>}
           <h4 className="section">Writer VM</h4>
           <p className="muted">The AHV helper VM that receives disk data during seeding.</p>
           <Field label="Writer VM name"><input value={wvm} onChange={(e) => setWvm(e.target.value)} placeholder="e.g. ev2ahv-writer" /></Field>

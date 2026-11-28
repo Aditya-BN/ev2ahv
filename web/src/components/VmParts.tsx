@@ -109,8 +109,10 @@ export function useVmActions(onDone: () => void) {
     } else if (p.action === 'test') {
       dialog = (
         <Modal title="Test Migration" width={520} onClose={close}
-          footer={<>{cancelBtn}<button className="btn primary" id="test-confirm" disabled={busy} onClick={() => exec(p)}>Test</button></>}>
-          <p>A test copy of the VM is booted on AHV{p.testSubnet ? <> on the isolated test subnet <b>{p.testSubnet}</b></> : ' on the isolated test network'} so you can check that it starts. The source VM keeps running and is not changed. Use <b>Discard</b> afterwards to remove the test copy.</p>
+          footer={<>{cancelBtn}<button className="btn primary" id="test-confirm" disabled={busy || !p.testSubnet} onClick={() => exec(p)}>Test</button></>}>
+          {p.testSubnet
+            ? <p>A test copy of the VM is booted on AHV on the isolated test subnet <b>{p.testSubnet}</b> so you can check that it starts. The source VM keeps running and is not changed. Use <b>Discard</b> afterwards to remove the test copy.</p>
+            : <div className="alert bad" id="test-no-network">This plan has no test network, so the test is refused. A test copy on the production network would clash with the running source VM (same IP and MAC). Add a test network to the plan, then try again.</div>}
           {names}
         </Modal>
       );

@@ -13,7 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, ROOT)
 from ev2ahv import __version__, web as oldweb  # noqa: E402  (login file + hashing shared with the CLI console)
 
-from . import models as m  # noqa: E402
+from . import bandwidth, models as m  # noqa: E402
 from .store import Store  # noqa: E402
 from .users import UserError, Users, ldap_login, ldap_settings_ok, public as users_public, write_allowed  # noqa: E402
 
@@ -388,7 +388,9 @@ def _plan(pid):
 
 
 def _plan_out(p):
-    return m.Plan(**{k: v for k, v in finish(p).items() if k in m.Plan.model_fields})
+    out = {k: v for k, v in finish(p).items() if k in m.Plan.model_fields}
+    out["bandwidth"] = bandwidth.effective_limit(current_settings(), (p.get("source") or {}).get("id"), p)
+    return m.Plan(**out)
 
 
 @app.get("/api/v2/plans")
@@ -605,6 +607,11 @@ def plan_action(pid: str, body: m.ActionIn, who=Depends(user)):
                    and body.action in v["actions"]]
         if not targets:
             raise HTTPException(409, f"'{body.action}' does not apply to the selected VMs")
+        if body.action == "test" and not any(n.get("test_subnet") for n in doc.get("network_map") or []):
+            # D30b: never fall back to the production subnet; the copy would share the running source's IP and MAC
+            raise HTTPException(409, "This plan has no test network, so the test is refused: a test copy on the "
+                                "production network would clash with the running source VM. Add a test network to the "
+                                "plan (Edit plan, Network mapping, Test network) and try again.")
         if body.action == "cutover" and not body.force:
             failing = [f"{v['name']}: {c['name']}" for v in targets for c in v["checks"] if c["status"] == "FAIL"]
             if failing:
@@ -702,9 +709,28 @@ def events(limit: int = 500, who=Depends(user)):
 
 
 DEFAULT_SETTINGS = {"id": "settings", "resync_minutes": 60, "bandwidth_policies": [], "timezone": "Asia/Jakarta",
-                    "source_name_prefix": "ev2ahv-",   # name guard; "" allows any VM (live.name_allowed)
+                    # name guard: "" (no guard) on a fresh appliance. A lab sets EV2AHV_DEFAULT_NAME_PREFIX=ev2ahv-; an
+                    # appliance already in use keeps the guard it had (migrate_name_guard). live.name_allowed reads it
+                    "source_name_prefix": os.environ.get("EV2AHV_DEFAULT_NAME_PREFIX", ""),
                     "writer": {"local": True} if os.environ.get("EV2AHV_APPLIANCE") == "1" else
                     {"vm": "ev2ahv-writer", "host": "10.12.136.211", "user": "nutanix"}}
+
+
+LEGACY_NAME_PREFIX = "ev2ahv-"   # what every appliance enforced before D30, stored or not
+
+
+def migrate_name_guard(st):
+    """D30a upgrade: an appliance in use that never stored a prefix was running with the old built-in `ev2ahv-`. Store it, so
+    the new empty default only reaches appliances with nothing configured yet. Returns True when it stored something."""
+    doc = st.get("settings", "settings")
+    if doc is not None and "source_name_prefix" in doc:
+        return False
+    if doc is None and not (st.all("provider") or st.all("plan")):
+        return False   # fresh appliance: the new default applies
+    st.put("settings", {**DEFAULT_SETTINGS, **(doc or {}), "source_name_prefix": LEGACY_NAME_PREFIX})
+    st.event("info", f"VM name guard kept at {LEGACY_NAME_PREFIX!r}* on upgrade (new appliances start with no guard). "
+             "Change it in Appliance Settings")
+    return True
 
 
 def current_settings():
@@ -720,9 +746,14 @@ def get_settings(who=Depends(user)):
 @app.put("/api/v2/settings")
 def put_settings(body: dict, who=Depends(user)):
     doc = dict(get_settings(who))
-    for k in ("resync_minutes", "bandwidth_policies", "timezone", "writer"):
+    for k in ("resync_minutes", "timezone", "writer"):
         if k in body:
             doc[k] = body[k]
+    if "bandwidth_policies" in body:
+        try:
+            doc["bandwidth_policies"] = bandwidth.validate_policies(body["bandwidth_policies"])
+        except ValueError as e:
+            raise HTTPException(422, str(e))
     if "ldap" in body:   # D13; the bind password is write-only and goes to the secret store
         cfg = dict(body["ldap"] or {})
         pw = cfg.pop("bind_password", None)
@@ -852,6 +883,8 @@ def _health_session():
 @app.on_event("startup")
 def _startup():
     _health_session()
+    if MODE == "live":
+        migrate_name_guard(store)
     if MODE == "mock":
         from . import mock
         mock.seed(store)

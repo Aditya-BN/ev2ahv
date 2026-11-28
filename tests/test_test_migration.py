@@ -85,10 +85,13 @@ class TestMigrationTest(unittest.TestCase):
         self.assertEqual(self.state.get("test_vm"), "test-vm-1")
         self.assertEqual(m.p["target"]["vm_name"], "ev2ahv-x")                   # the real plan is untouched
 
-    def test_falls_back_to_the_plan_subnet(self):
+    def test_refuses_without_a_test_subnet_and_never_uses_the_plan_subnet(self):
+        """D30b: the old fallback put the clone on the production subnet, next to the running source."""
         p = FakePrism()
-        migration(p, self.state, test_subnet=None).test()
-        self.assertEqual(p.created[0]["nics"][0]["networkInfo"]["subnet"]["extId"], "sn-VLAN136")
+        with self.assertRaisesRegex(RuntimeError, "no test network"):
+            migration(p, self.state, test_subnet=None).test()
+        self.assertEqual(p.created, [])
+        self.assertEqual(p.powered, [])
 
     def test_refusals(self):
         with self.assertRaises(RuntimeError):

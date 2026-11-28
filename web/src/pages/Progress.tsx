@@ -5,6 +5,7 @@ import { SplitButton, Modal, Pager, Spinner, usePager } from '../components/ui';
 import { ACTION_LABEL, ACTION_ORDER, ChecksBadge, PhaseInfo, ProgressBar, useVmActions, VmLogDialog, VmStatusBadge } from '../components/VmParts';
 import { fmtBytes, fmtDate, fmtDuration, fmtMem, useLive, vmTone } from '../util';
 import { StatusText } from './Dashboard';
+import { fmtLimit } from './Bandwidth';
 
 const FILTERS: { key: string; label: string; match: (v: PlanVm) => boolean }[] = [
   { key: 'in-progress', label: 'In Progress', match: (v) => ['Queued', 'Preparing', 'Seeding', 'Cutover in Progress', 'Testing', 'Rolling Back'].includes(v.status) },
@@ -67,6 +68,8 @@ export default function Progress() {
       <header className="overlay-head">
         <h2>{plan?.name || 'Migration progress'}</h2>
         {plan && <StatusText s={plan.status} />}
+        {plan?.bandwidth && <span className="chip static" id="bw-effective" title="Read limit on the source for seeds and resyncs. Policies are set on the Bandwidth page.">
+          Bandwidth limit: {fmtLimit(plan.bandwidth)}</span>}
         <div className="spacer" />
         {plan && <Link className="linkbtn" to={`/plan-details/${id}`}>Plan Summary</Link>}
         <a className="icon-btn" href={api.docsUrl} target="_blank" rel="noreferrer" title="REST API docs">?</a>

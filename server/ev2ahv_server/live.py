@@ -17,13 +17,15 @@ import yaml
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ev2ahv import credentials, everrun, everrun_api, plan as planlib  # noqa: E402
 from ev2ahv.prism import Prism  # noqa: E402
+from . import bandwidth  # noqa: E402
 
 DATA = os.path.expanduser("~/.local/share/ev2ahv/ui")
 SECRETS = os.path.expanduser("~/.config/ev2ahv/ui-secrets")
-# Name guard: only VMs whose name starts with settings["source_name_prefix"] can be migrated (default "ev2ahv-",
-# because the lab's other VMs belong to someone else). An empty prefix allows any VM; Appliance Settings changes it.
+# Name guard: only VMs whose name starts with settings["source_name_prefix"] can be migrated. Empty (no guard) unless
+# the setting or EV2AHV_DEFAULT_NAME_PREFIX says otherwise (the lab uses ev2ahv-, because its other VMs belong to someone
+# else); api.migrate_name_guard stores ev2ahv- on upgrade for an appliance already in use. Appliance Settings changes it.
 # EV2AHV_ALLOW_ANY_SOURCE=1 is the old switch and still overrides the setting (deprecated).
-GUARD_PREFIX = "ev2ahv-"
+GUARD_PREFIX = os.environ.get("EV2AHV_DEFAULT_NAME_PREFIX", "")
 ALLOW_ANY = os.environ.get("EV2AHV_ALLOW_ANY_SOURCE") == "1"
 
 
@@ -283,6 +285,12 @@ def engine_plan(plan, vm, src, wl, secret, settings):
                f"--host {shlex.quote(src['address'])} --user {shlex.quote(src['username'])}")
         q = shlex.quote(vm["name"])
         p["source"]["power"].update(status=f"{api} status {q}", stop=f"{api} stop {q}", start=f"{api} start {q}")
+    # D28: the bandwidth policy in force now. The rate file lets the engine follow a schedule change mid-pass; the server
+    # rewrites it every few seconds while a job runs (Live.tick)
+    eff = bandwidth.effective_limit(settings, src.get("id"), plan)
+    p["source"]["max_mbps"] = eff["limit_mbps"]
+    p["source"]["rate_file"] = rate_path(plan, vm)
+    bandwidth.write_rate_file(p["source"]["rate_file"], eff["limit_mbps"])
     t = p["target"]
     if vs.get("target_name"):
         t["vm_name"] = vs["target_name"]
@@ -340,6 +348,10 @@ def engine_plan(plan, vm, src, wl, secret, settings):
 
 def plan_path(plan, vm):
     return os.path.join(DATA, plan["id"], re.sub(r"[^\w.-]", "_", vm["id"]) + ".yaml")
+
+
+def rate_path(plan, vm):
+    return os.path.join(DATA, plan["id"], re.sub(r"[^\w.-]", "_", vm["id"]) + ".rate")
 
 
 def _write(plan, vm, p):
@@ -597,6 +609,7 @@ class Live:
             resync = 60 * int((p.get("schedule") or {}).get("resync_minutes") or 60)
             for v in p["vms"]:
                 if (p["id"], v["id"]) in self.jobs:
+                    self._follow_policy(p, v, now)
                     continue
                 s = v["status"]
                 if s in ("Queued", "Preparing"):
@@ -614,6 +627,23 @@ class Live:
                     self.launch(p, v, ["rollback"], self._rolled_back)
                 elif s == "Testing":
                     self.launch(p, v, ["test"], self._tested)
+
+    def _follow_policy(self, p, v, now):
+        """D28: keep the running job's rate file at the limit in force now, so a schedule boundary or a policy edit
+        takes effect within seconds, in the middle of a seed or resync."""
+        job = self.jobs.get((p["id"], v["id"]))
+        if not job or job.get("action") not in ("seed", "resync"):
+            return
+        eff = bandwidth.effective_limit(self.settings(), (p.get("source") or {}).get("id"), p, now)
+        old = job.get("limit")
+        if old == eff["limit_mbps"]:
+            return
+        job["limit"] = eff["limit_mbps"]
+        bandwidth.write_rate_file(rate_path(p, v), eff["limit_mbps"])
+        if old is not None:
+            what = "unlimited" if eff["unlimited"] else f"{eff['limit_mbps']:g} MiB/s"
+            self.store.event("info", f"bandwidth limit now {what} ({eff['policy'] or eff['origin']})",
+                             plan=p["name"], vm=v["name"])
 
     @staticmethod
     def _prepared(p, v, checks):

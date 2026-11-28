@@ -1,5 +1,5 @@
 """Runs the block helper locally or over ssh, and speaks its framed protocol."""
-import io, json, os, shlex, socket, struct, subprocess, uuid
+import io, json, os, shlex, socket, struct, subprocess, time, uuid
 
 from .helper import ev2ahv_helper as helper
 
@@ -126,6 +126,8 @@ class BlockEndpoint:
         self.t, self.device, self.chunk, self.max_mbps = transport, device, chunk, max_mbps
         self.writable = writable
         self.limit = None    # expose only the first N bytes (everRun files carry a metadata trailer)
+        self.rate_file = None   # D28: a file holding the current limit in MiB/s; read again while data flows
+        self._rate_seen, self._rate_checked = max_mbps, 0.0
         self._reader = self._writer = None
         self.t.setup()
 
@@ -141,7 +143,7 @@ class BlockEndpoint:
         limit = self.limit if limit is None else limit
         if limit is not None:
             args += ["--limit", limit]
-        if self.max_mbps:
+        if self.current_rate(every=0):
             args += ["--max-mbps", self.max_mbps]
         p = self.t.popen(*args)
         done = False
@@ -162,15 +164,43 @@ class BlockEndpoint:
         if not done or rc:
             raise RuntimeError(f"hash failed on {self.device}: {err[:400]}")
 
+    def current_rate(self, now=None, every=2.0):
+        """The limit now in MiB/s (0 = unlimited): the rate file when there is one, else the plan's value. The file is
+        looked at every `every` seconds at most, so a policy change applies within a few seconds of the server writing it."""
+        if not self.rate_file:
+            return self.max_mbps
+        now = time.monotonic() if now is None else now
+        if now - self._rate_checked >= every:
+            self._rate_checked = now
+            try:
+                with open(self.rate_file) as fh:
+                    self.max_mbps = max(0.0, float(fh.read().strip()))
+            except (OSError, ValueError):
+                pass   # missing or half-written: keep the last limit
+        return self.max_mbps
+
     def read(self, indices):
+        indices = list(indices)
+        rate = self.current_rate(every=1.0)
+        if rate and self.rate_file:
+            # a slow limit makes a big batch take minutes; hand the helper pieces of about 5 s so a change lands soon
+            step = max(1, int(rate * 5 / max(self.chunk / 1024 ** 2, 1)))
+            if step < len(indices):
+                for i in range(0, len(indices), step):
+                    yield from self.read(indices[i:i + step])
+                return
         if self._reader is None:
             args = ["read", self.device, "--chunk", self.chunk]
             if self.limit is not None:
                 args += ["--limit", self.limit]
-            if self.max_mbps:
-                args += ["--max-mbps", self.max_mbps]
+            if rate:
+                args += ["--max-mbps", rate]
             self._reader = self.t.popen(*args, stdin=subprocess.PIPE)
+            self._rate_seen = rate
         p = self._reader
+        if self.rate_file and rate != self._rate_seen:
+            p.stdin.write(f"rate {rate}\n".encode())
+            self._rate_seen = rate
         p.stdin.write("".join(f"{i}\n" for i in indices).encode())
         p.stdin.flush()
         for want in indices:

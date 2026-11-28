@@ -138,6 +138,7 @@ class Schedule(BaseModel):
     seed_at: Optional[float] = Field(None, description="epoch seconds; None = start now")
     timezone: str = "Asia/Jakarta"
     resync_minutes: int = Field(60, ge=5, description="automatic resync interval while waiting for cutover (5 min or more)")
+    max_mbps: Optional[float] = Field(None, ge=0, description="plan override of the read limit in MiB/s (0 = unlimited); empty follows the bandwidth policies (D28)")
 
 
 class PlanIn(BaseModel):
@@ -220,6 +221,13 @@ class PlanVm(BaseModel):
         return v
 
 
+class EffectiveBandwidth(BaseModel):
+    limit_mbps: float = Field(description="MiB/s of source reads in force now; 0 = unlimited")
+    unlimited: bool
+    origin: Literal["plan", "policy", "default"]
+    policy: Optional[str] = Field(None, description="name of the policy that sets it")
+
+
 class Plan(BaseModel):
     id: str
     name: str
@@ -241,6 +249,7 @@ class Plan(BaseModel):
     counts: VmCounts = Field(default_factory=VmCounts)
     vms: List[PlanVm] = Field(default_factory=list)
     actions: List[str] = Field(default_factory=list, description="plan-row Actions menu: Start, Edit, Delete")
+    bandwidth: Optional[EffectiveBandwidth] = Field(None, description="the read limit that applies to this plan right now (D28)")
 
 
 class ActionIn(BaseModel):
