@@ -11,7 +11,7 @@ PlanStatus = Literal["Not Started", "In Progress", "Paused", "Completed", "Faile
 VmStatus = Literal["Queued", "Preparing", "Seeding", "Ready to Cutover", "Scheduled for Cutover", "Cutover in Progress",
                    "Testing", "Tested", "Rolling Back", "Completed", "Failed", "Paused", "Cancelled"]
 PlanAction = Literal["start", "pause", "resume", "cutover", "test", "cancel", "retry", "discard", "complete", "rollback",
-                     "resync"]
+                     "resync", "unschedule"]
 CheckStatus = Literal["PASS", "WARN", "FAIL"]
 
 
@@ -127,17 +127,50 @@ class VmSettings(BaseModel):
     guest_address: Optional[str] = Field(None, description="IP the server uses to reach the guest for automatic prep")
     cbt: Literal["off", "auto"] = Field("off", description="changed-block tracking for resyncs (experimental, everRun direct sources only; docs/cbt.md)")
     final_verify: Literal["full", "sample", "none"] = Field("full", description="how the final sync checks the target after its source pass: full (hash the target too, default), sample (compare a random 1 percent), none (trust the recorded digests); docs/cbt.md")
+    rollback_source: Literal["start", "leave_off"] = Field("start", description="on rollback: power the source back on (as it was before cutover, default) or leave it powered off. The source is always powered off during cutover (the engine does that so the IP and MAC are never live twice)")
+    post_cutover_cleanup: bool = Field(False, description="run the guest cleanup (remove Stratus software) on AHV automatically after a verified cutover; off = manual")
 
 
+# Per-VM cutover settings (D8b) live in VmSettings next to final_verify; see CutoverSettingsIn.
 class VmSettingsPatch(BaseModel):
     cbt: Optional[Literal["off", "auto"]] = None
     final_verify: Optional[Literal["full", "sample", "none"]] = None
 
 
+class CutoverWindow(BaseModel):
+    """Daily window (wall-clock in Schedule.timezone) inside which a scheduled cutover may start. end < start wraps
+    past midnight (22:00-04:00). A cutover that comes due outside it is postponed to the next opening (D8b)."""
+    start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="HH:MM")
+    end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="HH:MM")
+
+    @field_validator("end")
+    @classmethod
+    def _differs(cls, v, info):
+        if info.data.get("start") == v:
+            raise ValueError("cutover window start and end must differ")
+        return v
+
+
 class Schedule(BaseModel):
     seed_at: Optional[float] = Field(None, description="epoch seconds; None = start now")
     timezone: str = "Asia/Jakarta"
+    cutover_window: Optional[CutoverWindow] = Field(None, description="optional: scheduled cutovers start only inside it")
     resync_minutes: int = Field(60, ge=5, description="automatic resync interval while waiting for cutover (5 min or more)")
+
+
+class CutoverSettingsIn(BaseModel):
+    """Edit Cutover Settings (D8b). Fields left out keep their value. cutover_at set (epoch seconds) puts the VMs in
+    Scheduled for Cutover; schedule=false with cutover_at null only saves the settings. edit_window=true also
+    replaces the plan's cutover window with `cutover_window` (null removes it)."""
+    vm_ids: List[str] = Field(default_factory=list, description="empty = every VM that can be scheduled")
+    cutover_at: Optional[float] = None
+    schedule: bool = Field(True, description="false: save the settings only, do not schedule")
+    force: bool = Field(False, description="schedule even though a prep-check FAIL exists")
+    final_verify: Optional[Literal["full", "sample", "none"]] = None
+    rollback_source: Optional[Literal["start", "leave_off"]] = None
+    post_cutover_cleanup: Optional[bool] = None
+    edit_window: bool = False
+    cutover_window: Optional[CutoverWindow] = None
 
 
 class PlanIn(BaseModel):
@@ -202,6 +235,9 @@ class PlanVm(BaseModel):
     stage: Optional[str] = Field(None, description="part of the cutover running now, e.g. final sync, image upload")
     sync_progress: Optional[float] = Field(None, description="percent of the running sync pass (resync, cutover)")
     cutover_result: Optional[CutoverResult] = Field(None, description="set when a cutover completes, cleared on rollback")
+    cutover_at: Optional[float] = Field(None, description="epoch seconds; set while Scheduled for Cutover")
+    cutover_postponed_from: Optional[float] = Field(None, description="the time first asked for, when a cutover window moved cutover_at")
+    cleanup_error: Optional[str] = Field(None, description="automatic guest cleanup after cutover failed (the VM stays Completed)")
     actions: List[PlanAction] = Field(default_factory=list)
 
     @field_validator("cutover_result", mode="before")

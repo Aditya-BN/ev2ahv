@@ -1380,6 +1380,72 @@
                 }
             }
         },
+        "/api/v2/plans/{pid}/cutover-settings": {
+            "put": {
+                "summary": "Cutover Settings",
+                "description": "D8b, Edit Cutover Settings: save per-VM cutover settings and, with cutover_at, schedule the cutover.\nOnly VMs that can be cut over (Ready to Cutover, Tested, Scheduled for Cutover) are scheduled; the settings are\nsaved for every selected VM.",
+                "operationId": "cutover_settings_api_v2_plans__pid__cutover_settings_put",
+                "parameters": [
+                    {
+                        "name": "pid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Pid"
+                        }
+                    },
+                    {
+                        "name": "ev2ahv_session",
+                        "in": "cookie",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Ev2Ahv Session"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CutoverSettingsIn"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Plan"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v2/plans/{pid}/precheck": {
             "post": {
                 "summary": "Precheck",
@@ -2249,7 +2315,8 @@
                             "discard",
                             "complete",
                             "rollback",
-                            "resync"
+                            "resync",
+                            "unschedule"
                         ],
                         "title": "Action"
                     },
@@ -2460,6 +2527,124 @@
                 "type": "object",
                 "title": "CutoverResult",
                 "description": "What the last successful cutover measured, kept on the plan VM (engine timings, in seconds)."
+            },
+            "CutoverSettingsIn": {
+                "properties": {
+                    "vm_ids": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Vm Ids",
+                        "description": "empty = every VM that can be scheduled"
+                    },
+                    "cutover_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cutover At"
+                    },
+                    "schedule": {
+                        "type": "boolean",
+                        "title": "Schedule",
+                        "description": "false: save the settings only, do not schedule",
+                        "default": true
+                    },
+                    "force": {
+                        "type": "boolean",
+                        "title": "Force",
+                        "description": "schedule even though a prep-check FAIL exists",
+                        "default": false
+                    },
+                    "final_verify": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "full",
+                                    "sample",
+                                    "none"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Final Verify"
+                    },
+                    "rollback_source": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "start",
+                                    "leave_off"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rollback Source"
+                    },
+                    "post_cutover_cleanup": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Post Cutover Cleanup"
+                    },
+                    "edit_window": {
+                        "type": "boolean",
+                        "title": "Edit Window",
+                        "default": false
+                    },
+                    "cutover_window": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/CutoverWindow"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "type": "object",
+                "title": "CutoverSettingsIn",
+                "description": "Edit Cutover Settings (D8b). Fields left out keep their value. cutover_at set (epoch seconds) puts the VMs in\nScheduled for Cutover; schedule=false with cutover_at null only saves the settings. edit_window=true also\nreplaces the plan's cutover window with `cutover_window` (null removes it)."
+            },
+            "CutoverWindow": {
+                "properties": {
+                    "start": {
+                        "type": "string",
+                        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                        "title": "Start",
+                        "description": "HH:MM"
+                    },
+                    "end": {
+                        "type": "string",
+                        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                        "title": "End",
+                        "description": "HH:MM"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "start",
+                    "end"
+                ],
+                "title": "CutoverWindow",
+                "description": "Daily window (wall-clock in Schedule.timezone) inside which a scheduled cutover may start. end < start wraps\npast midnight (22:00-04:00). A cutover that comes due outside it is postponed to the next opening (D8b)."
             },
             "HTTPValidationError": {
                 "properties": {
@@ -2969,6 +3154,42 @@
                         ],
                         "description": "set when a cutover completes, cleared on rollback"
                     },
+                    "cutover_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cutover At",
+                        "description": "epoch seconds; set while Scheduled for Cutover"
+                    },
+                    "cutover_postponed_from": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cutover Postponed From",
+                        "description": "the time first asked for, when a cutover window moved cutover_at"
+                    },
+                    "cleanup_error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cleanup Error",
+                        "description": "automatic guest cleanup after cutover failed (the VM stays Completed)"
+                    },
                     "actions": {
                         "items": {
                             "type": "string",
@@ -2983,7 +3204,8 @@
                                 "discard",
                                 "complete",
                                 "rollback",
-                                "resync"
+                                "resync",
+                                "unschedule"
                             ]
                         },
                         "type": "array",
@@ -3308,6 +3530,17 @@
                         "title": "Timezone",
                         "default": "Asia/Jakarta"
                     },
+                    "cutover_window": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/CutoverWindow"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "optional: scheduled cutovers start only inside it"
+                    },
                     "resync_minutes": {
                         "type": "integer",
                         "minimum": 5.0,
@@ -3542,6 +3775,22 @@
                         "title": "Final Verify",
                         "description": "how the final sync checks the target after its source pass: full (hash the target too, default), sample (compare a random 1 percent), none (trust the recorded digests); docs/cbt.md",
                         "default": "full"
+                    },
+                    "rollback_source": {
+                        "type": "string",
+                        "enum": [
+                            "start",
+                            "leave_off"
+                        ],
+                        "title": "Rollback Source",
+                        "description": "on rollback: power the source back on (as it was before cutover, default) or leave it powered off. The source is always powered off during cutover (the engine does that so the IP and MAC are never live twice)",
+                        "default": "start"
+                    },
+                    "post_cutover_cleanup": {
+                        "type": "boolean",
+                        "title": "Post Cutover Cleanup",
+                        "description": "run the guest cleanup (remove Stratus software) on AHV automatically after a verified cutover; off = manual",
+                        "default": false
                     }
                 },
                 "type": "object",

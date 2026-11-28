@@ -13,7 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, ROOT)
 from ev2ahv import __version__, web as oldweb  # noqa: E402  (login file + hashing shared with the CLI console)
 
-from . import models as m  # noqa: E402
+from . import cutover_sched, models as m  # noqa: E402
 from .store import Store  # noqa: E402
 from .users import UserError, Users, ldap_login, ldap_settings_ok, public as users_public, write_allowed  # noqa: E402
 
@@ -323,7 +323,7 @@ VM_ACTIONS = {
     "Seeding": ["pause", "cancel"],
     "Paused": ["resume", "cancel"],
     "Ready to Cutover": ["cutover", "resync", "test", "pause", "cancel"],
-    "Scheduled for Cutover": ["cutover", "cancel"],
+    "Scheduled for Cutover": ["cutover", "unschedule", "cancel"],
     "Testing": [],
     "Tested": ["cutover", "resync", "test", "discard", "cancel"],
     "Cutover in Progress": [],
@@ -628,6 +628,9 @@ def plan_action(pid: str, body: m.ActionIn, who=Depends(user)):
                 # D18: the worker resyncs a seeded VM whose last sync is older than the plan interval, so marking it
                 # as never synced makes the next tick (2 s) start one; a resync already running absorbs the request
                 v["last_sync_at"] = 0
+            elif a == "unschedule":
+                v["status"] = v.get("sched_from") or "Ready to Cutover"
+                _clear_schedule(v)
             elif a == "discard":
                 if MODE == "live":   # D8d: delete the test VM in the background
                     worker.launch(doc, v, ["discard-test"], lambda p_, vm_, r: None)
@@ -637,12 +640,66 @@ def plan_action(pid: str, body: m.ActionIn, who=Depends(user)):
                 v["status"] = nxt[a]
                 v["error"] = None
                 v["phase_t"] = time.time()
+            if a in ("cutover", "cancel"):
+                _clear_schedule(v)   # a manual cutover (or a cancel) replaces any schedule
             if a == "cutover":
                 v["force"] = body.force or None
             store.event("warning" if a in ("cancel", "rollback") else "info",
                         f"{who}: {a} {v['name']}" + (" (forced past prep-check FAIL)" if body.force else ""),
                         plan=doc["name"], vm=v["name"])
         store.put("plan", doc)
+        bump()
+        return _plan_out(doc)
+
+
+def _clear_schedule(v):
+    for k in ("cutover_at", "cutover_postponed_from", "sched_resync", "sched_force", "sched_from"):
+        v.pop(k, None)
+
+
+@app.put("/api/v2/plans/{pid}/cutover-settings", response_model=m.Plan)
+def cutover_settings(pid: str, body: m.CutoverSettingsIn, who=Depends(user)):
+    """D8b, Edit Cutover Settings: save per-VM cutover settings and, with cutover_at, schedule the cutover.
+    Only VMs that can be cut over (Ready to Cutover, Tested, Scheduled for Cutover) are scheduled; the settings are
+    saved for every selected VM."""
+    now = time.time()
+    with lock:
+        doc = finish(_plan(pid))
+        if not doc.get("started_at"):
+            raise HTTPException(409, "Start the plan first: cutover is scheduled for VMs that finished seeding")
+        sel = [v for v in doc["vms"] if not body.vm_ids or v["id"] in body.vm_ids]
+        if body.vm_ids and len(sel) != len(set(body.vm_ids)):
+            raise HTTPException(404, "VM not in this plan")
+        want = body.schedule and body.cutover_at is not None
+        targets = [v for v in sel if v["status"] in cutover_sched.SCHEDULABLE]
+        if want:
+            if body.cutover_at < now - 60:
+                raise HTTPException(422, "Pick a cutover time in the future")
+            if not targets:
+                raise HTTPException(409, "No selected VM is ready for cutover (Ready to Cutover or Tested)")
+            failing = [f"{v['name']}: {c['name']}" for v in targets for c in v["checks"] if c["status"] == "FAIL"]
+            if failing and not body.force:
+                raise HTTPException(409, {"message": "Prep-check failed. Fix it, or schedule with force.",
+                                          "failing": failing})
+        if body.edit_window:
+            doc["schedule"]["cutover_window"] = body.cutover_window.model_dump() if body.cutover_window else None
+        tz = doc["schedule"].get("timezone")
+        for v in sel:
+            vs = doc.setdefault("vm_settings", {}).setdefault(v["id"], m.VmSettings().model_dump())
+            for key in ("final_verify", "rollback_source", "post_cutover_cleanup"):
+                if getattr(body, key) is not None:
+                    vs[key] = getattr(body, key)
+            if want and v in targets:
+                if v["status"] != "Scheduled for Cutover":
+                    v["sched_from"] = v["status"]
+                v.update(status="Scheduled for Cutover", cutover_at=body.cutover_at, error=None,
+                         sched_force=body.force or None, sched_resync=None, cutover_postponed_from=None)
+                store.event("info", f"{who} scheduled the cutover of {v['name']} for "
+                            f"{cutover_sched.fmt_local(body.cutover_at, tz)}", plan=doc["name"], vm=v["name"])
+        if not want:
+            store.event("info", f"{who} changed cutover settings for {', '.join(v['name'] for v in sel) or 'the plan'}",
+                        plan=doc["name"])
+        store.put("plan", finish(doc))
         bump()
         return _plan_out(doc)
 

@@ -16,6 +16,7 @@ import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ev2ahv import credentials, everrun, everrun_api, plan as planlib  # noqa: E402
+from . import cutover_sched  # noqa: E402
 from ev2ahv.prism import Prism  # noqa: E402
 
 DATA = os.path.expanduser("~/.local/share/ev2ahv/ui")
@@ -297,6 +298,10 @@ def engine_plan(plan, vm, src, wl, secret, settings):
             t[k_eng] = vs[k_ui]
     if vs.get("vcpus"):
         t["sockets"] = 1
+    if vs.get("rollback_source") == "leave_off":
+        # D8b: a rollback powers the AHV VM off and then leaves the source as it is (stopped). The engine starts the
+        # source only when the plan has source.power.start.
+        (p["source"].get("power") or {}).pop("start", None)
     if vs.get("final_verify") in ("full", "sample", "none"):
         p.setdefault("sync", {})["final_verify"] = vs["final_verify"]
     if vs.get("cbt") == "auto" and p["source"].get("type") == "direct" and p["source"].get("qemu_domain"):
@@ -505,7 +510,14 @@ class Live:
                 return
             if error and job["action"] == "resync" and self._retry_resync(plan, vm, error):
                 return
-            if error:
+            if error and job["action"] == "guest-cleanup":
+                # D8b: automatic cleanup after a cutover. The migration itself is done and verified, so a failed
+                # cleanup must not turn the VM Failed; it is reported and can be run by hand.
+                self.store.event("error", f"guest-cleanup failed: {error}. The VM stays Completed; run the cleanup "
+                                 "script by hand", plan=plan["name"], vm=vm["name"])
+                self._update(plan["id"], vm["id"], lambda p, v: v.update(cleanup_done=True, cleanup_error=error[:300],
+                                                                        phase=None, stage=None))
+            elif error:
                 self.store.event("error", f"{job['action']} failed: {error}", plan=plan["name"], vm=vm["name"])
                 self._update(plan["id"], vm["id"],
                              lambda p, v: v.update(fail_from=v["status"], status="Failed", error=f"{job['action']}: {error}",
@@ -607,6 +619,10 @@ class Live:
                     self.launch(p, v, ["seed"], self._seeded)
                 elif s == "Ready to Cutover" and now - (v.get("last_sync_at") or 0) > resync:
                     self.launch(p, v, ["resync"], self._seeded)
+                elif s == "Scheduled for Cutover":
+                    self._scheduled(p, v, now)
+                elif s == "Completed" and self._wants_cleanup(p, v):
+                    self.launch(p, v, ["guest-cleanup"], self._cleaned)
                 elif s == "Cutover in Progress":
                     steps = (["discard-target", "resync"] if v.get("rolled_back") else []) + ["cutover"]
                     self.launch(p, v, steps, self._cut, force=bool(v.get("force")))
@@ -619,15 +635,46 @@ class Live:
     def _prepared(p, v, checks):
         v["status"] = "Seeding"
 
+    def _scheduled(self, p, v, now):
+        """D8b: one tick for a VM in Scheduled for Cutover (rules in cutover_sched.tick_vm). Works on a fresh copy of
+        the plan, because the caller's copy may predate an API edit (cancel schedule, new time)."""
+        ev = lambda sev, msg: self.store.event(sev, msg, plan=p["name"], vm=v["name"])
+        with self.lock:
+            cur = self.store.get("plan", p["id"])
+            cv = next((x for x in (cur or {}).get("vms", []) if x["id"] == v["id"]), None)
+            if not cv or cv["status"] != "Scheduled for Cutover":
+                return
+            act = cutover_sched.tick_vm(cur, cv, now, ev)
+            if act != "wait":
+                self.store.put("plan", self.finish(cur))
+        if act != "wait":
+            self.bump()
+        if act == "resync":
+            self.launch(cur, cv, ["resync"], self._seeded)
+
+    @staticmethod
+    def _wants_cleanup(p, v):
+        """D8b: run the guest cleanup once after a verified cutover when the VM's cutover settings ask for it
+        (automatic guest preparation only: manual mode only produces the script, so there is nothing to run)."""
+        vs = (p.get("vm_settings") or {}).get(v["id"]) or {}
+        return (bool(vs.get("post_cutover_cleanup")) and not v.get("cleanup_done") and p["prep"].get("mode") == "automatic"
+                and not p["prep"].get("bypass_guest_ops") and bool(v.get("cutover_result")))
+
+    @staticmethod
+    def _cleaned(p, v, r):
+        v.update(cleanup_done=True, cleanup_error=None)
+
     @staticmethod
     def _seeded(p, v, r):
         v.pop("resync_retries", None)
-        v.update(status="Ready to Cutover", seed_percent=100.0, last_sync_at=time.time(), eta_seconds=None,
+        # a resync that ran for a scheduled cutover keeps the schedule
+        v.update(status="Scheduled for Cutover" if v["status"] == "Scheduled for Cutover" else "Ready to Cutover",
+                 seed_percent=100.0, last_sync_at=time.time(), eta_seconds=None,
                  data_transferred_bytes=v.get("total_bytes") or v.get("data_transferred_bytes", 0))
 
     def _cut(self, p, v, r):
         r = r or {}
-        v.update(status="Completed", rolled_back=None, force=None, cutover_result=cutover_summary(r))
+        v.update(status="Completed", rolled_back=None, force=None, cleanup_done=None, cutover_result=cutover_summary(r))
         tgt = self.store.get("provider", (p.get("target") or {}).get("id")) or {}
         if r.get("vm"):
             v["target_vm_id"] = r["vm"]

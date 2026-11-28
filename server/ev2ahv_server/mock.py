@@ -5,6 +5,8 @@ contacts everRun or Prism.
 """
 import time
 
+from . import cutover_sched
+
 GiB = 1 << 30
 
 CLUSTERS = [{"id": "c-136", "name": "NTNX-136"}]
@@ -151,9 +153,25 @@ def simulate(store, lock, finish, bump):
                         store.event("info", "Cutover complete, downtime 7m 31s (mock)", plan=p["name"],
                                     vm=v["name"])
                         dirty = True
+                    elif s == "Completed" and ((p.get("vm_settings") or {}).get(v["id"]) or {}).get(
+                            "post_cutover_cleanup") and not v.get("cleanup_done") and age > 5:
+                        v["cleanup_done"] = True
+                        store.event("info", "Guest cleanup ran automatically on AHV (mock)", plan=p["name"],
+                                    vm=v["name"])
+                        dirty = True
+                    elif s == "Scheduled for Cutover":
+                        ev = lambda sev, msg, p=p, v=v: store.event(sev, msg, plan=p["name"], vm=v["name"])
+                        act = cutover_sched.tick_vm(p, v, time.time(), ev)
+                        if act == "resync":
+                            v["last_sync_at"] = time.time()
+                            ev("info", "Resync before the scheduled cutover done (mock)")
+                        dirty = dirty or act != "wait"
                     elif s == "Rolling Back" and age > 10:
                         v["status"], v["rolled_back"], v["cutover_result"] = "Ready to Cutover", True, None
-                        store.event("warning", "Rolled back: AHV VM off, source VM on (mock)", plan=p["name"],
+                        v.pop("cleanup_done", None)
+                        off = ((p.get("vm_settings") or {}).get(v["id"]) or {}).get("rollback_source") == "leave_off"
+                        store.event("warning", "Rolled back: AHV VM off, source VM " +
+                                    ("left powered off as configured" if off else "on") + " (mock)", plan=p["name"],
                                     vm=v["name"])
                         dirty = True
                     elif s == "Testing" and age > 10:
