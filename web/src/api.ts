@@ -22,7 +22,7 @@ export interface Provider {
   vm_count: number; last_refreshed?: number | null; version?: string | null; node_addresses: string[];
   clusters: Named[]; containers: Named[]; subnets: Subnet[]; projects?: Named[];
 }
-export interface Nic { network: string; mac: string; ip?: string | null }
+export interface Nic { network: string; mac: string; ip?: string | null; model?: string | null }
 export interface Workload {
   id: string; name: string; os_type: 'windows' | 'linux' | 'other'; os_name: string; power_state: 'On' | 'Off';
   availability: 'FT' | 'HA' | ''; active_node: string; vcpus: number; memory_mib: number; firmware: 'bios' | 'uefi';
@@ -37,7 +37,7 @@ export interface Prep {
 export interface VmSettings {
   target_name?: string | null; vcpus?: number | null; memory_mib?: number | null; disk_bus: 'scsi' | 'pci';
   convert_to_scsi: boolean; firmware?: 'bios' | 'uefi' | null; timezone?: string | null; guest_address?: string | null;
-  cbt?: 'off' | 'auto'; final_verify?: 'full' | 'sample' | 'none';
+  nic_subnets?: Record<string, string>; cbt?: 'off' | 'auto'; final_verify?: 'full' | 'sample' | 'none';
 }
 export interface Schedule { seed_at?: number | null; timezone: string; resync_minutes: number }
 export interface VmCounts { total: number; in_progress: number; ready_to_cutover: number; failed: number; paused: number; completed: number }

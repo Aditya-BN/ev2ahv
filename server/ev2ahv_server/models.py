@@ -76,6 +76,7 @@ class Nic(BaseModel):
     network: str
     mac: str
     ip: Optional[str] = None
+    model: Optional[str] = Field(None, description="source NIC model (virtio, e1000, ...)")
 
 
 class Workload(BaseModel):
@@ -125,6 +126,7 @@ class VmSettings(BaseModel):
     firmware: Optional[Literal["bios", "uefi"]] = None
     timezone: Optional[str] = None
     guest_address: Optional[str] = Field(None, description="IP the server uses to reach the guest for automatic prep")
+    nic_subnets: Dict[str, str] = Field(default_factory=dict, description="D29 per-NIC override: NIC index (0 = first NIC, as text) to target subnet name. A NIC without an entry uses the network mapping of its source network")
     cbt: Literal["off", "auto"] = Field("off", description="changed-block tracking for resyncs (experimental, everRun direct sources only; docs/cbt.md)")
     final_verify: Literal["full", "sample", "none"] = Field("full", description="how the final sync checks the target after its source pass: full (hash the target too, default), sample (compare a random 1 percent), none (trust the recorded digests); docs/cbt.md")
 

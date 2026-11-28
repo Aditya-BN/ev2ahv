@@ -15,11 +15,12 @@ SUBNETS = [{"id": "sn-136", "name": "vlan136", "type": "VLAN"}, {"id": "sn-135",
 
 
 def _vm(id_, name, os_type, os_name, avail, node, cpu, mem, disks, gib, ip, mac, power="On", warnings=(),
-        fw="bios"):
+        fw="bios", extra_nics=()):
     return {"id": id_, "name": name, "os_type": os_type, "os_name": os_name, "power_state": power,
             "availability": avail, "active_node": node, "vcpus": cpu, "memory_mib": mem, "firmware": fw,
             "disks": disks, "total_bytes": int(gib * GiB),
-            "nics": [{"network": "sharednetwork0", "mac": mac, "ip": ip}], "warnings": list(warnings)}
+            "nics": [{"network": "sharednetwork0", "mac": mac, "ip": ip, "model": "virtio"}] + list(extra_nics),
+            "warnings": list(warnings)}
 
 
 WORKLOADS = [
@@ -35,6 +36,9 @@ WORKLOADS = [
         "00:04:fc:40:61:12"),
     _vm("w-scada-hist", "scada-historian", "windows", "Windows Server 2016", "FT", "node1", 4, 16384, 2, 250,
         "10.12.136.60", "00:04:fc:40:61:13", warnings=["Guest has 2 NICs on the same network"]),
+    _vm("w-erp-gw01", "erp-gw01", "linux", "RHEL 8.10", "HA", "node1", 2, 4096, 1, 40, "10.12.136.80",
+        "00:04:fc:40:61:15", extra_nics=[{"network": "sharednetwork1", "mac": "00:04:fc:40:61:25", "ip": "192.168.50.80",
+                                         "model": "virtio"}]),
     _vm("w-old-nt", "legacy-hmi", "other", "Windows XP Embedded", "HA", "node0", 1, 1024, 1, 20, "10.12.136.70",
         "00:04:fc:40:61:14", power="Off", warnings=["Unsupported guest OS: migrate as-is, no guest preparation"]),
 ]

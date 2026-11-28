@@ -28,7 +28,11 @@ def parse_domain(xml):
                       "format": driver.get("type") if driver is not None else None})
     for n in root.findall("devices/interface"):
         model = n.find("model")
-        nics.append({"mac": n.find("mac").get("address").lower(),
+        src = n.find("source")
+        net = None
+        if src is not None:   # D29: the source network is the bridge (or libvirt network) the NIC hangs on
+            net = src.get("bridge") or src.get("network") or src.get("dev")
+        nics.append({"mac": n.find("mac").get("address").lower(), "network": net,
                      "model": model.get("type") if model is not None else None})
     return {"name": root.findtext("name"), "vcpus": int(root.findtext("vcpu")),
             "memory_mib": int(root.findtext("memory")) // 1024,
@@ -63,6 +67,14 @@ def discover(vm, nodes, key=None):
     return info
 
 
+AHV_NIC_MODELS = {"virtio": "VIRTIO", "e1000": "E1000", "e1000e": "E1000"}
+
+
+def ahv_model(libvirt_model):
+    """Source NIC model to the AHV one. Anything AHV does not offer (rtl8139, ...) becomes VIRTIO, as before."""
+    return AHV_NIC_MODELS.get((libvirt_model or "").lower(), "VIRTIO")
+
+
 def build_plan(info, target_name, subnet, avcli, writer=None, container="VM_Container", cluster="NTNX-DC",
                max_mbps=100, disk_bus="scsi", plan_name=None):
     vm = shlex.quote(info["name"])
@@ -76,7 +88,8 @@ def build_plan(info, target_name, subnet, avcli, writer=None, container="VM_Cont
                              "status": f"{cli} vm-info {vm} | awk '/-> state/{{print $NF; exit}}'",
                              "stop": f"{cli} vm-shutdown {vm}", "start": f"{cli} vm-poweron {vm}"}},
         "disks": [{"name": d["dev"], "path": d["path"], "size_bytes": d["guest_bytes"]} for d in info["disks"]],
-        "nics": [{"subnet": subnet, "mac": n["mac"], "keep_mac": True} for n in info["nics"]],
+        "nics": [{"subnet": subnet, "mac": n["mac"], "keep_mac": True, "source_network": n.get("network"),
+                  "model": ahv_model(n.get("model"))} for n in info["nics"]],
         "target": {"vm_name": target_name, "cluster": cluster, "container": container, "sockets": 1,
                    "cores": info["vcpus"], "threads": 1, "memory_mib": info["memory_mib"],
                    "firmware": info["firmware"], "disk_bus": disk_bus},

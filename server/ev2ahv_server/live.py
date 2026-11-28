@@ -17,6 +17,7 @@ import yaml
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ev2ahv import credentials, everrun, everrun_api, plan as planlib  # noqa: E402
 from ev2ahv.prism import Prism  # noqa: E402
+from .nicmap import NicMapError, resolve_nic_subnets  # noqa: E402
 
 DATA = os.path.expanduser("~/.local/share/ev2ahv/ui")
 SECRETS = os.path.expanduser("~/.config/ev2ahv/ui-secrets")
@@ -176,7 +177,8 @@ def _everrun_workloads(nodes, settings=None):
                     "availability": "",   # filled from the everRun web API by _fill_availability
                     "active_node": host, "vcpus": info["vcpus"], "memory_mib": info["memory_mib"],
                     "firmware": info["firmware"], "disks": len(info["disks"]), "total_bytes": size,
-                    "nics": [{"network": "sharednetwork", "mac": n["mac"], "ip": None} for n in info["nics"]],
+                    "nics": [{"network": n.get("network") or "sharednetwork", "mac": n["mac"], "ip": None,
+                              "model": n.get("model")} for n in info["nics"]],
                     "warnings": warn})
     return out
 
@@ -265,7 +267,6 @@ def engine_plan(plan, vm, src, wl, secret, settings):
     vs = (plan.get("vm_settings") or {}).get(vm["id"]) or {}
     prep = plan["prep"]
     nm = plan.get("network_map") or []
-    subnet = nm[0]["target_subnet"] if nm else None
     if src["type"] == "plans":
         p = planlib.load(wl["_file"])
         if (settings.get("writer") or DEFAULT_WRITER).get("local"):
@@ -275,7 +276,7 @@ def engine_plan(plan, vm, src, wl, secret, settings):
             raise LiveError(f"Name guard: only {guard_prefix(settings)}* source VMs can be migrated. "
                             "Change it in Appliance Settings")
         info = everrun.discover(vm["name"], src["node_addresses"])
-        p = everrun.build_plan(info, vs.get("target_name") or vm["name"], subnet or "VLAN136", "avcli",
+        p = everrun.build_plan(info, vs.get("target_name") or vm["name"], None, "avcli",
                                writer=settings.get("writer") or DEFAULT_WRITER, disk_bus=vs.get("disk_bus") or "scsi",
                                plan_name=f"ui-{plan['name']}-{vm['name']}")
         # everRun web API (no Java); the password reaches the command only through EV2AHV_EVERRUN_PASS
@@ -289,7 +290,7 @@ def engine_plan(plan, vm, src, wl, secret, settings):
     if plan.get("project") and plan["project"] != "None":
         t["project"] = plan["project"]
     tests = [m.get("test_subnet") for m in plan.get("network_map") or [] if m.get("test_subnet")]
-    if tests:   # D8d: test migration boots the clone here (new MACs)
+    if tests:   # D8d: test migration boots the clone here (new MACs); NICs without a test subnet of their own use this one
         t["test_subnet"] = tests[0]
     for k_ui, k_eng in (("vcpus", "cores"), ("memory_mib", "memory_mib"), ("firmware", "firmware"),
                         ("disk_bus", "disk_bus"), ("convert_to_scsi", "convert_to_scsi")):
@@ -305,9 +306,23 @@ def engine_plan(plan, vm, src, wl, secret, settings):
         t["cluster"] = plan["cluster"]
     if plan.get("container"):
         t["container"] = plan["container"]
-    for n in p.get("nics") or []:
-        if subnet:
-            n["subnet"] = subnet
+    nics = p.get("nics") or []
+    if nm or vs.get("nic_subnets") or src["type"] != "plans":   # a plan file with no mapping keeps its own subnets
+        # D29: plan files have no source network names; their NICs are matched by position only through overrides
+        try:
+            picks, warns = resolve_nic_subnets([{"network": n.get("source_network"), "mac": n.get("mac")} for n in nics],
+                                               nm, vs.get("nic_subnets"))
+        except NicMapError as e:
+            raise LiveError(str(e))
+        for w in warns:
+            log.warning("%s: %s", vm["name"], w)
+        for n, (sub, test_sub) in zip(nics, picks):
+            n["subnet"] = sub
+            if test_sub:
+                n["test_subnet"] = test_sub
+            else:
+                n.pop("test_subnet", None)
+    for n in nics:
         # D23: a NIC without a known MAC (plan-file sources) cannot keep one, whatever the wizard says
         n["keep_mac"] = bool(prep.get("retain_mac", True)) and bool(n.get("mac"))
     if src["type"] == "plans" and not p.get("guest"):

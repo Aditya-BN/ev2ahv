@@ -14,6 +14,7 @@ sys.path.insert(0, ROOT)
 from ev2ahv import __version__, web as oldweb  # noqa: E402  (login file + hashing shared with the CLI console)
 
 from . import models as m  # noqa: E402
+from .nicmap import NicMapError, resolve_nic_subnets  # noqa: E402
 from .store import Store  # noqa: E402
 from .users import UserError, Users, ldap_login, ldap_settings_ok, public as users_public, write_allowed  # noqa: E402
 
@@ -413,6 +414,25 @@ def plan_vms(status: Optional[str] = None, who=Depends(user)):
     return {"entities": out, "total": len(out)}
 
 
+def check_nic_mapping(doc):
+    """D29: every NIC of every VM must resolve to a target subnet, else the plan does not start. Returns warnings
+    (old plans whose single mapping stands in for all NICs)."""
+    src = store.get("provider", doc["source"]["id"]) if doc.get("source") else None
+    wl = {w["id"]: w for w in (src or {}).get("workloads", [])}
+    warns = []
+    for v in doc["vms"]:
+        w = wl.get(v["id"])
+        if not w or not w.get("nics"):
+            continue
+        vs = doc.get("vm_settings", {}).get(v["id"]) or {}
+        try:
+            _, ws = resolve_nic_subnets(w["nics"], doc.get("network_map"), vs.get("nic_subnets"))
+        except NicMapError as e:
+            raise HTTPException(400, f"{w['name']}: {e}")
+        warns += [f"{w['name']}: {x}" for x in ws]
+    return warns
+
+
 def _build(body: m.PlanIn, pid, who, created=None):
     src = store.get("provider", body.source_id) if body.source_id else None
     tgt = store.get("provider", body.target_id) if body.target_id else None
@@ -457,6 +477,13 @@ def checks(w, body: m.PlanIn):
         out.append(m.Check(name="Boot driver", status="PASS", detail=vs.disk_bus.upper()).model_dump())
     for wn in w.get("warnings", []):
         out.append(m.Check(name="Source warning", status="WARN", detail=wn).model_dump())
+    try:   # D29: one line per NIC; the old single-mapping fallback is a WARN, an unmapped NIC a FAIL
+        picks, nw = resolve_nic_subnets(w.get("nics") or [], [n.model_dump() for n in body.network_map], vs.nic_subnets)
+        if picks:
+            out.append(m.Check(name="Network mapping", status="WARN" if nw else "PASS",
+                               detail="; ".join(nw) or ", ".join(f"NIC {i} → {s}" for i, (s, _) in enumerate(picks))).model_dump())
+    except NicMapError as e:
+        out.append(m.Check(name="Network mapping", status="FAIL", detail=str(e)).model_dump())
     return out
 
 
@@ -466,6 +493,8 @@ def create_plan(body: m.PlanIn, who=Depends(user)):
         raise HTTPException(409, f"A plan named {body.name} already exists")
     pid = store.new_id()
     doc = _build(body, pid, who)
+    if body.start:
+        check_nic_mapping(doc)
     _plan_secrets(pid, body)
     store.put("plan", doc)
     store.event("info", f"{who} created plan {body.name}", plan=body.name)
@@ -496,6 +525,8 @@ def edit_plan(pid: str, body: m.PlanIn, who=Depends(user)):
     doc["created_by"] = old["created_by"]
     if old.get("started_at"):
         doc["started_at"], doc["vms"] = old["started_at"], old["vms"]
+    elif body.start:
+        check_nic_mapping(doc)
     _plan_secrets(pid, body)
     store.put("plan", doc)
     store.event("info", f"{who} edited plan {doc['name']}", plan=doc["name"])
@@ -591,6 +622,7 @@ def start_plan(pid: str, who=Depends(user)):
     doc = _plan(pid)
     if doc.get("started_at"):
         raise HTTPException(409, "Plan already started")
+    check_nic_mapping(doc)
     doc["schedule"]["seed_at"] = None
     _start(doc, who)
     bump()

@@ -72,7 +72,7 @@ class TestMigrationTest(unittest.TestCase):
         p = FakePrism()
         m = migration(p, self.state)
         r = m.test()
-        self.assertEqual(r, {"test_vm": "test-vm-1", "name": "ev2ahv-x-test", "subnet": "ISOLATED"})
+        self.assertEqual(r, {"test_vm": "test-vm-1", "name": "ev2ahv-x-test", "subnet": "ISOLATED", "subnets": ["ISOLATED"]})
         pay = p.created[0]
         self.assertEqual(pay["name"], "ev2ahv-x-test")
         self.assertEqual([n["networkInfo"]["subnet"]["extId"] for n in pay["nics"]], ["sn-ISOLATED"])
@@ -89,6 +89,14 @@ class TestMigrationTest(unittest.TestCase):
         p = FakePrism()
         migration(p, self.state, test_subnet=None).test()
         self.assertEqual(p.created[0]["nics"][0]["networkInfo"]["subnet"]["extId"], "sn-VLAN136")
+
+    def test_each_nic_gets_its_own_test_subnet(self):
+        p = FakePrism()
+        m = migration(p, self.state, test_subnet="ISOLATED")
+        m.p["nics"] = [{"subnet": "VLAN136", "test_subnet": "T0", "mac": "50:6b:8d:00:00:01", "keep_mac": True},
+                       {"subnet": "VLAN135", "mac": "50:6b:8d:00:00:02", "keep_mac": True}]
+        m.test()
+        self.assertEqual([n["networkInfo"]["subnet"]["extId"] for n in p.created[0]["nics"]], ["sn-T0", "sn-ISOLATED"])
 
     def test_refusals(self):
         with self.assertRaises(RuntimeError):

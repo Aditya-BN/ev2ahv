@@ -170,7 +170,7 @@ export default function Wizard() {
         {step === 1 && <Step2 {...{ ws, set, wl, wlLoading, source }} />}
         {step === 2 && <Step3 {...{ ws, set, networks, target }} />}
         {step === 3 && <Step4 {...{ ws, set, hasWin, hasLin, editing, planId: id, selected }} />}
-        {step === 4 && <Step5 {...{ ws, set, selected, setting }} />}
+        {step === 4 && <Step5 {...{ ws, set, selected, setting, target }} />}
         {step === 5 && <Step6 {...{ ws, set, selected, source, target, networks, setting, goto: setStep }} />}
       </div>
       <footer className="wiz-foot">
@@ -388,9 +388,16 @@ function Step4({ ws, set, hasWin, hasLin, editing, planId, selected }: SP & { ha
   );
 }
 
-function Step5({ ws, set, selected, setting }: SP & { selected: Workload[]; setting: (w: Workload) => VmSettings }) {
+function Step5({ ws, set, selected, setting, target }: SP & { selected: Workload[]; setting: (w: Workload) => VmSettings; target?: Provider }) {
   const tzs = useMemo(timezones, []);
   const up = (w: Workload, x: Partial<VmSettings>) => set({ vmSet: { ...ws.vmSet, [w.id]: { ...setting(w), ...x } } });
+  const subnets = target?.subnets || [];
+  // D29: per-NIC override of the network mapping; an empty choice removes the override
+  const setNic = (w: Workload, i: number, subnet: string) => {
+    const next = { ...(setting(w).nic_subnets || {}) };
+    if (subnet) next[String(i)] = subnet; else delete next[String(i)];
+    up(w, { nic_subnets: next });
+  };
   return (
     <div className="wiz-col full">
       <h4 className="section">VM Settings</h4>
@@ -414,6 +421,17 @@ function Step5({ ws, set, selected, setting }: SP & { selected: Workload[]; sett
             <td><select aria-label={`Final verify ${w.name}`} value={s.final_verify || 'full'} onChange={(e) => up(w, { final_verify: e.target.value as 'full' | 'sample' | 'none' })}>
               <option value="full">Full (safest)</option><option value="sample">Sample (faster)</option><option value="none">None (fastest)</option></select></td>
           </tr>); })}</tbody></table></div>
+      <h4 className="section">Network adapters</h4>
+      <p>Each NIC goes to the subnet mapped for its source network (step 3). Choose a subnet here to override one NIC. NIC order and MAC addresses are kept.</p>
+      <div className="table-wrap"><table className="grid nics" data-testid="nic-overrides">
+        <thead><tr><th>Source VM</th><th>NIC</th><th>Source network</th><th>MAC</th><th>Target subnet</th></tr></thead>
+        <tbody>{selected.flatMap((w) => w.nics.map((n, i) => (
+          <tr key={`${w.id}-${i}`}>
+            <td>{i === 0 ? w.name : ''}</td><td>NIC {i}</td><td>{n.network}</td><td><code>{n.mac}</code></td>
+            <td><select aria-label={`Target subnet for ${w.name} NIC ${i}`} value={setting(w).nic_subnets?.[String(i)] || ''} onChange={(e) => setNic(w, i, e.target.value)}>
+              <option value="">Use network mapping{ws.netMap[n.network] ? ` (${ws.netMap[n.network]})` : ''}</option>
+              {subnets.map((s) => <option key={s.id} value={s.name}>{subnetLabel(s)}</option>)}</select></td>
+          </tr>)))}</tbody></table></div>
       {selected.some((w) => w.os_type === 'windows' && setting(w).disk_bus === 'scsi' && w.warnings.some((x) => x.includes('virtio-blk only'))) &&
         <div className="alert warn">A Windows VM with virtio-blk only cannot boot from SCSI. Choose PCI with "Convert PCI to SCSI after cutover", or the prep-check will fail.</div>}
     </div>

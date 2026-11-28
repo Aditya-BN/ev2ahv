@@ -3522,6 +3522,14 @@
                         "title": "Guest Address",
                         "description": "IP the server uses to reach the guest for automatic prep"
                     },
+                    "nic_subnets": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "type": "object",
+                        "title": "Nic Subnets",
+                        "description": "D29 per-NIC override: NIC index (0 = first NIC, as text) to target subnet name. A NIC without an entry uses the network mapping of its source network"
+                    },
                     "cbt": {
                         "type": "string",
                         "enum": [

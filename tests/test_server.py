@@ -116,7 +116,8 @@ class CbtSettingTest(unittest.TestCase):
         vs = {} if cbt is None else {"cbt": cbt}
         if final_verify:
             vs["final_verify"] = final_verify
-        plan = {"id": "p1", "name": "n", "vm_settings": {"v": vs}, "prep": {"mode": "manual"}, "network_map": []}
+        plan = {"id": "p1", "name": "n", "vm_settings": {"v": vs}, "prep": {"mode": "manual"},
+                "network_map": [{"source_network": "br0", "target_subnet": "S1"}]}
         src = {"type": "everrun", "node_addresses": ["10.0.0.1"], "address": "10.0.0.9", "username": "u"}
         wl = {"os_type": "linux", "nics": []}
         path = live.engine_plan(plan, {"id": "v", "name": "ev2ahv-src-x"}, src, wl, lambda k: None, {})

@@ -771,10 +771,13 @@ class Migration:
     def test_name(self):
         return self.p["target"]["vm_name"] + "-test"
 
-    def test_subnet(self):
+    def test_subnet(self, nic=None):
+        """Test subnet of one NIC: its own (D29, from the source network's mapping), else the plan-wide
+        target.test_subnet, else its production subnet. Without a NIC: the first NIC's."""
         t = self.p["target"]
         nics = self.p.get("nics") or []
-        return t.get("test_subnet") or (nics[0]["subnet"] if nics else None)
+        nic = nic or (nics[0] if nics else {})
+        return nic.get("test_subnet") or t.get("test_subnet") or nic.get("subnet")
 
     def test(self):
         """Boot a copy of the last synced data on the test subnet while the source keeps running. The staging disks are
@@ -801,8 +804,8 @@ class Migration:
         cluster = self.prism.cluster_id(self.p["target"]["cluster"])
         p = copy.deepcopy(self.p)
         p["target"]["vm_name"] = name
-        p["nics"] = [dict(n, subnet=subnet, keep_mac=False, mac=None) for n in p.get("nics") or []]
-        subnets = {subnet: self.prism.subnet_id(subnet, cluster)} if subnet else {}
+        p["nics"] = [dict(n, subnet=self.test_subnet(n), keep_mac=False, mac=None) for n in p.get("nics") or []]
+        subnets = {n["subnet"]: self.prism.subnet_id(n["subnet"], cluster) for n in p["nics"]}
         sources = [(staging[d["name"]]["size"], self.prism.disk_ref(writer_vm, staging[d["name"]]["disk_id"]))
                    for d in self.p["disks"]]
         payload = builder.vm_payload(p, cluster, sources, subnets)
@@ -811,7 +814,7 @@ class Migration:
         self.state.set("test_vm", vm_id)
         self.prism.power(vm_id, "power-on")
         self.state.event("test", vm=vm_id, subnet=subnet)
-        return {"test_vm": vm_id, "name": name, "subnet": subnet}
+        return {"test_vm": vm_id, "name": name, "subnet": subnet, "subnets": [n["subnet"] for n in p["nics"]]}
 
     def discard_test(self):
         """Delete the test VM (never the target or anything else)."""
