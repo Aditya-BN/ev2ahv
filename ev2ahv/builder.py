@@ -44,9 +44,13 @@ def vm_payload(plan, cluster_id, sources, subnets):
     t = plan["target"]
     disks = disk_entries(plan, sources)
     first = disks[0]["diskAddress"]
-    return {"name": t["vm_name"], "description": f"Migrated by ev2ahv, plan {plan['name']}",
+    body = {"name": t["vm_name"], "description": f"Migrated by ev2ahv, plan {plan['name']}",
             "numSockets": int(t["sockets"]), "numCoresPerSocket": int(t["cores"]),
             "numThreadsPerCore": int(t["threads"]), "memorySizeBytes": int(t["memory_mib"]) * 1024 ** 2,
             "machineType": t["machine_type"], "cluster": {"extId": cluster_id},
             "bootConfig": boot_config(t["firmware"], first["busType"], first["index"]),
             "disks": disks, "nics": nic_entries(plan, subnets)}
+    if (plan.get("guest") or {}).get("ngt"):
+        # AHV cannot hot-add a CD-ROM to a running VM, and the NGT ISO needs an empty one (D26)
+        body["cdRoms"] = [{"diskAddress": {"busType": "SATA", "index": 0}}]
+    return body

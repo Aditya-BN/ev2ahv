@@ -363,6 +363,62 @@ class Prism:
                 raise PrismError(f"VM {vm_id} did not reach {state}")
             time.sleep(5)
 
+    # ---- Nutanix Guest Tools (D26) -------------------------------------------
+    def ngt_status(self, vm_id):
+        """The v4 guest-tools record: isInstalled, isEnabled, isReachable, isIsoInserted, version fields."""
+        return self.get(f"{VMS}/{vm_id}/guest-tools")["data"]
+
+    def _cdroms(self, vm_id):
+        return self.vm(vm_id).get("cdRoms") or []
+
+    def ngt_mount(self, vm_id):
+        """Inserts the NGT ISO into an empty CD-ROM, adding one (SATA, then IDE) when the VM has none.
+        Returns {"added": <cdrom extId or None>}; remember it so ngt_unmount can remove what we added."""
+        vm, _ = self._owned_vm(vm_id)
+        empty = [c for c in vm.get("cdRoms") or [] if c.get("isoType") != "GUEST_CUSTOMIZATION"
+                 and not (c.get("backingInfo") or {}).get("diskSizeBytes")]
+        added = None
+        if self.dry_run:
+            log.info("[dry-run] mount the NGT ISO on %s", vm["name"])
+            return {"added": None}
+        if not empty and vm.get("powerState") == "ON":
+            raise PrismError("the VM has no empty CD-ROM and AHV cannot hot-add one. Create the VM with an empty CD-ROM "
+                             "(ev2ahv does this when Install NGT is on) or power it off first")
+        if not empty:
+            before = {c["extId"] for c in vm.get("cdRoms") or []}
+            last = None
+            for bus in ("SATA",):
+                used = {c["diskAddress"]["index"] for c in vm.get("cdRoms") or [] if c["diskAddress"]["busType"] == bus}
+                body = {"diskAddress": {"busType": bus, "index": next(i for i in range(4) if i not in used)}}
+                try:
+                    self.wait(self._call("POST", f"{VMS}/{vm_id}/cd-roms", body)[0])
+                    break
+                except PrismError as e:
+                    last = e
+            else:
+                raise PrismError(f"could not add an empty CD-ROM for the NGT ISO: {last}")
+            new = [c["extId"] for c in self._cdroms(vm_id) if c["extId"] not in before]
+            added = new[0] if new else None
+        _, etag = self._owned_vm(vm_id)
+        body = {"capabilities": ["VSS_SNAPSHOT"], "isConfigOnly": False}
+        self.wait(self._call("POST", f"{VMS}/{vm_id}/guest-tools/$actions/insert-iso", body, etag)[0])
+        log.info("NGT ISO inserted into %s", vm["name"])
+        return {"added": added}
+
+    def ngt_unmount(self, vm_id, added=None):
+        """Ejects the NGT ISO, and removes the CD-ROM ngt_mount added. Safe to call when nothing is mounted."""
+        vm, _ = self._owned_vm(vm_id)
+        if self.dry_run:
+            return
+        for c in vm.get("cdRoms") or []:
+            if c.get("isoType") == "GUEST_TOOLS" or c["extId"] == added:
+                if c.get("isoType") == "GUEST_TOOLS" or (c.get("backingInfo") or {}).get("diskSizeBytes"):
+                    self.wait(self._call("POST", f"{VMS}/{vm_id}/cd-roms/{c['extId']}/$actions/eject", None,
+                                         self._owned_vm(vm_id)[1])[0])
+        if added and any(c["extId"] == added for c in self._cdroms(vm_id)):
+            self.wait(self._call("DELETE", f"{VMS}/{vm_id}/cd-roms/{added}")[0])
+        log.info("NGT ISO unmounted from %s", vm["name"])
+
     def delete_vm(self, vm_id):
         vm, etag = self._owned_vm(vm_id)
         if self.dry_run:
