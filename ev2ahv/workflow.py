@@ -4,8 +4,9 @@ import base64, copy, fcntl, logging, os, re, shlex, socket, subprocess, time
 
 from . import builder, cbt, engine, guest as guestlib, target as tgt
 from .readers import make_reader
+from .snapexport import SnapshotExporter
 from .state import State
-from .transport import BlockdTransport, BlockEndpoint, LocalTransport, SshTransport
+from .transport import BlockdTransport, BlockEndpoint, LocalTransport, SshTransport, ssh_transport
 
 log = logging.getLogger("ev2ahv.workflow")
 DATA_DIR = os.path.expanduser(os.environ.get("EV2AHV_DATA", "~/.local/share/ev2ahv"))
@@ -81,11 +82,48 @@ class Migration:
     def source_shell(self):
         s = self.p["source"]
         if s["type"] == "direct" or s.get("host"):
-            return SshTransport(s["host"], s.get("user", "root"), s.get("key") or os.path.join(tgt.CONFIG, "id_ed25519"),
-                                s.get("port", 22), s.get("sudo", False), os.path.join(tgt.CONFIG, "known_hosts"))
+            return ssh_transport(s["host"], s.get("user", "root"), s.get("key") or os.path.join(tgt.CONFIG, "id_ed25519"),
+                                 s.get("port", 22), s.get("sudo", False), os.path.join(tgt.CONFIG, "known_hosts"),
+                                 s.get("storage_path", "/mnt/everrun"))
         return LocalTransport(sudo=s.get("sudo", False))
 
+    # ---- snapshot-export source (preview, docs/snapshot-export.md) ------------
+    @property
+    def snap_mode(self):
+        return self.p["source"].get("type") == "snapshot_export"
+
+    def _snap(self):
+        if getattr(self, "_snapper", None) is None:
+            s = dict(self.p["source"], known_hosts=os.path.join(tgt.CONFIG, "known_hosts"),
+                     key=self.p["source"].get("key") or os.path.join(tgt.CONFIG, "id_ed25519"))
+            self._snapper = SnapshotExporter(s, self.p["name"], os.environ.get("EV2AHV_EVERRUN_PASS", ""))
+        return self._snapper
+
+    def take_export(self, label):
+        """Snapshot + export the source VM (once per label) and check the files against the plan's disks."""
+        ex = self.state.get("export")
+        if ex and ex.get("label") == label:
+            return ex
+        sn = self._snap()
+        ex = sn.export(label, expected=len(self.p["disks"]))
+        for d, f in zip(self.p["disks"], ex["files"]):
+            want, have = d.get("size_bytes"), sn.virtual_size(f)
+            if want and abs(have - want) > 1024 ** 2:
+                raise RuntimeError(f"exported {os.path.basename(f)} is {have} bytes, disk {d['name']} should be {want}: "
+                                   "the disk order in the export differs from the plan, nothing was synced")
+        ex["label"] = label
+        self.state.set("export", ex)
+        return ex
+
     def reader(self, disk):
+        if self.snap_mode:
+            ex = self.state.get("export")
+            if not ex:
+                raise RuntimeError("no export yet: the seed takes the first snapshot export")
+            i = [d["name"] for d in self.p["disks"]].index(disk["name"])
+            r = self._snap().reader(ex["files"][i], ex["label"], self.chunk, self.p["source"].get("max_mbps", 0))
+            r.limit = disk.get("size_bytes")
+            return r
         return make_reader(self.p["source"], disk, self.chunk, os.path.join(tgt.CONFIG, "id_ed25519"),
                            os.path.join(tgt.CONFIG, "known_hosts"))
 
@@ -254,6 +292,9 @@ class Migration:
             def space():
                 sizes = []
                 for disk in self.p["disks"]:
+                    if self.snap_mode:
+                        sizes.append(builder.align(disk.get("size_bytes") or 0))
+                        continue
                     r = self.reader(disk)
                     try:
                         sizes.append(builder.align(r.size()))
@@ -268,6 +309,8 @@ class Migration:
             check("Writer staging space", space)
         for d in self.p["disks"]:
             def src(disk=d):
+                if self.snap_mode:
+                    return "read from the snapshot export taken at seed time"
                 r = self.reader(disk)
                 try:
                     return f"{r.size()} bytes, helper {r.caps()['python']}"
@@ -421,6 +464,8 @@ class Migration:
     def seed(self):
         self.lock()
         began = time.time()
+        if self.snap_mode and not self.dry_run:
+            self.take_export("seed")
         res = self._sync_all()
         if not self.dry_run:
             self.timing(seed_seconds=round(time.time() - began, 1))
@@ -431,7 +476,12 @@ class Migration:
         self.lock()
         if not self.staging() and not self.dry_run:
             raise RuntimeError("nothing seeded yet. Run seed first")
+        if self.snap_mode and not self.p["source"]["export"].get("allow_resync"):
+            log.info("snapshot_export: no resync (each one would be a full export); the final sync takes a new export after shutdown")
+            return {"skipped": "snapshot_export has no resyncs"}
         began = time.time()
+        if self.snap_mode and not self.dry_run:
+            self.take_export(f"resync{int(began)}")
         res = self._sync_all()
         if not self.dry_run:
             self.timing(last_resync_seconds=round(time.time() - began, 1))
@@ -507,6 +557,8 @@ class Migration:
             raise RuntimeError("source is running again. Run rollback before retrying the cutover")
         if not self.step_done("synced"):
             t0 = time.time()
+            if self.snap_mode:
+                self.take_export("final")   # the guest is off: this export is the final data, and it is the downtime
             self.state.set("final_sync", self._sync_all(final=True))
             self.timing(final_sync_seconds=round(time.time() - t0, 1),
                         final_verify=self.p["sync"].get("final_verify", "full"))
@@ -863,6 +915,13 @@ class Migration:
                 out.setdefault("removed_images", []).append(image["name"])
         if not self.dry_run:
             self.state.set("images", {})
+        if self.snap_mode and not self.dry_run and self.state.get("export"):
+            ex = self.state.get("export")
+            self._snap().remove(ex)   # exported VHD/VHDX and their raw copies; everRun snapshots were deleted at export time
+            self._snap().local.run(f"rm -rf {shlex.quote(self._snap().workdir + '/' + self.p['name'] + '-')}* "
+                                   f"{shlex.quote(self._snap().local_root + '/' + self.p['name'] + '-')}*", check=False)
+            self.state.set("export", None)
+            out["removed_export"] = True
         if delete_target and self.state.get("target_vm"):
             if not self.dry_run:
                 self.prism.delete_vm(self.state.get("target_vm"))

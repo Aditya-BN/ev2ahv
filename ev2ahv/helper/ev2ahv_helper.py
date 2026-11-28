@@ -75,6 +75,24 @@ class Throttle:
             time.sleep(delay)
 
 
+# Least-privilege installs (docs/least-privilege.md) put a root-owned file with one path prefix here. When it exists
+# this helper reads only below that prefix (symlinks and .. resolved) and never writes, whatever sudo lets through.
+CONFINE_FILE = "/usr/local/libexec/ev2ahv/allowed-prefix"
+
+
+def confine(cmd, device, conf=CONFINE_FILE):
+    try:
+        with open(conf) as fh:
+            prefix = os.path.realpath(fh.read().strip())
+    except (IOError, OSError):
+        return   # no confinement file: the normal root or appliance install
+    if cmd == "write":
+        sys.exit("refusing to write: this install is read-only (%s exists)" % conf)
+    real = os.path.realpath(device)
+    if not prefix or prefix == "/" or not (real == prefix or real.startswith(prefix.rstrip("/") + "/")):
+        sys.exit("refusing %s: %s is outside %s" % (cmd, device, prefix))
+
+
 def device_size(fd):
     return os.lseek(fd, 0, os.SEEK_END)
 
@@ -299,6 +317,8 @@ def main(argv=None):
             p.add_argument("--end", type=int, default=None)
         p.set_defaults(fn=fn)
     args = parser.parse_args(argv)
+    if args.cmd != "caps":
+        confine(args.cmd, args.device)
     args.fn(args)
 
 

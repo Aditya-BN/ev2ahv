@@ -50,6 +50,8 @@ class ProviderIn(BaseModel):
     password: Optional[str] = Field(None, description="write-only")
     api_key: Optional[str] = Field(None, description="write-only, Prism Central only")
     node_addresses: List[str] = Field(default_factory=list, description="everRun node IPs for read-only disk access")
+    ssh_user: str = Field("root", description="everRun host account for SSH. Anything but root is used with sudo -n and an exact command allowlist (docs/least-privilege.md)")
+    storage_path: str = Field("/mnt/everrun", description="everRun volume path on the nodes; the sudoers allowlist is limited to it")
 
 
 class Provider(BaseModel):
@@ -66,6 +68,8 @@ class Provider(BaseModel):
     last_refreshed: Optional[float] = None
     version: Optional[str] = None
     node_addresses: List[str] = Field(default_factory=list)
+    ssh_user: str = "root"
+    storage_path: str = "/mnt/everrun"
     clusters: List[Named] = Field(default_factory=list)
     containers: List[Named] = Field(default_factory=list)
     subnets: List[Subnet] = Field(default_factory=list)
@@ -116,6 +120,10 @@ class Prep(BaseModel):
     virtio_source: Optional[str] = Field(None, description="ISO path on the server, or a share the guest can reach")
 
 
+CBT_WARNING = ("Uses QEMU monitor commands on everRun nodes, which Stratus documentation advises against. "
+               "Keep off unless Stratus has agreed.")
+
+
 class VmSettings(BaseModel):
     target_name: Optional[str] = None
     vcpus: Optional[int] = None
@@ -125,12 +133,14 @@ class VmSettings(BaseModel):
     firmware: Optional[Literal["bios", "uefi"]] = None
     timezone: Optional[str] = None
     guest_address: Optional[str] = Field(None, description="IP the server uses to reach the guest for automatic prep")
-    cbt: Literal["off", "auto"] = Field("off", description="changed-block tracking for resyncs (experimental, everRun direct sources only; docs/cbt.md)")
+    cbt: Literal["off", "auto"] = Field("off", description="changed-block tracking for resyncs (experimental, everRun direct sources only; docs/cbt.md). " + CBT_WARNING)
+    cbt_confirmed: bool = Field(False, description="must be true to switch cbt to auto: the operator has read the Stratus warning")
     final_verify: Literal["full", "sample", "none"] = Field("full", description="how the final sync checks the target after its source pass: full (hash the target too, default), sample (compare a random 1 percent), none (trust the recorded digests); docs/cbt.md")
 
 
 class VmSettingsPatch(BaseModel):
     cbt: Optional[Literal["off", "auto"]] = None
+    cbt_confirmed: Optional[bool] = Field(None, description="required (true) together with cbt=auto. " + CBT_WARNING)
     final_verify: Optional[Literal["full", "sample", "none"]] = None
 
 

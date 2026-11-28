@@ -1,7 +1,7 @@
 """Pluggable source readers. All expose the BlockEndpoint interface: caps, size, hashes, read, close."""
 import os, shlex
 
-from .transport import BlockEndpoint, LocalTransport, SshTransport
+from .transport import BlockEndpoint, LocalTransport, SshTransport, ssh_transport
 
 
 class SourceReader(BlockEndpoint):
@@ -28,8 +28,8 @@ class DirectBlockReader(SourceReader):
     kind = "direct"
 
     def __init__(self, host, device, user="root", key=None, port=22, sudo=False, known_hosts=None,
-                 chunk=4 * 1024 ** 2, max_mbps=0):
-        super().__init__(SshTransport(host, user, key, port, sudo, known_hosts), device, chunk, max_mbps)
+                 chunk=4 * 1024 ** 2, max_mbps=0, storage_path="/mnt/everrun"):
+        super().__init__(ssh_transport(host, user, key, port, sudo, known_hosts, storage_path), device, chunk, max_mbps)
 
 
 class ExportReader(SourceReader):
@@ -60,7 +60,8 @@ def _make_reader(src, disk, chunk, default_key, known_hosts):
         return LocalReader(disk["path"], chunk, mbps, sudo=src.get("sudo", False))
     if kind == "direct":
         return DirectBlockReader(src["host"], disk["path"], src.get("user", "root"), src.get("key") or default_key,
-                                 src.get("port", 22), src.get("sudo", False), known_hosts, chunk, mbps)
+                                 src.get("port", 22), src.get("sudo", False), known_hosts, chunk, mbps,
+                                 src.get("storage_path", "/mnt/everrun"))
     if kind == "export":
         t = None
         if src.get("host"):

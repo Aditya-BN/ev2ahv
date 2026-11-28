@@ -68,6 +68,13 @@ class LocalTransport(Transport):
         return " ".join(shlex.quote(a) for a in ("python3", "-I", HELPER_PATH) + tuple(map(str, args)))
 
 
+# Least-privilege everRun host account (docs/least-privilege.md): the helper is installed once by an admin, root-owned,
+# because sudo must never run a file the unprivileged user can edit.
+HELPER_INSTALLED = "/usr/local/libexec/ev2ahv/ev2ahv_helper.py"
+PYTHON3 = "/usr/bin/python3"
+VIRSH = "/usr/bin/virsh"
+
+
 class SshTransport(Transport):
     """Copies the helper to /tmp on the remote host and removes it on close."""
 
@@ -107,6 +114,39 @@ class SshTransport(Transport):
             subprocess.run(self._base() + [f"rm -f {self.remote}"], stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, timeout=30)
             self.installed = False
+
+
+class SudoExactTransport(SshTransport):
+    """Non-root ssh account. Nothing is copied or written on the node. Every privileged command is
+    `sudo -n <exact argv>` that the sudoers allowlist lists: `virsh -r ...` and the installed helper's read-only
+    ops. `run()` therefore takes a full command line that already carries its own sudo."""
+
+    def __init__(self, host, user, key=None, port=22, known_hosts=None, storage_path="/mnt/everrun"):
+        super().__init__(host, user, key, port, False, known_hosts)
+        self.storage_path = storage_path
+
+    def argv(self, command):
+        return self._base() + [command]
+
+    def helper_cmd(self, *args):
+        return " ".join(shlex.quote(a) for a in ("sudo", "-n", PYTHON3, "-I", HELPER_INSTALLED) + tuple(map(str, args)))
+
+    def virsh(self, *args):
+        """Command line for a read-only virsh call under the allowlist."""
+        return " ".join(shlex.quote(a) for a in ("sudo", "-n", VIRSH, "-r") + tuple(map(str, args)))
+
+    def setup(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def ssh_transport(host, user="root", key=None, port=22, sudo=False, known_hosts=None, storage_path="/mnt/everrun"):
+    """The right transport for a source host: sudo "exact" selects the least-privilege account."""
+    if sudo == "exact":
+        return SudoExactTransport(host, user, key, port, known_hosts, storage_path)
+    return SshTransport(host, user, key, port, sudo, known_hosts)
 
 
 def read_exact(stream, n):

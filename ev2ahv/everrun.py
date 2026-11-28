@@ -9,9 +9,10 @@ import json, os, re, shlex
 import xml.etree.ElementTree as ET
 
 from .target import CONFIG
-from .transport import SshTransport
+from .transport import SshTransport, SudoExactTransport
 
 TRAILER_BYTES = 2048
+DEFAULT_STORAGE = "/mnt/everrun"
 
 
 def parse_domain(xml):
@@ -43,35 +44,62 @@ def active_node(states):
     return running[0]
 
 
-def discover(vm, nodes, key=None):
+def node_transport(node, ssh_user="root", key=None, storage_path=DEFAULT_STORAGE):
+    """Root: the classic ssh transport. Any other user: sudo -n with exact commands only (docs/least-privilege.md)."""
     key = key or os.path.join(CONFIG, "id_ed25519")
     hosts = os.path.join(CONFIG, "known_hosts")
-    q = shlex.quote(vm)
+    if (ssh_user or "root") == "root":
+        return SshTransport(node, "root", key, known_hosts=hosts)
+    return SudoExactTransport(node, ssh_user, key, known_hosts=hosts, storage_path=storage_path)
+
+
+def virsh_ro(t, *args):
+    """A read-only virsh command line for this transport (`virsh -r ...`, or `sudo -n /usr/bin/virsh -r ...`)."""
+    if isinstance(t, SudoExactTransport):
+        return t.virsh(*args)
+    return " ".join(shlex.quote(a) for a in ("virsh", "-r") + tuple(map(str, args)))
+
+
+def file_size(t, path):
+    """Size of a volume file: stat as root, the installed read-only helper for a least-privilege account."""
+    if isinstance(t, SudoExactTransport):
+        return t.size(path)
+    return int(t.run(f"stat -c %s {shlex.quote(path)}").strip())
+
+
+def list_domains(t):
+    return [n for n in t.run(virsh_ro(t, "list", "--all", "--name")).split("\n") if n.strip()]
+
+
+def domain_state(t, name):
+    return (t.run(virsh_ro(t, "domstate", name) + " 2>/dev/null || echo absent").strip().split("\n") or [""])[0]
+
+
+def discover(vm, nodes, key=None, ssh_user="root", storage_path=DEFAULT_STORAGE):
     states = {}
     for node in nodes:
-        t = SshTransport(node, "root", key, known_hosts=hosts)
-        states[node] = t.run(f"virsh -r domstate {q} 2>/dev/null || echo absent").strip().split("\n")[0]
+        states[node] = domain_state(node_transport(node, ssh_user, key, storage_path), vm)
     host = active_node(states)
-    t = SshTransport(host, "root", key, known_hosts=hosts)
-    info = parse_domain(t.run(f"virsh -r dumpxml {q}"))
+    t = node_transport(host, ssh_user, key, storage_path)
+    info = parse_domain(t.run(virsh_ro(t, "dumpxml", vm)))
     for d in info["disks"]:
         if d["format"] != "raw":
             raise RuntimeError(f"{d['dev']} is {d['format']}, only raw everRun disks are supported directly")
-        d["file_bytes"] = int(t.run(f"stat -c %s {shlex.quote(d['path'])}").strip())
+        d["file_bytes"] = file_size(t, d["path"])
         d["guest_bytes"] = d["file_bytes"] - TRAILER_BYTES
     info.update(active_host=host, node_states=states)
     return info
 
 
 def build_plan(info, target_name, subnet, avcli, writer=None, container="VM_Container", cluster="NTNX-DC",
-               max_mbps=100, disk_bus="scsi", plan_name=None):
+               max_mbps=100, disk_bus="scsi", plan_name=None, ssh_user="root", storage_path=DEFAULT_STORAGE):
     vm = shlex.quote(info["name"])
     cli = shlex.quote(os.path.expanduser(avcli))
     return {
         "name": plan_name or re.sub(r"[^\w.-]", "-", target_name),
         "writer": writer or {"vm": "ev2ahv-writer", "host": "10.12.136.211", "user": "nutanix"},
-        "source": {"type": "direct", "qemu_domain": info["name"], "host": info["active_host"], "user": "root", "max_mbps": max_mbps,
-                   "stop_timeout": 600,
+        "source": {"type": "direct", "qemu_domain": info["name"], "host": info["active_host"], "user": ssh_user, "max_mbps": max_mbps,
+                   "stop_timeout": 600, **({"sudo": "exact", "storage_path": storage_path} if ssh_user != "root" else {}),
                    "power": {"local": True,
                              "status": f"{cli} vm-info {vm} | awk '/-> state/{{print $NF; exit}}'",
                              "stop": f"{cli} vm-shutdown {vm}", "start": f"{cli} vm-poweron {vm}"}},

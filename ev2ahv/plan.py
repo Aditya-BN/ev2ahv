@@ -57,8 +57,14 @@ def validate(p):
         errors.append("target.firmware must be bios or uefi")
     if t["disk_bus"] not in ("scsi", "pci"):
         errors.append("target.disk_bus must be scsi or pci")
-    if s.get("type") not in ("local", "direct", "export"):
-        errors.append("source.type must be local, direct or export")
+    if s.get("type") not in ("local", "direct", "export", "snapshot_export"):
+        errors.append("source.type must be local, direct, export or snapshot_export")
+    if s.get("sudo") not in (None, False, True, "exact"):
+        errors.append('source.sudo must be true, false or "exact" (least-privilege account, docs/least-privilege.md)')
+    if s.get("sudo") == "exact" and s.get("user", "root") == "root":
+        errors.append('source.sudo "exact" is for a non-root source.user')
+    if s.get("type") == "snapshot_export":
+        errors += snapshot_errors(s)
     if s.get("type") == "direct" and not s.get("host"):
         errors.append("source.host is required for direct")
     if not p.get("disks"):
@@ -111,9 +117,29 @@ def validate(p):
         errors.append("sync.final_verify must be full, sample or none")
     if p["sync"]["cbt"] == "auto" and not (p["source"].get("qemu_domain") and p["source"].get("type") == "direct"):
         errors.append("sync.cbt: auto needs source.type direct and source.qemu_domain (the libvirt domain name)")
+    if p["sync"]["cbt"] == "auto" and p["source"].get("sudo") == "exact":
+        errors.append("sync.cbt: auto needs QEMU monitor commands, which the least-privilege account (sudo exact) does not allow")
     if errors:
         raise PlanError("; ".join(errors))
     return p
+
+
+def snapshot_errors(s):
+    """Snapshot-export source (preview, docs/snapshot-export.md): everything the engine needs to snapshot, export and read."""
+    out = []
+    if s.get("preview") is not True:
+        out.append("source.preview: true is required for snapshot_export (feature flag, preview mode)")
+    for key in ("vm", "host"):
+        if not s.get(key):
+            out.append(f"source.{key} is required for snapshot_export")
+    e = s.get("export") or {}
+    for key in ("node_path", "appliance_path"):
+        v = str(e.get(key) or "")
+        if not v.startswith("/") or v != os.path.normpath(v) or v.count("/") < 2:
+            out.append(f"source.export.{key} must be a normalised absolute path at least two levels deep")
+    if e.get("format", "vhdx") not in ("vhd", "vhdx"):
+        out.append("source.export.format must be vhd or vhdx")
+    return out
 
 
 def load(path):
