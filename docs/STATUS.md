@@ -1,3 +1,26 @@
+# CHECKPOINT 2026-11-28 14:30 WIB (owner paused the swarm; resume tonight)
+
+All 9 agents stopped at the usage limit (reset 14:20 WIB). Unfinished work is committed and pushed as WIP on these branches (none merged, all untested):
+
+| Branch | Work | WIP head |
+|---|---|---|
+| adit/perf | parallel disks + faster writes (lab: Rocky pair, appliance-2) | bbcf40c |
+| adit/report | migration report + notifications | 6c331de |
+| adit/nic | D29 per-NIC subnet mapping | 2352c12 |
+| adit/policy | D28 bandwidth policies + D30 name guard / test fallback | c4f3478 |
+| adit/agent | D25 agent-based migration (lab: ev2ahv-agentsrc-1, appliance-4) | 7f45f0c |
+| adit/ngt | D26 NGT install (lab: ev2ahv-ngt-linux 10.12.136.177) | d71e58c |
+| adit/stratus | D27 CBT warning, non-root host account, snapshot-export mode | 27d1921 |
+| adit/cutover | D8b scheduled cutover, cutover window | 522ad05 |
+| (main tree) | D15/T13 backups and production impact (win22, appliance-3); its numbers so far are on the board | n/a |
+
+Lab state at the pause (checked):
+- AHV ON: appliance-2, -3, -4, writer-root, rocky9-app2 (.162), win22-app3 (.161), ngt-linux, agentsrc-1.
+- everRun: no guests running on either node, so both sources are stopped and no VM has both copies on.
+
+Resume: re-enable the scheduled task "ev2ahv swarm auto-continue" (trig_016G221qSDhaRkX9GTSrUJC7), or tell adit's session "resume the swarm". It sends each agent (ids in ~/.config/ev2ahv/swarm-agents.txt) "limit reset, continue", merges finished branches one by one, then releases.
+Worktrees: ~/ev2ahv-<slug>.
+
 # ev2ahv status (2026-11-27 WIB, after v0.3.6: final_verify)
 
 Start with AGENTS.md, docs/architecture.md and docs/BACKLOG.md. Detailed numbers are in docs/results.md.
